@@ -1,6 +1,9 @@
+
 import { Router } from 'express';
 import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi } from '../controllers/transaksiController';
+import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
 const router = Router();
+router.get('/tt-finance-detail', listTtFinanceDetail);
 
 router.post('/', createTransaksi);
 router.post('/batch', batchCreateTransaksi);

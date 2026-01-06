@@ -4,6 +4,8 @@ import ThFinance from '../models/ThFinance';
 import Transaksi from '../models/Transaksi';
 import FiscalConfig from '../models/FiscalConfig';
 import { fiscalMonthsForYear } from '../utils/fiscal';
+import TtFinanceDaily from '../models/TtFinanceDaily';
+import ThFinanceDaily from '../models/ThFinanceDaily';
 // GET /fiscal/years
 export const getFiscalYears = async (req: Request, res: Response) => {
   try {
@@ -39,6 +41,7 @@ export const closeFiscalYear = async (req: Request, res: Response) => {
     const transaksi = await TTFinance.find({ tahun_fiskal: fiscalYear });
     if (!transaksi.length) return res.status(404).json({ message: 'Tidak ada transaksi tahun berjalan' });
 
+
     // Migrasi ke th_finance: gabung data bulanan dalam satu dokumen per akun/kategori/sub_kategori/tahun fiskal
     const migrated = [];
     for (const trx of transaksi) {
@@ -57,6 +60,26 @@ export const closeFiscalYear = async (req: Request, res: Response) => {
       migrated.push(thFinance);
     }
 
+    // Migrasi tt_finance_daily ke th_finance_daily
+    const dailyDocs = await TtFinanceDaily.find({ tahun_fiskal: fiscalYear });
+    let migratedDaily = 0;
+    for (const doc of dailyDocs) {
+      const thDaily = new ThFinanceDaily({
+        tanggal: doc.tanggal,
+        bulan_fiskal: doc.bulan_fiskal,
+        tahun_fiskal: doc.tahun_fiskal,
+        kategori: doc.kategori,
+        sub_kategori: doc.sub_kategori,
+        akun: doc.akun,
+        total_nilai: doc.total_nilai,
+        created_at: doc.created_at,
+      });
+      await thDaily.save();
+      migratedDaily++;
+    }
+    // Hapus data tahun berjalan dari tt_finance_daily
+    await TtFinanceDaily.deleteMany({ tahun_fiskal: fiscalYear });
+
     // Hapus transaksi tahun berjalan dari tt_finance
     await TTFinance.deleteMany({ tahun_fiskal: fiscalYear });
 
@@ -68,7 +91,7 @@ export const closeFiscalYear = async (req: Request, res: Response) => {
       { upsert: true, new: true }
     );
 
-    res.json({ success: true, migratedCount: migrated.length, nextActive: nextYear });
+    res.json({ success: true, migratedCount: migrated.length, migratedDaily, nextActive: nextYear });
   } catch (error) {
     console.error('❌ Error in closeFiscalYear:', error);
     res.status(500).json({ message: 'Server error', error });
