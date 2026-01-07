@@ -440,44 +440,7 @@ export default function Dashboard() {
           </Card>
         ) : (
           <>
-            {/* VPS Monthly Aggregates */}
-            {/* {vpsMonthlyData && vpsMonthlyData.length > 0 && (
-              <div className="mb-8">
-                <Card className="border-2 border-dashed border-blue-200 bg-white backdrop-blur-sm hover:border-blue-400 transition-all duration-300">
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-2xl font-bold text-gray-900">Perolehan VPS {year}</CardTitle>
-                    </div>
-                    <CardDescription className="text-gray-600 text-sm">
-                      Fiscal year starts December; toggle between estimasi and realisasi
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {(() => {
-                      const chartData = vpsMonthlyData.map(({ label, agg }) => ({
-                        name: label,
-                        value: agg ? (agg.estimasi) : 0,
-                      }));
-                      const total = chartData.reduce((s, d) => s + d.value, 0);
-                      return (
-                        <div>
-                          <div className="mb-3 text-right">
-                            <span className="text-sm font-medium text-blue-600">
-                              Total: Rp {total.toLocaleString('id-ID')}
-                            </span>
-                          </div>
-                          <ChartBar
-                            data={chartData}
-                            totalKategori={total}
-                            ticks={[0, 500_000_000, 1_500_000_000]}
-                          />
-                        </div>
-                      );
-                    })()}
-                  </CardContent>
-                </Card>
-              </div>
-            )} */}
+            {/* VPS Monthly Aggregates (rendered later after Subscriber by Program) */}
 
             {/* Monthly trend chart per kategori */}
             {pertahunData.length > 0 && (
@@ -676,6 +639,8 @@ export default function Dashboard() {
               </div>
             )}
 
+
+            {/* VPS Monthly Aggregates (single-series with radio toggle, placed after Subscriber by Program) */}
             {/* Subscriber by Program Chart */}
             {subscriberByProgramData && subscriberByProgramData.length > 0 && (
               <div className="mb-8">
@@ -698,7 +663,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* VPS Monthly Aggregates (single-series with radio toggle, placed below Subscriber by Program) */}
             {vpsMonthlyData && vpsMonthlyData.length > 0 && (
               <div className="mb-8" ref={vpsCardRef}>
                 <Card className="vps-card border-2 border-dashed border-blue-200 bg-white backdrop-blur-sm hover:border-blue-400 transition-all duration-300">

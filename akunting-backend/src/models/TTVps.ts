@@ -4,7 +4,6 @@ export interface ITTVps extends Document {
   periode: string; // YYYY-MM
   estimasi: number; // sum of total_harga
   realisasi: number; // sum of total_harga where status DONE
-  open: number; // derived (confirm: OPEN sum or estimasi - realisasi)
   total_toko_estimasi: number; // jumlah detail di periode ini
   total_toko_realisasi: number; // jumlah detail status DONE dan tgl_lunas di periode ini
   updated_at: Date;
@@ -22,7 +21,6 @@ const TTVpsSchema: Schema = new Schema(
     periode: { type: String, required: true },
     estimasi: { type: Number, required: true, default: 0 },
     realisasi: { type: Number, required: true, default: 0 },
-    open: { type: Number, required: true, default: 0 },
     // total_toko removed
     total_toko_estimasi: { type: Number, required: true, default: 0 },
     total_toko_realisasi: { type: Number, required: true, default: 0 },

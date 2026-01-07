@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import VpsSubscription from '../models/Vps';
 import Subscriber from '../models/Subscriber';
 import { addMonths, calcDueDate, calcGross, calcNet, generateNextFiscalYearPeriods, generatePeriodsUntilFiscalNovember } from '../utils/vps';
-import TTVpsDetail, { IVpsDetailItem } from '../models/TTVpsDetail';
+import TTVpsDetail from '../models/TTVpsDetail';
 import TTVps from '../models/TTVps';
 import { addDays as addDaysUTC, calcTempo as calcTempoUTC, toPeriod, formatYMD } from '../utils/vpsPeriod';
 
@@ -34,7 +34,7 @@ export const availableSubscribers = async (_req: Request, res: Response) => {
     // Subscribers not yet linked to any VPS subscription
     const used = await VpsSubscription.distinct('subscriber');
     // Also exclude shops already present in TT VPS detail schedule
-    const usedTTToko = await TTVpsDetail.distinct('detail.toko');
+    const usedTTToko = await TTVpsDetail.distinct('toko');
     const subs = await Subscriber.find({ _id: { $nin: used }, toko: { $nin: usedTTToko }, status_aktv: true })
       .select('toko biaya kode program daerah')
       .sort({ toko: 1 })
@@ -183,12 +183,12 @@ export const regenerateNextFiscalYear = async (_req: Request, res: Response) => 
 };
 
 async function recalcAggregateForPeriodeTT(periode: string, user: any) {
-  const doc = await TTVpsDetail.findOne({ periode });
-  const details = doc?.detail ?? [];
-  const estimasi = details.reduce((a, d) => a + (d.total_harga || 0), 0);
-  const realisasi = details.filter(d => d.status === 'DONE').reduce((a, d) => a + (d.total_harga || 0), 0);
-  const open = estimasi - realisasi;
-  const total_toko = details.length;
+  const docs = await TTVpsDetail.find({ periode });
+  const estimasi = docs.reduce((a, d) => a + (d.total_harga || 0), 0);
+  const realisasiDocs = docs.filter(d => d.status === 'DONE' && d.tgl_lunas && d.tgl_lunas.slice(0,7) === periode);
+  const realisasi = realisasiDocs.reduce((a, d) => a + (d.total_harga || 0), 0);
+  const total_toko_estimasi = docs.length;
+  const total_toko_realisasi = realisasiDocs.length;
   await TTVps.updateOne(
     { periode },
     {
@@ -196,8 +196,8 @@ async function recalcAggregateForPeriodeTT(periode: string, user: any) {
         periode,
         estimasi,
         realisasi,
-        open,
-        total_toko,
+        total_toko_estimasi,
+        total_toko_realisasi,
         updated_at: new Date(),
         update_date: new Date(),
         update_by: user?.username || user?._id || 'system',
@@ -224,9 +224,8 @@ async function createTTDocumentsForNewVps(params: {
 }) {
   const { refId, toko, program, daerah, pricePerMonth, startDate, months, discountFirst, user } = params;
   const firstTempo = calcTempoUTC(startDate, months);
-  // Determine fiscal end (November) relative to start
   const endYear = startDate.getUTCMonth() === 11 ? startDate.getUTCFullYear() + 1 : startDate.getUTCFullYear();
-  const fiscalEndDate = new Date(Date.UTC(endYear, 11, 0)); // real last day of November
+  const fiscalEndDate = new Date(Date.UTC(endYear, 11, 0));
 
   const entries: { start: Date; bulan: number; tempo: Date; diskon: number }[] = [];
   let cursorStart = new Date(startDate);
@@ -244,8 +243,10 @@ async function createTTDocumentsForNewVps(params: {
     const periode = toPeriod(e.start);
     affected.add(periode);
     const base = pricePerMonth * e.bulan;
-    const item: IVpsDetailItem = {
-      ref_id: refId,
+    const now = new Date();
+    await TTVpsDetail.create({
+      periode,
+      chain_id: refId || undefined,
       toko,
       program,
       daerah: daerah || '',
@@ -258,31 +259,19 @@ async function createTTDocumentsForNewVps(params: {
       diskon_percent: e === entries[0] ? (base > 0 ? Math.round((e.diskon / base) * 100) : 0) : 0,
       total_harga: base - e.diskon,
       status: 'OPEN',
-    };
-    const now = new Date();
-    await TTVpsDetail.updateOne(
-      { periode },
-      {
-        $setOnInsert: { input_date: now, input_by: userTag },
-        $set: { update_date: now, update_by: userTag },
-        $push: { detail: item },
-      },
-      { upsert: true }
-    );
+      input_date: now,
+      update_date: now,
+      input_by: userTag,
+      update_by: userTag,
+    } as any);
   }
   for (const p of affected) await recalcAggregateForPeriodeTT(p, user);
 }
 
 async function removeTTByRef(refId: string, user?: any) {
-  const docs = await TTVpsDetail.find({ 'detail.ref_id': refId });
-  const periodes = new Set<string>();
-  for (const doc of docs) {
-    doc.detail = doc.detail.filter((d: any) => d.ref_id !== refId);
-    periodes.add(doc.periode);
-    doc.update_date = new Date();
-    (doc as any).update_by = user?.username || user?._id || 'system';
-    await doc.save();
-  }
+  const docs = await TTVpsDetail.find({ chain_id: refId });
+  const periodes = new Set<string>(docs.map(d => d.periode));
+  await TTVpsDetail.deleteMany({ chain_id: refId });
   for (const p of periodes) await recalcAggregateForPeriodeTT(p, user);
 }
 

@@ -1,6 +1,6 @@
 import axiosInstance from './axiosInstance';
 
-export type TTVpsStatus = 'OPEN' | 'DONE';
+export type TTVpsStatus = 'OPEN' | 'PROCESS' | 'DONE';
 
 export interface TTVpsDetailItemDTO {
   _id: string;
@@ -17,22 +17,29 @@ export interface TTVpsDetailItemDTO {
   diskon_percent: number;
   total_harga: number;
   status: TTVpsStatus;
+  tgl_lunas?: string;
 }
 
-export interface TTVpsDetailsDocDTO {
-  _id: string;
-  periode: string; // YYYY-MM
-  detail: TTVpsDetailItemDTO[];
-}
-
-export async function fetchDetailsByPeriode(periode: string): Promise<TTVpsDetailsDocDTO | null> {
+export async function fetchDetailsByPeriode(periode: string): Promise<TTVpsDetailItemDTO[]> {
   const { data } = await axiosInstance.get('/tt-vps/details', { params: { periode } });
-  return data;
+  // Backend returns an array of transaction documents for the periode
+  return Array.isArray(data) ? data : [];
+}
+
+export async function fetchDetailsByToko(toko: string): Promise<TTVpsDetailItemDTO[]> {
+  const { data } = await axiosInstance.get('/tt-vps/details-by-toko', { params: { toko } });
+  return Array.isArray(data) ? data : [];
+}
+
+export interface SubscriberDTO { _id: string; toko: string; program: string; daerah: string; biaya: number; }
+export async function fetchSubscribers(all = true): Promise<SubscriberDTO[]> {
+  const { data } = await axiosInstance.get('/subscriber', { params: all ? { all: 1 } : {} });
+  return Array.isArray(data) ? data : [];
 }
 
 export async function fetchAggregatesByPeriode(periode: string) {
   const { data } = await axiosInstance.get('/tt-vps/aggregate', { params: { periode } });
-  return data as { _id: string; periode: string; estimasi: number; realisasi: number; open: number; total_toko: number } | null;
+  return data as { _id: string; periode: string; estimasi: number; realisasi: number; total_toko_estimasi: number; total_toko_realisasi: number } | null;
 }
 
 export async function createSchedule(payload: { subscriber_id?: string; toko?: string; program?: string; harga?: number; start: string; bulan: number; diskon?: number; diskon_percent?: number; daerah?: string; }) {

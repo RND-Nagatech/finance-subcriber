@@ -1,33 +1,17 @@
-export * from './vpsTTController2';
-/*import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import TTVpsDetail, { ITTVpsDetail } from '../models/TTVpsDetail';
 import TTVps from '../models/TTVps';
 import Subscriber from '../models/Subscriber';
-import { addDays, addMonths, calcTempo, enumerateMonthsInclusive, toPeriod, formatYMD } from '../utils/vpsPeriod';
+import { addDays, calcTempo, enumerateMonthsInclusive, toPeriod, formatYMD } from '../utils/vpsPeriod';
 import mongoose from 'mongoose';
-
-type CreateScheduleBody = {
-  subscriber_id?: string;
-  toko?: string;
-  program?: string;
-  daerah?: string;
-  harga?: number;
-  start: string; // YYYY-MM-DD
-  bulan: number; // initial term months
-  diskon?: number; // applied to first month
-  diskon_percent?: number; // applied to first term
-};
 
 function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }
 
 async function recalcAggregateForPeriode(periode: string, user: any) {
-  // Ambil semua dokumen transaksi VPS detail
   const allDetailsDocs = await TTVpsDetail.find({});
-  // Estimasi dan total_toko_estimasi dari periode ini saja
   const periodeDocs = allDetailsDocs.filter(d => d.periode === periode);
   const estimasi = sum(periodeDocs.map(d => d.total_harga));
   const total_toko_estimasi = periodeDocs.length;
-  // realisasi dan total_toko_realisasi: semua dokumen status DONE dan tgl_lunas di periode target
   const realisasiDetails = allDetailsDocs.filter(d => d.status === 'DONE' && d.tgl_lunas && d.tgl_lunas.slice(0,7) === periode);
   const realisasi = sum(realisasiDetails.map(d => d.total_harga));
   const total_toko_realisasi = realisasiDetails.length;
@@ -53,20 +37,19 @@ async function recalcAggregateForPeriode(periode: string, user: any) {
   );
 }
 
-function getFiscalEndMonth(start: Date): Date {
-  const y = start.getUTCFullYear();
-  const m = start.getUTCMonth(); // 0..11
-  const endYear = m === 11 ? y + 1 : y; // if Dec, next year's Nov; else same year's Nov
-  return new Date(Date.UTC(endYear, 10, 1)); // November 1st
-}
-
-function lastDayOfMonth(d: Date): Date {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
-}
-
 export const createSchedule = async (req: Request, res: Response) => {
   try {
-    const body = req.body as CreateScheduleBody;
+    const body = req.body as {
+      subscriber_id?: string;
+      toko?: string;
+      program?: string;
+      daerah?: string;
+      harga?: number;
+      start: string;
+      bulan: number;
+      diskon?: number;
+      diskon_percent?: number;
+    };
     if (!body || !body.start || !body.bulan) {
       return res.status(400).json({ message: 'start and bulan are required' });
     }
@@ -94,18 +77,15 @@ export const createSchedule = async (req: Request, res: Response) => {
 
     const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
 
-    // Build schedule: setiap entry menggunakan "bulan" months (bukan 1 bulan)
-    const firstTempo = calcTempo(startDate, body.bulan);
-    const fiscalEndMonth = getFiscalEndMonth(startDate); // Nov 1st of fiscal end year
-    const fiscalEndDate = lastDayOfMonth(new Date(Date.UTC(fiscalEndMonth.getUTCFullYear(), fiscalEndMonth.getUTCMonth(), 1)));
-
+    // Build schedule entries until fiscal end (Nov)
     const entries: { start: Date; bulan: number; tempo: Date; diskon: number }[] = [];
-
-    // First term
+    const firstTempo = calcTempo(startDate, body.bulan);
     entries.push({ start: startDate, bulan: body.bulan, tempo: firstTempo, diskon: diskonFirst });
 
-    // Continue per X bulan sampai fiscal end
     let cursorStart = addDays(firstTempo, 1);
+    // November last day of same fiscal year
+    const endYear = startDate.getUTCMonth() === 11 ? startDate.getUTCFullYear() + 1 : startDate.getUTCFullYear();
+    const fiscalEndDate = new Date(Date.UTC(endYear, 11, 0));
     while (cursorStart <= fiscalEndDate) {
       const tempo = calcTempo(cursorStart, body.bulan);
       entries.push({ start: cursorStart, bulan: body.bulan, tempo, diskon: 0 });
@@ -114,8 +94,6 @@ export const createSchedule = async (req: Request, res: Response) => {
       cursorStart = nextStart;
     }
 
-
-    // Persist setiap entry sebagai satu dokumen
     const affectedPeriodes = new Set<string>();
     const chainId = new mongoose.Types.ObjectId().toString();
     for (const e of entries) {
@@ -123,7 +101,7 @@ export const createSchedule = async (req: Request, res: Response) => {
       affectedPeriodes.add(periode);
       const jumlah_harga = harga! * e.bulan;
       const now = new Date();
-      const doc: Partial<ITTVpsDetail> = {
+      await TTVpsDetail.create({
         periode,
         chain_id: chainId,
         toko: toko!,
@@ -144,15 +122,10 @@ export const createSchedule = async (req: Request, res: Response) => {
         input_by: userTag,
         update_by: userTag,
         delete_by: null,
-      };
-      await TTVpsDetail.create(doc);
+      } as Partial<ITTVpsDetail>);
     }
 
-    // Recalculate aggregates
-    for (const p of affectedPeriodes) {
-      await recalcAggregateForPeriode(p, (req as any).user);
-    }
-
+    for (const p of affectedPeriodes) await recalcAggregateForPeriode(p, (req as any).user);
     return res.json({ message: 'schedule created', months: entries.length });
   } catch (err: any) {
     console.error(err);
@@ -164,8 +137,19 @@ export const getDetailsByPeriode = async (req: Request, res: Response) => {
   try {
     const { periode } = req.query as { periode?: string };
     if (!periode) return res.status(400).json({ message: 'periode is required' });
-    // Ambil semua dokumen VPS detail di periode tersebut
     const docs = await TTVpsDetail.find({ periode });
+    return res.json(docs || []);
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({ message: 'internal error', error: err?.message });
+  }
+};
+
+export const getDetailsByToko = async (req: Request, res: Response) => {
+  try {
+    const { toko } = req.query as { toko?: string };
+    if (!toko) return res.status(400).json({ message: 'toko is required' });
+    const docs = await TTVpsDetail.find({ toko }).sort({ periode: 1, start: 1 });
     return res.json(docs || []);
   } catch (err: any) {
     console.error(err);
@@ -177,109 +161,7 @@ export const getAggregateByPeriode = async (req: Request, res: Response) => {
   try {
     const { periode } = req.query as { periode?: string };
     if (!periode) return res.status(400).json({ message: 'periode is required' });
-    // Compute aggregates from detail documents of the target periode
-    const detailsDocs = await TTVpsDetail.find({ periode });
-    const computedEstimasi = detailsDocs.reduce((acc, d) => acc + (d.total_harga || 0), 0);
-    const realisasiDetails = detailsDocs.filter(d => d.status === 'DONE' && d.tgl_lunas && d.tgl_lunas.slice(0,7) === periode);
-    const computedRealisasi = sum(realisasiDetails.map(d => d.total_harga));
-    const computedTotalTokoEstimasi = detailsDocs.length;
-    const computedTotalTokoRealisasi = realisasiDetails.length;
 
-    // Upsert aggregate document to keep cache in sync
-    await TTVps.updateOne(
-      { periode },
-      {
-        $set: {
-          estimasi: computedEstimasi,
-          realisasi: computedRealisasi,
-          total_toko_estimasi: computedTotalTokoEstimasi,
-          total_toko_realisasi: computedTotalTokoRealisasi,
-    // Estimasi dari dokumen periode ini; realisasi dari SEMUA dokumen dengan tgl_lunas di periode target
-    const detailsDocsPerPeriod = await TTVpsDetail.find({ periode });
-    const computedEstimasi = detailsDocsPerPeriod.reduce((acc, d) => acc + (d.total_harga || 0), 0);
-    const realisasiDocs = await TTVpsDetail.find({ status: 'DONE', tgl_lunas: { $regex: `^${periode}` } });
-    const computedRealisasi = realisasiDocs.reduce((acc, d) => acc + (d.total_harga || 0), 0);
-    const computedTotalTokoEstimasi = detailsDocsPerPeriod.length;
-    const computedTotalTokoRealisasi = realisasiDocs.length;
-      },
-      { upsert: true }
-    );
-    const aggregateDoc = await TTVps.findOne({ periode });
-    return res.json(aggregateDoc ? {
-      _id: aggregateDoc._id,
-      periode: aggregateDoc.periode,
-      estimasi: aggregateDoc.estimasi,
-      realisasi: aggregateDoc.realisasi,
-      total_toko_estimasi: aggregateDoc.total_toko_estimasi,
-      total_toko_realisasi: aggregateDoc.total_toko_realisasi,
-    } : {
-      _id: undefined,
-      periode,
-      estimasi: computedEstimasi,
-      realisasi: computedRealisasi,
-      total_toko_estimasi: computedTotalTokoEstimasi,
-      total_toko_realisasi: computedTotalTokoRealisasi,
-    });
-  } catch (err: any) {
-    console.error(err);
-    return res.status(500).json({ message: 'internal error', error: err?.message });
-  }
-};
-
-export const updateItemStatus = async (req: Request, res: Response) => {
-  try {
-    const { periode, itemId } = req.params as { periode: string; itemId: string };
-    const { status, tanggalLunas } = req.body as { status: 'OPEN' | 'DONE', tanggalLunas?: string };
-    if (!['OPEN', 'DONE'].includes(status)) return res.status(400).json({ message: 'invalid status' });
-    const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
-
-    const item = await TTVpsDetail.findOne({ _id: itemId, periode });
-    if (!item) return res.status(404).json({ message: 'item not found' });
-    item.status = status;
-    if (status === 'DONE' && tanggalLunas) {
-      item.tgl_lunas = tanggalLunas;
-    } else if (status === 'OPEN') {
-      item.tgl_lunas = undefined;
-    }
-    item.update_date = new Date();
-    item.update_by = userTag;
-    await item.save();
-    // Recalculate aggregates for the item period and, if provided, the tgl_lunas period
-    const affected = new Set<string>();
-    affected.add(periode);
-    if (status === 'DONE' && tanggalLunas) affected.add(tanggalLunas.slice(0,7));
-    for (const p of affected) {
-      await recalcAggregateForPeriode(p, (req as any).user);
-    }
-    const aggregateDoc = await TTVps.findOne({ periode });
-    return res.json(aggregateDoc ? {
-      _id: aggregateDoc._id,
-      periode: aggregateDoc.periode,
-      estimasi: aggregateDoc.estimasi,
-      realisasi: aggregateDoc.realisasi,
-      total_toko_estimasi: aggregateDoc.total_toko_estimasi,
-      total_toko_realisasi: aggregateDoc.total_toko_realisasi,
-    } : {
-      _id: undefined,
-      periode,
-      estimasi: 0,
-      realisasi: 0,
-      total_toko_estimasi: 0,
-      total_toko_realisasi: 0,
-    });
-    }
-  } catch (err: any) {
-    console.error(err);
-    return res.status(500).json({ message: 'internal error', error: err?.message });
-  }
-};
-
-export const getAggregateByPeriode = async (req: Request, res: Response) => {
-  try {
-    const { periode } = req.query as { periode?: string };
-    if (!periode) return res.status(400).json({ message: 'periode is required' });
-
-    // Estimasi dari dokumen periode ini; realisasi dari SEMUA dokumen dengan tgl_lunas di periode target
     const detailsDocsPerPeriod = await TTVpsDetail.find({ periode });
     const computedEstimasi = detailsDocsPerPeriod.reduce((acc, d) => acc + (d.total_harga || 0), 0);
     const realisasiDocs = await TTVpsDetail.find({ status: 'DONE', tgl_lunas: { $regex: `^${periode}` } });
@@ -287,7 +169,6 @@ export const getAggregateByPeriode = async (req: Request, res: Response) => {
     const computedTotalTokoEstimasi = detailsDocsPerPeriod.length;
     const computedTotalTokoRealisasi = realisasiDocs.length;
 
-    // Upsert aggregate document to keep cache in sync
     await TTVps.updateOne(
       { periode },
       {
@@ -328,17 +209,125 @@ export const getAggregateByPeriode = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'internal error', error: err?.message });
   }
 };
+
+export const updateItemStatus = async (req: Request, res: Response) => {
+  try {
+    const { periode, itemId } = req.params as { periode: string; itemId: string };
+    const { status, tanggalLunas } = req.body as { status: 'OPEN' | 'PROCESS' | 'DONE', tanggalLunas?: string };
+    if (!['OPEN', 'PROCESS', 'DONE'].includes(status)) return res.status(400).json({ message: 'invalid status' });
+    const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
+
+    const item = await TTVpsDetail.findOne({ _id: itemId, periode });
+    if (!item) return res.status(404).json({ message: 'item not found' });
+    const prevLunasPeriod = item.tgl_lunas ? item.tgl_lunas.slice(0,7) : undefined;
+    // Enforce workflow: OPEN -> PROCESS -> DONE
+    if (status === 'DONE') {
+      if (item.status !== 'PROCESS') {
+        return res.status(400).json({ message: 'Status harus PROCESS terlebih dahulu sebelum DONE' });
+      }
+      if (!tanggalLunas) {
+        return res.status(400).json({ message: 'tanggalLunas diperlukan untuk status DONE' });
+      }
+      item.status = 'DONE';
+      item.tgl_lunas = tanggalLunas;
+    } else if (status === 'PROCESS') {
+      item.status = 'PROCESS';
+      item.tgl_lunas = undefined; // ensure none
+    } else if (status === 'OPEN') {
+      item.status = 'OPEN';
+      item.tgl_lunas = undefined;
+    }
+    item.update_date = new Date();
+    item.update_by = userTag;
+    await item.save();
+
+    const affected = new Set<string>();
+    affected.add(periode);
+    if (status === 'DONE' && tanggalLunas) affected.add(tanggalLunas.slice(0,7));
+    // On cancelling payment (to PROCESS or OPEN), recalc the previous tgl_lunas period
+    if ((status === 'PROCESS' || status === 'OPEN') && prevLunasPeriod) affected.add(prevLunasPeriod);
+    for (const p of affected) await recalcAggregateForPeriode(p, (req as any).user);
+
+    const aggregateDoc = await TTVps.findOne({ periode });
+    return res.json(aggregateDoc ? {
+      _id: aggregateDoc._id,
+      periode: aggregateDoc.periode,
+      estimasi: aggregateDoc.estimasi,
+      realisasi: aggregateDoc.realisasi,
+      total_toko_estimasi: aggregateDoc.total_toko_estimasi,
+      total_toko_realisasi: aggregateDoc.total_toko_realisasi,
+    } : {
+      _id: undefined,
+      periode,
+      estimasi: 0,
+      realisasi: 0,
+      total_toko_estimasi: 0,
+      total_toko_realisasi: 0,
+    });
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({ message: 'internal error', error: err?.message });
+  }
+};
+
+export const updateItem = async (req: Request, res: Response) => {
+  try {
+    const { periode, itemId } = req.params as { periode: string; itemId: string };
+    const { start, bulan, harga, diskon, status, diskon_percent } = req.body as Partial<{ start: string; bulan: number; harga: number; diskon: number; status: 'OPEN'|'DONE'; diskon_percent: number }>;
+    const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
+
+    const doc = await TTVpsDetail.findOne({ _id: itemId, periode });
+    if (!doc) return res.status(404).json({ message: 'item not found' });
+
+    const oldStart = doc.start;
+    const oldBulan = doc.bulan;
+
+    if (typeof start === 'string' && start) {
+      const ym = start.slice(0,7);
+      if (ym !== periode) return res.status(400).json({ message: 'start harus tetap di periode yang sama' });
+      doc.start = start;
+    }
+    if (typeof bulan === 'number' && bulan > 0) doc.bulan = bulan;
+    if (typeof harga === 'number' && harga >= 0) doc.harga = harga;
+    if (typeof diskon === 'number' && diskon >= 0) doc.diskon = diskon;
+    if (typeof diskon_percent === 'number' && diskon_percent >= 0) doc.diskon_percent = Math.min(100, diskon_percent);
+    if (status && (status === 'OPEN' || status === 'DONE')) doc.status = status;
+
+    const startDateObj = new Date(doc.start + 'T00:00:00.000Z');
+    doc.tempo = formatYMD(calcTempo(startDateObj, doc.bulan));
+    doc.jumlah_harga = doc.harga * doc.bulan;
+    doc.total_harga = doc.jumlah_harga - doc.diskon;
+    doc.update_date = new Date();
+    doc.update_by = userTag;
+    await doc.save();
+
+    const bulanChanged = doc.bulan !== oldBulan;
+    const startChanged = doc.start !== oldStart;
+    const tahunEdit = periode.slice(0,4);
+
+    if (bulanChanged) {
+      await TTVpsDetail.deleteMany({
+        chain_id: doc.chain_id,
+        toko: doc.toko,
+        program: doc.program,
+        periode: { $gt: periode, $regex: `^${tahunEdit}-` }
+      });
+
+      const [yStr, mStr] = periode.split('-');
+      const yNum = parseInt(yStr, 10);
+      const mNum = parseInt(mStr, 10);
+      const targets: string[] = [periode];
+      if (!isNaN(yNum) && !isNaN(mNum) && mNum < 11) {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const startM = `${yStr}-${pad(mNum + 1)}`;
         const endM = `${yStr}-11`;
         const startDate = new Date(startM + '-01T00:00:00.000Z');
         const endDate = new Date(endM + '-01T00:00:00.000Z');
         const months = enumerateMonthsInclusive(startDate, endDate);
         for (const p of months) targets.push(p);
       }
-      for (const p of targets) {
-        await recalcAggregateForPeriode(p, (req as any).user);
-      }
+      for (const p of targets) await recalcAggregateForPeriode(p, (req as any).user);
     } else if (startChanged) {
-      // Jika hanya start berubah, lakukan ripple update pada dokumen berikutnya sampai akhir tahun
       const subsequent = await TTVpsDetail.find({
         chain_id: doc.chain_id,
         toko: doc.toko,
@@ -349,7 +338,7 @@ export const getAggregateByPeriode = async (req: Request, res: Response) => {
       const affected = new Set<string>();
       let prevTempoDate = new Date(doc.tempo + 'T00:00:00.000Z');
       for (const d of subsequent) {
-        if (d._id.toString() === doc._id.toString()) continue; // skip edited
+        if (d._id.toString() === doc._id.toString()) continue;
         const newStart = addDays(prevTempoDate, 1);
         const newTempo = calcTempo(newStart, d.bulan);
         d.start = formatYMD(newStart);
@@ -364,15 +353,12 @@ export const getAggregateByPeriode = async (req: Request, res: Response) => {
         prevTempoDate = newTempo;
       }
 
-      // Recalc aggregates for affected periodes including edited periode
       affected.add(periode);
-      for (const p of affected) {
-        await recalcAggregateForPeriode(p, (req as any).user);
-      }
+      for (const p of affected) await recalcAggregateForPeriode(p, (req as any).user);
     } else {
-      // No chain-wide changes; recalc current periode
       await recalcAggregateForPeriode(periode, (req as any).user);
     }
+
     return res.json({ message: 'item updated' });
   } catch (err: any) {
     console.error(err);
@@ -394,7 +380,7 @@ export const deleteItem = async (req: Request, res: Response) => {
   }
 };
 
-export const getLastPeriod = async (req: Request, res: Response) => {
+export const getLastPeriod = async (_req: Request, res: Response) => {
   try {
     const last = await TTVpsDetail.findOne({}, { periode: 1 }).sort({ periode: -1 }).lean();
     return res.json({ periode: last?.periode || null });
@@ -406,19 +392,15 @@ export const getLastPeriod = async (req: Request, res: Response) => {
 
 export const generateNextFiscal = async (req: Request, res: Response) => {
   try {
-    // Determine last known period (YYYY-MM) and next fiscal label
     const lastDoc = await TTVpsDetail.findOne({}, { periode: 1 }).sort({ periode: -1 }).lean();
     if (!lastDoc?.periode) return res.status(400).json({ message: 'Tidak ada data periode terakhir' });
-    const [lastYearStr, lastMonthStr] = lastDoc.periode.split('-');
+    const [lastYearStr] = lastDoc.periode.split('-');
     const lastYear = parseInt(lastYearStr, 10);
-    const nextFiscalLabel = lastYear + 1; // Caption purpose
-
-    // Collect all items for the last fiscal year range (Dec lastYear-1 to Nov lastYear)
+    const nextFiscalLabel = lastYear + 1;
     const rangeStart = `${lastYear - 1}-12`;
     const rangeEnd = `${lastYear}-11`;
     const fiscalDocs = await TTVpsDetail.find({ periode: { $gte: rangeStart, $lte: rangeEnd } }).lean();
 
-    // Build map of toko -> latest item
     type Item = ITTVpsDetail & { _id?: any };
     const tokoLatest: Record<string, { last: Item }> = {};
     for (const it of fiscalDocs) {
@@ -431,7 +413,6 @@ export const generateNextFiscal = async (req: Request, res: Response) => {
       }
     }
 
-    // For each toko, generate next fiscal schedule based on last item properties
     const affectedPeriodes = new Set<string>();
     const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
     for (const [toko, info] of Object.entries(tokoLatest)) {
@@ -439,20 +420,15 @@ export const generateNextFiscal = async (req: Request, res: Response) => {
       const program = last.program;
       const daerah = (last as any).daerah || '';
       const harga = last.harga;
-      // infer next fiscal segment size from the latest data in last period
       const initialMonths = last.bulan;
       const startDate = addDays(new Date(last.tempo + 'T00:00:00.000Z'), 1);
 
-      // Build schedule: first term then monthly until fiscal end (Nov)
-      const firstTempo = calcTempo(startDate, initialMonths);
-      const endYear = startDate.getUTCMonth() === 11 ? startDate.getUTCFullYear() + 1 : startDate.getUTCFullYear();
-      const fiscalEndDate = new Date(Date.UTC(endYear, 11, 0)); // last day of Nov
-
       const entries: { start: Date; bulan: number; tempo: Date; diskon: number }[] = [];
-      // Term awal: gunakan initialMonths
+      const firstTempo = calcTempo(startDate, initialMonths);
       entries.push({ start: startDate, bulan: initialMonths, tempo: firstTempo, diskon: 0 });
-      // Sisa: gunakan segmen ukuran initialMonths, hentikan bila start berikutnya melewati akhir fiskal
       let cursorStart = addDays(firstTempo, 1);
+      const endYear = startDate.getUTCMonth() === 11 ? startDate.getUTCFullYear() + 1 : startDate.getUTCFullYear();
+      const fiscalEndDate = new Date(Date.UTC(endYear, 11, 0));
       while (cursorStart <= fiscalEndDate) {
         const tempo = calcTempo(cursorStart, initialMonths);
         entries.push({ start: cursorStart, bulan: initialMonths, tempo, diskon: 0 });
@@ -461,7 +437,6 @@ export const generateNextFiscal = async (req: Request, res: Response) => {
         cursorStart = nextStart;
       }
 
-      // Persist entries with a new chain_id
       const chainId = new mongoose.Types.ObjectId().toString();
       for (const e of entries) {
         const periode = toPeriod(e.start);
@@ -489,14 +464,10 @@ export const generateNextFiscal = async (req: Request, res: Response) => {
       }
     }
 
-    // Recalculate aggregates for affected periods
-    for (const p of affectedPeriodes) {
-      await recalcAggregateForPeriode(p, (req as any).user);
-    }
-
+    for (const p of affectedPeriodes) await recalcAggregateForPeriode(p, (req as any).user);
     return res.json({ message: 'generated', nextFiscalLabel, affected: Array.from(affectedPeriodes).sort() });
   } catch (err: any) {
     console.error(err);
     return res.status(500).json({ message: 'internal error', error: err?.message });
   }
-};*/
+};

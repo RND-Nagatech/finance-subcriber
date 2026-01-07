@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal } from '@/api/ttvps';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox, ComboboxOption } from '@/components/ui/Combobox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { CheckCircle2, Trash2, Pencil } from 'lucide-react';
+import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck } from 'lucide-react';
 
 function currency(n: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
@@ -52,31 +52,50 @@ export default function VPS() {
   const currentMonth = useMemo(() => format(new Date(), 'yyyy-MM'), []);
   const [periodFrom, setPeriodFrom] = useState<string>(currentMonth);
   const [periodTo, setPeriodTo] = useState<string>(currentMonth);
-  const [statusFilter, setStatusFilter] = useState<'OPEN'|'DONE'|'ALL'>('OPEN');
+  const [tokoFilter, setTokoFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'OPEN'|'PROCESS'|'DONE'|'ALL'>('OPEN');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  const months = useMemo(() => enumerateMonths(periodFrom, periodTo), [periodFrom, periodTo]);
+  const months = useMemo(() => {
+    if (!periodFrom || !periodTo) return [];
+    return enumerateMonths(periodFrom, periodTo);
+  }, [periodFrom, periodTo]);
   const detailQueries = useQueries({
     queries: months.map((p) => ({
       queryKey: ['tt-vps-details', p],
       queryFn: () => fetchDetailsByPeriode(p),
     })),
     combine: (results) => ({
-      data: results.map(r => r.data).filter(Boolean) as any,
+      data: results.flatMap(r => (Array.isArray(r.data) ? r.data : []) ) as any,
       pending: results.some(r => r.isLoading),
     })
   });
 
+  const { data: subsAll } = useQuery({ queryKey: ['subs-all'], queryFn: () => fetchSubscribers(true) });
+  const tokoOptions = useMemo(() => {
+    const names = Array.from(new Set((subsAll || []).map(s => s.toko))).sort();
+    return ['ALL', ...names];
+  }, [subsAll]);
+
+  const detailsByToko = useQuery({
+    queryKey: ['tt-vps-details-by-toko', tokoFilter],
+    queryFn: () => fetchDetailsByToko(tokoFilter),
+    enabled: !periodFrom && !periodTo && tokoFilter !== 'ALL'
+  });
+
   const combinedItems = useMemo(() => {
-    const docs = (detailQueries as any).data as { periode: string; detail: TTVpsDetailItemDTO[] }[];
-    const items = docs.flatMap(doc => doc.detail.map(d => ({ ...d, __periode: doc.periode })));
+    // Struktur baru: data sudah berupa array flat of docs
+    const docs = months.length > 0 ? ((detailQueries as any).data as any[]) : ((detailsByToko.data as any[]) || []);
+    if (!Array.isArray(docs)) return [];
+    const items = docs.map(doc => ({ ...doc, __periode: doc.periode }));
     const containsText = (s: string, q: string) => s?.toLowerCase().includes(q.toLowerCase());
     return items.filter((it) => {
       const matchStatus = statusFilter === 'ALL' ? true : it.status === statusFilter;
+      const matchToko = tokoFilter === 'ALL' ? true : it.toko === tokoFilter;
       const matchSearch = !searchTerm || containsText(it.toko, searchTerm) || containsText(it.program, searchTerm) || containsText((it as any).daerah, searchTerm);
-      return matchStatus && matchSearch;
+      return matchStatus && matchToko && matchSearch;
     });
-  }, [detailQueries, statusFilter, searchTerm]);
+  }, [detailQueries, detailsByToko.data, months.length, statusFilter, tokoFilter, searchTerm]);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggleExpand = (id: string, periode: string) => {
@@ -112,7 +131,7 @@ export default function VPS() {
   });
 
   const updateStatusMut = useMutation({
-    mutationFn: ({ periode, itemId, status, tanggalLunas }: { periode: string; itemId: string; status: 'OPEN' | 'DONE'; tanggalLunas?: string }) => updateItemStatus({ periode, itemId, status, tanggalLunas }),
+    mutationFn: ({ periode, itemId, status, tanggalLunas }: { periode: string; itemId: string; status: 'OPEN' | 'PROCESS' | 'DONE'; tanggalLunas?: string }) => updateItemStatus({ periode, itemId, status, tanggalLunas }),
     onSuccess: () => { toast.success('Status diperbarui'); qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal ubah status'),
   });
@@ -147,14 +166,55 @@ export default function VPS() {
 
       {/* Filters */}
       <div className="bg-white/50 rounded-lg p-4 border-2 border-dashed border-blue-200">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+          <div>
+            <Label>Toko</Label>
+            <Select value={tokoFilter} onValueChange={(v) => {
+              // Jika beralih ke ALL sementara periode kosong, paksa isi periode saat ini
+              if (v === 'ALL' && (!periodFrom || !periodTo)) {
+                toast.warn('Toko = ALL, periode wajib diisi');
+                setPeriodFrom(currentMonth);
+                setPeriodTo(currentMonth);
+              }
+              setTokoFilter(v);
+            }}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {tokoOptions.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div>
             <Label>Periode Dari</Label>
-            <Input type="month" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} />
+            <Input
+              type="month"
+              value={periodFrom}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (tokoFilter === 'ALL' && !v) {
+                  toast.warn('Toko = ALL, periode wajib diisi');
+                  return;
+                }
+                setPeriodFrom(v);
+              }}
+            />
           </div>
           <div>
             <Label>Periode Sampai</Label>
-            <Input type="month" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} />
+            <Input
+              type="month"
+              value={periodTo}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (tokoFilter === 'ALL' && !v) {
+                  toast.warn('Toko = ALL, periode wajib diisi');
+                  return;
+                }
+                setPeriodTo(v);
+              }}
+            />
           </div>
           <div>
             <Label>Status</Label>
@@ -162,6 +222,7 @@ export default function VPS() {
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="OPEN">OPEN</SelectItem>
+                <SelectItem value="PROCESS">PROCESS</SelectItem>
                 <SelectItem value="DONE">DONE</SelectItem>
                 <SelectItem value="ALL">ALL</SelectItem>
               </SelectContent>
@@ -220,12 +281,32 @@ export default function VPS() {
                       <td className="py-2 pr-4">
                         {item.status === 'DONE' ? (
                           <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-medium">DONE</span>
+                        ) : item.status === 'PROCESS' ? (
+                          <span className="inline-flex items-center rounded-full bg-yellow-100 text-yellow-700 px-2 py-0.5 text-xs font-medium">PROCESS</span>
                         ) : (
                           <span className="inline-flex items-center rounded-full bg-gray-200 text-gray-700 px-2 py-0.5 text-xs font-medium">OPEN</span>
                         )}
                       </td>
                       <td className="py-2 pr-4 flex gap-2">
-                        {item.status !== 'DONE' && (
+                        {item.status === 'OPEN' && (
+                          <ConfirmAction
+                            title="Invoice telah dibuat?"
+                            description="Status akan diubah menjadi PROCESS. Setelah itu bisa dilunasi."
+                            actionText="Ya, Invoice dibuat"
+                            onConfirm={() => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'PROCESS' })}
+                          >
+                            <Button
+                              size="icon"
+                              aria-label="Invoice dibuat"
+                              title="Invoice dibuat"
+                              className="rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                              disabled={updateStatusMut.isPending}
+                            >
+                              <FileCheck className="h-5 w-5" />
+                            </Button>
+                          </ConfirmAction>
+                        )}
+                        {item.status === 'PROCESS' && (
                           <ConfirmAction
                             title="Selesaikan VPS?"
                             description="Status akan diubah menjadi DONE. Pilih tanggal lunas:"
@@ -244,15 +325,52 @@ export default function VPS() {
                             </Button>
                           </ConfirmAction>
                         )}
-                        <Button size="icon" variant="secondary" onClick={() => startEdit(item)}><Pencil className="h-4 w-4" /></Button>
-                        <ConfirmAction
-                          title="Hapus VPS?"
-                          description="Data akan dihapus permanen. Lanjutkan?"
-                          actionText="Ya, Hapus"
-                          onConfirm={() => delMut.mutate({ periode: item.__periode, itemId: item._id })}
+                        {item.status === 'DONE' && (
+                          <ConfirmAction
+                            title="Batal Pelunasan?"
+                            description="Status akan dikembalikan ke PROCESS dan realisasi di periode tgl lunas akan dikurangi."
+                            actionText="Ya, Batalkan"
+                            onConfirm={() => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'PROCESS' })}
+                          >
+                            <Button
+                              size="icon"
+                              aria-label="Batal pelunasan"
+                              title="Batal pelunasan"
+                              className="rounded-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                              disabled={updateStatusMut.isPending}
+                            >
+                              <RotateCcw className="h-5 w-5" />
+                            </Button>
+                          </ConfirmAction>
+                        )}
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          onClick={() => item.status === 'OPEN' ? startEdit(item) : undefined}
+                          disabled={item.status !== 'OPEN'}
+                          title={item.status !== 'OPEN' ? 'Edit tersedia hanya untuk status OPEN' : 'Edit'}
                         >
-                          <Button size="icon" variant="destructive"><Trash2 className="h-4 w-4" /></Button>
-                        </ConfirmAction>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {item.status === 'OPEN' ? (
+                          <ConfirmAction
+                            title="Hapus VPS?"
+                            description="Data akan dihapus permanen. Lanjutkan?"
+                            actionText="Ya, Hapus"
+                            onConfirm={() => delMut.mutate({ periode: item.__periode, itemId: item._id })}
+                          >
+                            <Button size="icon" variant="destructive"><Trash2 className="h-4 w-4" /></Button>
+                          </ConfirmAction>
+                        ) : (
+                          <Button
+                            size="icon"
+                            variant="destructive"
+                            disabled
+                            title="Hapus tersedia hanya untuk status OPEN"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </td>
                     </tr>
                     {expanded[`${item.__periode}-${item._id}`] && (
@@ -406,6 +524,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
 
         {selectedSub ? (
           <div className="space-y-2">
+                  <SelectItem value="PROCESS">PROCESS</SelectItem>
             <Label>Program</Label>
             <Input value={selectedSub.program} readOnly />
           </div>

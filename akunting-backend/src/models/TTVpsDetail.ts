@@ -1,11 +1,11 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type VpsStatus = 'OPEN' | 'DONE';
+export type VpsStatus = 'OPEN' | 'PROCESS' | 'DONE';
 
-export interface IVpsDetailItem {
-  _id?: mongoose.Types.ObjectId; // Mongoose subdocument _id
-  chain_id?: string; // grouping id for a schedule chain
-  ref_id?: string; // link to VpsSubscription _id for sync
+
+export interface ITTVpsDetail extends Document {
+  periode: string; // YYYY-MM
+  chain_id: string;
   toko: string;
   program: string;
   daerah: string;
@@ -18,13 +18,7 @@ export interface IVpsDetailItem {
   diskon_percent: number;
   total_harga: number;
   status: VpsStatus;
-  tgl_lunas?: string; // YYYY-MM-DD, only set if status is DONE
-}
-
-export interface ITTVpsDetail extends Document {
-  periode: string; // YYYY-MM
-  detail: IVpsDetailItem[];
-  // audit fields (following existing models' convention)
+  tgl_lunas?: string;
   input_date: Date;
   update_date: Date;
   delete_date: Date | null;
@@ -33,28 +27,23 @@ export interface ITTVpsDetail extends Document {
   delete_by: string | null;
 }
 
-const VpsDetailItemSchema = new Schema<IVpsDetailItem>({
-  chain_id: { type: String, required: false },
-  ref_id: { type: String, required: false },
-  toko: { type: String, required: true },
-  program: { type: String, required: true },
-  daerah: { type: String, required: true },
-  start: { type: String, required: true },
-  bulan: { type: Number, required: true, min: 1 },
-  tempo: { type: String, required: true },
-  harga: { type: Number, required: true, min: 0 },
-  jumlah_harga: { type: Number, required: true, min: 0 },
-  diskon: { type: Number, required: true, min: 0, default: 0 },
-  diskon_percent: { type: Number, required: true, min: 0, default: 0 },
-  total_harga: { type: Number, required: true, min: 0 },
-  status: { type: String, enum: ['OPEN', 'DONE'], default: 'OPEN' },
-  tgl_lunas: { type: String, required: false },
-});
-
 const TTVpsDetailSchema: Schema = new Schema(
   {
-    periode: { type: String, required: true }, // e.g. 2025-12
-    detail: { type: [VpsDetailItemSchema], default: [] },
+    periode: { type: String, required: true },
+    chain_id: { type: String, required: true },
+    toko: { type: String, required: true },
+    program: { type: String, required: true },
+    daerah: { type: String, required: true },
+    start: { type: String, required: true },
+    bulan: { type: Number, required: true, min: 1 },
+    tempo: { type: String, required: true },
+    harga: { type: Number, required: true, min: 0 },
+    jumlah_harga: { type: Number, required: true, min: 0 },
+    diskon: { type: Number, required: true, min: 0, default: 0 },
+    diskon_percent: { type: Number, required: true, min: 0, default: 0 },
+    total_harga: { type: Number, required: true, min: 0 },
+    status: { type: String, enum: ['OPEN', 'PROCESS', 'DONE'], default: 'OPEN' },
+    tgl_lunas: { type: String, required: false },
     input_date: { type: Date, default: Date.now },
     update_date: { type: Date, default: Date.now },
     delete_date: { type: Date, default: null },
@@ -65,7 +54,7 @@ const TTVpsDetailSchema: Schema = new Schema(
   { minimize: true }
 );
 
-TTVpsDetailSchema.index({ periode: 1 }, { unique: true });
+TTVpsDetailSchema.index({ periode: 1, chain_id: 1, toko: 1, start: 1 }, { unique: true });
 
 export default mongoose.model<ITTVpsDetail>(
   'TTVpsDetail',
