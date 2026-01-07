@@ -106,6 +106,11 @@ export default function Transaksi() {
           setViewKeteranganText(row.keterangan || '-');
           setViewKeteranganOpen(true);
         };
+        // Expand rows (Detail): show keterangan like VPS page
+        const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+        const toggleExpandedRow = (id: string) => {
+          setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+        };
       // Filter states
   const [typeData, setTypeData] = useState<'Detail' | 'Rekap'>('Detail');
   const [filterTanggalDari, setFilterTanggalDari] = useState('');
@@ -872,6 +877,9 @@ export default function Transaksi() {
           <Table className="table-fixed w-full">
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-50 hover:to-indigo-50 border-b border-blue-200/50">
+                {typeData === 'Detail' && (
+                  <TableHead className="w-10 px-2 py-4"></TableHead>
+                )}
                 <TableHead className="w-12 px-4 py-4 font-semibold text-gray-900 text-center">No</TableHead>
                 {typeData === 'Detail' ? (
                   <>
@@ -935,7 +943,15 @@ export default function Transaksi() {
                 </TableRow>
               ) : (
                 sortedTransaksiList.map((row: any, idx: number) => (
+                  <>
                   <TableRow key={(row.parentId || row._id) + '-' + idx} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
+                    {typeData === 'Detail' && (
+                      <TableCell className="w-10 px-2 py-4">
+                        <Button variant="ghost" size="sm" onClick={() => toggleExpandedRow(row._id || String(idx))} aria-label="Expand">
+                          {expandedRows[row._id || String(idx)] ? '▾' : '▸'}
+                        </Button>
+                      </TableCell>
+                    )}
                     <TableCell className="w-12 px-4 py-4 text-center font-semibold text-gray-900">{(page - 1) * pageSize + idx + 1}</TableCell>
                     {typeData === 'Detail' ? (
                       <>
@@ -955,19 +971,6 @@ export default function Transaksi() {
                     {typeData === 'Detail' && (
                       <TableCell className="w-32 px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
-                          {/* View action (eye icon) */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleViewKeterangan(row)}
-                            className="border-gray-300 hover:bg-gray-50 transition-all duration-200 p-2"
-                            title="Lihat Keterangan"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -989,6 +992,27 @@ export default function Transaksi() {
 
                     )}
                   </TableRow>
+                  {typeData === 'Detail' && expandedRows[row._id || String(idx)] && (
+                    <TableRow className="bg-slate-50">
+                      <TableCell colSpan={10} className="py-2 px-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          <div>
+                            <div className="text-xs text-slate-500">Keterangan</div>
+                            <div className="text-sm font-medium">{row.keterangan || '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-slate-500">Referensi</div>
+                            <div className="text-sm font-medium">{row.referensi || '-'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-slate-500">Tanggal Input</div>
+                            <div className="text-sm font-medium">{row.input_date ? new Date(row.input_date).toLocaleDateString('id-ID') : '-'}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </>
                 ))
               )}
             </TableBody>
