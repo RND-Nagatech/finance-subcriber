@@ -8,6 +8,8 @@ export const rekapAggregate = async (req: Request, res: Response) => {
   const ThFinance = require('../models/ThFinance').default;
   const Transaksi = require('../models/Transaksi').default;
   const Subscriber = require('../models/Subscriber').default;
+  const TtFinanceDaily = require('../models/TtFinanceDaily').default;
+  const ThFinanceDaily = require('../models/ThFinanceDaily').default;
 
   // Cek apakah sudah tutup buku
   const thFinanceCount = await ThFinance.countDocuments({ tahun_fiskal: tahun });
@@ -196,7 +198,17 @@ function sortDataGross(arr: any) {
     {
       $match: {
         kategori: "BIAYA",
-        sub_kategori: { $in: ["PPH21", "VPS", "RND", "BPJS", "RETUR PENJUALAN"] }
+        sub_kategori: { $in: [
+          "PPH21",
+          "PAJAK PPH 21",
+          "VPS",
+          "BIAYA VPS",
+          "RND",
+          "BIAYA RND",
+          "BPJS",
+          "BIAYA BPJS",
+          "RETUR PENJUALAN"
+        ] }
       }
     },
     {
@@ -283,74 +295,99 @@ function sortDataGross(arr: any) {
     }
   ];
 
-  const pipelineAsetDanGajiTahunan: any[] = [
-    { $match: { tahun_fiskal: tahun } },
-    {
-      $match: {
-        kategori: "BIAYA",
-        sub_kategori: { $in: ["ASET", "ASET INVESTASI", "CICILAN GEDUNG", "CICILAN KENDARAAN", "GAJI"] }
-      }
-    },
-    {
-      $addFields: {
-        group: {
-          $cond: {
-            if: { $eq: ["$sub_kategori", "GAJI"] },
-            then: "GAJI",
-            else: "ASET"
+  let pipelineAsetDanGajiTahunan: any[];
+  let asetGajiUseDaily = false;
+  if (!filterBulan) {
+    pipelineAsetDanGajiTahunan = [
+      { $match: { tahun_fiskal: tahun } },
+      {
+        $match: {
+          kategori: "BIAYA",
+          sub_kategori: { $in: ["ASET", "ASET INVESTASI", "CICILAN GEDUNG", "CICILAN KENDARAAN", "GAJI"] }
+        }
+      },
+      {
+        $addFields: {
+          group: {
+            $cond: {
+              if: { $eq: ["$sub_kategori", "GAJI"] },
+              then: "GAJI",
+              else: "ASET"
+            }
           }
         }
-      }
-    },
-    { $unwind: '$data_bulanan' },
-  ];
-
-  // ➤ Tambahkan filter bulan hanya jika query bulan ada
-  if (filterBulan) {
-    pipelineAsetDanGajiTahunan.push({
-      $match: {
-        "data_bulanan.bulan": {
-          $regex: filterBulan,
-          $options: "i"
+      },
+      { $unwind: '$data_bulanan' },
+    ];
+    if (filterBulan) {
+      pipelineAsetDanGajiTahunan.push({
+        $match: {
+          "data_bulanan.bulan": { $regex: filterBulan, $options: "i" }
         }
-      }
-    });
-  }
-
-  pipelineAsetDanGajiTahunan.push(
-    {
-      $group: {
-        _id: {
-          group: '$group',
-          bulan: '$data_bulanan.bulan'
-        },
-        total_bulan: { $sum: '$data_bulanan.nilai' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.group',
-        group: { $first: '$_id.group' },
-        data_bulanan: {
-          $push: {
-            bulan: '$_id.bulan',
-            total: '$total_bulan'
-          }
-        },
-        total_tahunan: { $sum: '$total_bulan' }
-      }
-    },
-    {
-      $project: {
-        group: 1,
-        data_bulanan: 1,
-        total_tahunan: 1
-      }
-    },
-    {
-      $sort: { group: 1 }
+      });
     }
-  );
+    pipelineAsetDanGajiTahunan.push(
+      {
+        $group: {
+          _id: { group: '$group', bulan: '$data_bulanan.bulan' },
+          total_bulan: { $sum: '$data_bulanan.nilai' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.group',
+          group: { $first: '$_id.group' },
+          data_bulanan: { $push: { bulan: '$_id.bulan', total: '$total_bulan' } },
+          total_tahunan: { $sum: '$total_bulan' }
+        }
+      },
+      { $project: { group: 1, data_bulanan: 1, total_tahunan: 1 } },
+      { $sort: { group: 1 } }
+    );
+  } else {
+    asetGajiUseDaily = true;
+    const thNum = parseInt(tahun, 10);
+    const yyShort = (filterBulan === 'DEC' ? String((thNum - 1) % 100).padStart(2, '0') : String(thNum % 100).padStart(2, '0'));
+    const targetBulanFiskal = `${filterBulan}-${yyShort}`;
+    pipelineAsetDanGajiTahunan = [
+      {
+        $match: {
+          tahun_fiskal: tahun,
+          bulan_fiskal: targetBulanFiskal,
+          kategori: "BIAYA",
+          sub_kategori: { $in: ["ASET", "ASET INVESTASI", "CICILAN GEDUNG", "CICILAN KENDARAAN", "GAJI"] }
+        }
+      },
+      {
+        $addFields: {
+          group: {
+            $cond: {
+              if: { $eq: ["$sub_kategori", "GAJI"] },
+              then: "GAJI",
+              else: "ASET"
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: { group: '$group', tanggal: '$tanggal' },
+          total_harian: { $sum: '$total_nilai' }
+        }
+      },
+      { $sort: { '_id.tanggal': 1 } },
+      {
+        $group: {
+          _id: '$_id.group',
+          group: { $first: '$_id.group' },
+          data_bulanan: { $push: { bulan: '$_id.tanggal', total: '$total_harian' } },
+          total_tahunan: { $sum: '$total_harian' }
+        }
+      },
+      { $project: { group: 1, data_bulanan: 1, total_tahunan: 1 } },
+      { $sort: { group: 1 } }
+    ];
+  }
 
   const pipelineImplementasiMarketingLainnyaTahunan: any[] = [
     { $match: { tahun_fiskal: tahun } },
@@ -410,12 +447,57 @@ function sortDataGross(arr: any) {
     }
   );
 
+  // ➤ Daily pipeline for Implementasi/Marketing/Lainnya when month is selected
+  let pipelineImplementasiMarketingLainnyaDaily: any[] | undefined;
+  if (filterBulan) {
+    const thNum = parseInt(tahun, 10);
+    const yyShort = (filterBulan === 'DEC' ? String((thNum - 1) % 100).padStart(2, '0') : String(thNum % 100).padStart(2, '0'));
+    const targetBulanFiskal = `${filterBulan}-${yyShort}`;
+    pipelineImplementasiMarketingLainnyaDaily = [
+      {
+        $match: {
+          tahun_fiskal: tahun,
+          bulan_fiskal: targetBulanFiskal,
+          kategori: "BIAYA",
+          sub_kategori: { $in: ["IMPLEMENTASI", "MARKETING", "LAIN LAIN"] }
+        }
+      },
+      {
+        $group: {
+          _id: { sub_kategori: '$sub_kategori', tanggal: '$tanggal' },
+          total_harian: { $sum: '$total_nilai' }
+        }
+      },
+      { $sort: { '_id.tanggal': 1 } },
+      {
+        $group: {
+          _id: '$_id.sub_kategori',
+          sub_kategori: { $first: '$_id.sub_kategori' },
+          data_bulanan: { $push: { bulan: '$_id.tanggal', total: '$total_harian' } },
+          total_tahunan: { $sum: '$total_harian' }
+        }
+      },
+      { $project: { sub_kategori: 1, data_bulanan: 1, total_tahunan: 1 } },
+      { $sort: { sub_kategori: 1 } }
+    ];
+  }
+
   const pipelineBiayaBiayaTahunan: any[] = [
     { $match: { tahun_fiskal: tahun } },
     {
       $match: {
         kategori: "BIAYA",
-        sub_kategori: { $in: ["PPH21", "VPS", "RND", "BPJS", "RETUR PENJUALAN"] }
+        sub_kategori: { $in: [
+          "PPH21",
+          "PAJAK PPH 21",
+          "VPS",
+          "BIAYA VPS",
+          "RND",
+          "BIAYA RND",
+          "BPJS",
+          "BIAYA BPJS",
+          "RETUR PENJUALAN"
+        ] }
       }
     },
     { $unwind: '$data_bulanan' },
@@ -467,6 +549,51 @@ function sortDataGross(arr: any) {
       $sort: { sub_kategori: 1 }
     }
   );
+
+  // ➤ Daily pipeline for Biaya Biaya when month is selected
+  let pipelineBiayaBiayaDaily: any[] | undefined;
+  if (filterBulan) {
+    const thNum = parseInt(tahun, 10);
+    const yyShort = (filterBulan === 'DEC' ? String((thNum - 1) % 100).padStart(2, '0') : String(thNum % 100).padStart(2, '0'));
+    const targetBulanFiskal = `${filterBulan}-${yyShort}`;
+    pipelineBiayaBiayaDaily = [
+      {
+        $match: {
+          tahun_fiskal: tahun,
+          bulan_fiskal: targetBulanFiskal,
+          kategori: "BIAYA",
+          sub_kategori: { $in: [
+            "PPH21",
+            "PAJAK PPH 21",
+            "VPS",
+            "BIAYA VPS",
+            "RND",
+            "BIAYA RND",
+            "BPJS",
+            "BIAYA BPJS",
+            "RETUR PENJUALAN"
+          ] }
+        }
+      },
+      {
+        $group: {
+          _id: { sub_kategori: '$sub_kategori', tanggal: '$tanggal' },
+          total_harian: { $sum: '$total_nilai' }
+        }
+      },
+      { $sort: { '_id.tanggal': 1 } },
+      {
+        $group: {
+          _id: '$_id.sub_kategori',
+          sub_kategori: { $first: '$_id.sub_kategori' },
+          data_bulanan: { $push: { bulan: '$_id.tanggal', total: '$total_harian' } },
+          total_tahunan: { $sum: '$total_harian' }
+        }
+      },
+      { $project: { sub_kategori: 1, data_bulanan: 1, total_tahunan: 1 } },
+      { $sort: { sub_kategori: 1 } }
+    ];
+  }
 
   const pipelineGrossMarginTahunan: any[] = [
     { $match: { tahun_fiskal: tahun } },
@@ -583,6 +710,100 @@ function sortDataGross(arr: any) {
     }
   );
 
+  // ➤ Daily pipeline for Gross Margin when month is selected
+  let pipelineGrossMarginDaily: any[] | undefined;
+  if (filterBulan) {
+    const thNum = parseInt(tahun, 10);
+    const yyShort = (filterBulan === 'DEC' ? String((thNum - 1) % 100).padStart(2, '0') : String(thNum % 100).padStart(2, '0'));
+    const targetBulanFiskal = `${filterBulan}-${yyShort}`;
+    pipelineGrossMarginDaily = [
+      {
+        $match: {
+          tahun_fiskal: tahun,
+          bulan_fiskal: targetBulanFiskal,
+          kategori: { $in: ["PENDAPATAN", "BIAYA", "PEMBELIAN"] }
+        }
+      },
+      {
+        $group: {
+          _id: { tanggal: '$tanggal', kategori: '$kategori' },
+          total: { $sum: '$total_nilai' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.tanggal',
+          totals: { $push: { kategori: '$_id.kategori', total: '$total' } }
+        }
+      },
+      {
+        $project: {
+          bulan: '$_id',
+          omzet: {
+            $ifNull: [
+              {
+                $arrayElemAt: [
+                  {
+                    $filter: {
+                      input: '$totals',
+                      cond: { $eq: ['$$this.kategori', 'PENDAPATAN'] }
+                    }
+                  },
+                  0
+                ]
+              },
+              { total: 0 }
+            ]
+          },
+          biaya: {
+            $ifNull: [
+              {
+                $arrayElemAt: [
+                  {
+                    $filter: {
+                      input: '$totals',
+                      cond: { $eq: ['$$this.kategori', 'BIAYA'] }
+                    }
+                  },
+                  0
+                ]
+              },
+              { total: 0 }
+            ]
+          },
+          pembelian: {
+            $ifNull: [
+              {
+                $arrayElemAt: [
+                  {
+                    $filter: {
+                      input: '$totals',
+                      cond: { $eq: ['$$this.kategori', 'PEMBELIAN'] }
+                    }
+                  },
+                  0
+                ]
+              },
+              { total: 0 }
+            ]
+          }
+        }
+      },
+      {
+        $project: {
+          bulan: 1,
+          gross_margin: {
+            $subtract: [
+              { $subtract: ['$omzet.total', '$biaya.total'] },
+              '$pembelian.total'
+            ]
+          }
+        }
+      },
+      { $sort: { bulan: 1 } }
+    ];
+  }
+
   // ===========================
   // RUN PIPELINE
   // ===========================
@@ -590,11 +811,36 @@ function sortDataGross(arr: any) {
   const result = await Collection.aggregate(pipeline);
   const resultAsetDanGaji = await Collection.aggregate(pipelineAsetDanGaji);
   const resultBiayaBiaya = await Collection.aggregate(pipelineBiayaBiaya);
-  let resultPertahun = await Collection.aggregate(pipelinePertahun);
-  const resultAsetDanGajiTahunan = await Collection.aggregate(pipelineAsetDanGajiTahunan);
-  const resultImplementasiMarketingLainnyaTahunan = await Collection.aggregate(pipelineImplementasiMarketingLainnyaTahunan);
-  const resultBiayaBiayaTahunan = await Collection.aggregate(pipelineBiayaBiayaTahunan);
-  const resultGrossMarginTahunan = await Collection.aggregate(pipelineGrossMarginTahunan);
+  let resultPertahun;
+  if (filterBulan) {
+    const thNum = parseInt(tahun, 10);
+    const yyShort = (filterBulan === 'DEC' ? String((thNum - 1) % 100).padStart(2, '0') : String(thNum % 100).padStart(2, '0'));
+    const targetBulanFiskal = `${filterBulan}-${yyShort}`;
+    const DailyCollection = thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily;
+    const dailyPipeline: any[] = [
+      { $match: { tahun_fiskal: tahun, bulan_fiskal: targetBulanFiskal, kategori: { $in: ['PENDAPATAN', 'PEMBELIAN', 'BIAYA'] } } },
+      { $group: { _id: { kategori: '$kategori', tanggal: '$tanggal' }, total_harian: { $sum: '$total_nilai' } } },
+      { $sort: { '_id.tanggal': 1 } },
+      { $group: { _id: '$_id.kategori', kategori: { $first: '$_id.kategori' }, data_bulanan: { $push: { bulan: '$_id.tanggal', total: '$total_harian' } }, total_tahunan: { $sum: '$total_harian' } } },
+      { $project: { kategori: 1, data_bulanan: 1, total_tahunan: 1 } },
+      { $sort: { kategori: 1 } }
+    ];
+    resultPertahun = await DailyCollection.aggregate(dailyPipeline);
+  } else {
+    resultPertahun = await Collection.aggregate(pipelinePertahun);
+  }
+  const resultAsetDanGajiTahunan = asetGajiUseDaily
+    ? await (thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily).aggregate(pipelineAsetDanGajiTahunan)
+    : await Collection.aggregate(pipelineAsetDanGajiTahunan);
+  const resultImplementasiMarketingLainnyaTahunan = filterBulan
+    ? await (thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily).aggregate(pipelineImplementasiMarketingLainnyaDaily!)
+    : await Collection.aggregate(pipelineImplementasiMarketingLainnyaTahunan);
+  const resultBiayaBiayaTahunan = filterBulan
+    ? await (thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily).aggregate(pipelineBiayaBiayaDaily!)
+    : await Collection.aggregate(pipelineBiayaBiayaTahunan);
+  const resultGrossMarginTahunan = filterBulan
+    ? await (thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily).aggregate(pipelineGrossMarginDaily!)
+    : await Collection.aggregate(pipelineGrossMarginTahunan);
   
   res.json({
     success: true,
@@ -603,11 +849,11 @@ function sortDataGross(arr: any) {
     data: result,
     asetDanGaji: resultAsetDanGaji,
     biayaBiaya: resultBiayaBiaya,
-    pertahun: sortDataBulanan(resultPertahun),
+    pertahun: filterBulan ? resultPertahun : sortDataBulanan(resultPertahun),
     asetDanGajiTahunan: sortDataBulanan(resultAsetDanGajiTahunan),
     implementasiMarketingLainnyaTahunan: sortDataBulanan(resultImplementasiMarketingLainnyaTahunan),
     biayaBiayaTahunan: sortDataBulanan(resultBiayaBiayaTahunan),
-    grossMarginTahunan: sortDataGross(resultGrossMarginTahunan),
+    grossMarginTahunan: filterBulan ? resultGrossMarginTahunan : sortDataGross(resultGrossMarginTahunan),
   });
 };
 

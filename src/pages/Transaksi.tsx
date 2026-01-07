@@ -111,20 +111,16 @@ export default function Transaksi() {
   const [filterTanggalDari, setFilterTanggalDari] = useState('');
   const [filterTanggalSampai, setFilterTanggalSampai] = useState('');
 
-  // Helper: get fiscal month date range (26 prev month to 25 this month)
+  // Helper: get fiscal month date range (calendar month: 1..end-of-month)
   function getFiscalMonthRange(now: Date) {
-    // If today is Jan 2026, dari: 2025-12-26, sampai: 2026-01-25
-    let year = now.getFullYear();
-    let month = now.getMonth(); // 0-based
-    let dariMonth = month - 1;
-    let dariYear = year;
-    if (dariMonth < 0) {
-      dariMonth = 11;
-      dariYear = year - 1;
-    }
+    const year = now.getFullYear();
+    const month = now.getMonth(); // 0-based
     const pad = (n: number) => n.toString().padStart(2, '0');
-    const dari = `${dariYear}-${pad(dariMonth + 1)}-26`;
-    const sampai = `${year}-${pad(month + 1)}-25`;
+    const dari = `${year}-${pad(month + 1)}-01`;
+    // last day of month: create date of first day next month, subtract 1 day
+    const nextMonth = new Date(year, month + 1, 1);
+    const lastDayDate = new Date(nextMonth.getTime() - 24 * 60 * 60 * 1000);
+    const sampai = `${lastDayDate.getFullYear()}-${pad(lastDayDate.getMonth() + 1)}-${pad(lastDayDate.getDate())}`;
     return { dari, sampai };
   }
 
@@ -143,20 +139,12 @@ export default function Transaksi() {
   const [filterTahun, setFilterTahun] = useState(currentYear.toString());
   const [filterKategori, setFilterKategori] = useState('');
   const [filterSubKategori, setFilterSubKategori] = useState('');
-    // Helper untuk menentukan bulan fiskal dari tanggal dan fiscalYear
+    // Helper untuk menentukan bulan fiskal dari tanggal (calendar month)
     function getFiscalMonthFromDate(dateStr: string): string {
       if (!dateStr) return '';
       const date = new Date(dateStr);
-      let day = date.getDate();
-      let month = date.getMonth(); // 0-based
-      let year = date.getFullYear();
-      if (day >= 26) {
-        month += 1;
-        if (month > 11) {
-          month = 0;
-          year += 1;
-        }
-      }
+      const month = date.getMonth(); // 0-based
+      const year = date.getFullYear();
       const monthShorts = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
       return `${monthShorts[month]}-${String(year).slice(-2)}`;
     }
@@ -207,7 +195,7 @@ export default function Transaksi() {
             kategori: detail.kategori,
             sub_kategori: detail.sub_kategori,
             akun: detail.akun,
-            bulan: getFiscalMonthFromDate(detail.tanggal || '', fiscalYear),
+            bulan: getFiscalMonthFromDate(detail.tanggal || ''),
             nilai: detail.nilai,
             input_by: detail.input_by || detail.created_by,
             tanggal: detail.tanggal || '',
@@ -315,7 +303,7 @@ export default function Transaksi() {
       setFiscalMonthAlert('');
       return;
     }
-    const bulanFiskal = getFiscalMonthFromDate(editData.tanggal, fiscalYear);
+    const bulanFiskal = getFiscalMonthFromDate(editData.tanggal);
     const fiscalMonthYear = getFiscalMonthYear(bulanFiskal);
     if (fiscalMonthYear && fiscalMonthYear > fiscalYear) {
       setFiscalMonthInvalid(true);
@@ -501,6 +489,25 @@ export default function Transaksi() {
   });
 
   const transaksiList = (transaksiResp as any)?.data || [];
+  // Sort ascending: Detail by tanggal, Rekap by bulan (fiscal order DEC..NOV)
+  const sortedTransaksiList = (() => {
+    const arr = Array.isArray(transaksiList) ? [...transaksiList] : [];
+    if (typeData === 'Detail') {
+      return arr.sort((a: any, b: any) => {
+        const da = new Date(a.tanggal || '1970-01-01').getTime();
+        const db = new Date(b.tanggal || '1970-01-01').getTime();
+        return da - db;
+      });
+    } else {
+      const order = ["DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV"];
+      const idx = (m: string) => {
+        const key = (m || '').toUpperCase().replace(/\s+/g, '').substring(0,3);
+        const i = order.indexOf(key);
+        return i === -1 ? 999 : i;
+      };
+      return arr.sort((a: any, b: any) => idx(a.bulan) - idx(b.bulan));
+    }
+  })();
   const totalPages = (transaksiResp as any)?.totalPages || 1;
   // Reset to first page if pageSize changes
   useEffect(() => {
@@ -721,7 +728,7 @@ export default function Transaksi() {
                         onChange={e => {
                           const tanggal = e.target.value;
                           // Hitung bulan fiskal otomatis
-                          const bulan_fiskal_otomatis = getFiscalMonthFromDate(tanggal, fiscalYear);
+                          const bulan_fiskal_otomatis = getFiscalMonthFromDate(tanggal);
                           setFormData({ ...formData, tanggal, bulan_fiskal: bulan_fiskal_otomatis });
                         }}
                         className="border-2 border-gray-200 transition-all duration-200"
@@ -927,7 +934,7 @@ export default function Transaksi() {
                   </TableCell>
                 </TableRow>
               ) : (
-                transaksiList.map((row: any, idx: number) => (
+                sortedTransaksiList.map((row: any, idx: number) => (
                   <TableRow key={(row.parentId || row._id) + '-' + idx} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-12 px-4 py-4 text-center font-semibold text-gray-900">{(page - 1) * pageSize + idx + 1}</TableCell>
                     {typeData === 'Detail' ? (
@@ -1061,7 +1068,7 @@ export default function Transaksi() {
                           setEditData(prev => ({
                             ...prev,
                             tanggal: newTanggal,
-                            bulan: getFiscalMonthFromDate(newTanggal, fiscalYear)
+                            bulan: getFiscalMonthFromDate(newTanggal)
                           }));
                         }}
                         className="border-2 border-gray-200 transition-all duration-200"
@@ -1074,7 +1081,7 @@ export default function Transaksi() {
                       <Input
                         id="edit-bulan"
                         type="text"
-                        value={editData.tanggal ? getFiscalMonthFromDate(editData.tanggal, fiscalYear) : ''}
+                        value={editData.tanggal ? getFiscalMonthFromDate(editData.tanggal) : ''}
                         readOnly
                         disabled
                         className="border-2 border-blue-400 bg-blue-50 font-bold text-blue-900 transition-all duration-200 cursor-not-allowed placeholder:italic placeholder:text-blue-400"

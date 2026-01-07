@@ -192,21 +192,8 @@ export default function PublicDashboard() {
     }))
   }));
 
-  const toFixReal = (value: number) => {
-    //for example 2.199835406 => 2.199
-    return Math.floor(value * 1000) / 1000;
-  }
-
   const formatCurrency = (value: number) => {
-    if (value >= 1000000000) {
-      return `${toFixReal(value / 1000000000)}M`;
-    } else if (value >= 1000000) {
-      return `${toFixReal(value / 1000000)}jt`;
-    } else if (value >= 1000) {
-      return `${toFixReal(value / 1000)}rb`;
-    } else {
-      return value.toString();
-    }
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
   };
 
   return (
@@ -363,6 +350,12 @@ export default function PublicDashboard() {
               <div className="mb-6 sm:mb-8">
                 <Card className="border-2 border-dashed border-purple-200 bg-white/80 backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
                   <CardContent className='pt-4 sm:pt-6'>
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-base sm:text-lg font-bold">Implementasi, Marketing & Lainnya</h2>
+                      <div className="text-base sm:text-lg font-bold text-purple-600">
+                        Total: {formatCurrency(implementasiMarketingLainnyaTahunanChartData.reduce((sum, row) => sum + row.subs.reduce((s: number, sub: any) => s + (sub.total || 0), 0), 0))}
+                      </div>
+                    </div>
                     <StackedBarKategori
                       data={implementasiMarketingLainnyaTahunanChartData}
                       title="Implementasi, Marketing & Lainnya Monthly Breakdown"
@@ -378,6 +371,12 @@ export default function PublicDashboard() {
               <div className="mb-6 sm:mb-8">
                 <Card className="border-2 border-dashed border-red-200 bg-white/80 backdrop-blur-sm hover:border-red-400 transition-all duration-300">
                   <CardContent className='pt-4 sm:pt-6'>
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-base sm:text-lg font-bold">Biaya Biaya</h2>
+                      <div className="text-base sm:text-lg font-bold text-red-600">
+                        Total: {formatCurrency(biayaBiayaTahunanChartData.reduce((sum, row) => sum + row.subs.reduce((s: number, sub: any) => s + (sub.total || 0), 0), 0))}
+                      </div>
+                    </div>
                     <StackedBarKategori
                       data={biayaBiayaTahunanChartData}
                       title="Biaya Biaya Monthly Breakdown"

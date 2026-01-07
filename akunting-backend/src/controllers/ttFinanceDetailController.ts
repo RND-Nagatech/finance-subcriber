@@ -15,10 +15,14 @@ export const listTtFinanceDetail = async (req: Request, res: Response) => {
     }
     if (kategori && kategori !== 'ALL') filter.kategori = kategori;
     if (sub_kategori && sub_kategori !== 'ALL') filter.sub_kategori = sub_kategori;
-    const sortObj: any = { tanggal: 1 };
+    // Default sort by tanggal ascending; apply kategori sort when provided
+    const sortObj: any = {};
     if (sortKategori === 'asc') sortObj.kategori = 1;
     else if (sortKategori === 'desc') sortObj.kategori = -1;
-      const data = await TtFinanceDetail.find(filter).sort({ tanggal: -1 });
+    // Always sort by tanggal ascending after kategori (stable ordering)
+    sortObj.tanggal = 1;
+
+    const data = await TtFinanceDetail.find(filter).sort(sortObj);
     res.json({ data });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });

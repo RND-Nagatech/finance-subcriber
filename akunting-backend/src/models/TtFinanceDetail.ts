@@ -14,6 +14,7 @@ export interface ITtFinanceDetail extends Document {
   updated_at?: Date;
   deleted_by?: string;
   deleted_at?: Date;
+  status_deleted?: boolean;
 }
 
 const TtFinanceDetailSchema: Schema = new Schema({

@@ -36,8 +36,8 @@ export default function StackedBarKategori({ data, title, description }: IStacke
   const barSize = chartData.length < 4 ? 80 : 40;
    // Calculate dynamic YAxis width based on max value
   const maxValue = Math.max(...chartData.map(d => d._total));
-  const formattedMaxValue = maxValue.toLocaleString('id-ID');
-  const yAxisWidth = Math.max(10, formattedMaxValue.length * 4.5); // Minimum 60px, 8px per char + padding
+  const formattedMaxValue = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(maxValue);
+  const yAxisWidth = Math.max(60, formattedMaxValue.length * 5); // ensure enough width for 'Rp'
   return (
     <div
       className="rounded-xl"
@@ -85,7 +85,7 @@ export default function StackedBarKategori({ data, title, description }: IStacke
             }}
           />
           <YAxis
-            tickFormatter={(v) => v.toLocaleString('id-ID')}
+            tickFormatter={(v) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(v))}
             width={yAxisWidth}
             tick={{ fontSize: 12, fill: '#222', fontWeight: 600 }}
             axisLine={{ stroke: '#e7e7e7ff' }}

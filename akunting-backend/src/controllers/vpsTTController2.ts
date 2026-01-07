@@ -306,6 +306,7 @@ export const updateItem = async (req: Request, res: Response) => {
     const tahunEdit = periode.slice(0,4);
 
     if (bulanChanged) {
+      // 1) Remove subsequent docs in the same fiscal year for this chain
       await TTVpsDetail.deleteMany({
         chain_id: doc.chain_id,
         toko: doc.toko,
@@ -313,6 +314,50 @@ export const updateItem = async (req: Request, res: Response) => {
         periode: { $gt: periode, $regex: `^${tahunEdit}-` }
       });
 
+      // 2) Regenerate subsequent schedule using the new bulan setting
+      //    Starting from the day after this doc's tempo until fiscal end (Nov)
+      const createdPeriodes = new Set<string>();
+      const startDate = new Date(doc.start + 'T00:00:00.000Z');
+      const firstTempo = new Date(doc.tempo + 'T00:00:00.000Z');
+      let cursorStart = addDays(firstTempo, 1);
+      const endYear = startDate.getUTCMonth() === 11 ? startDate.getUTCFullYear() + 1 : startDate.getUTCFullYear();
+      const fiscalEndDate = new Date(Date.UTC(endYear, 11, 0)); // last day of November
+
+      while (cursorStart <= fiscalEndDate) {
+        const tempo = calcTempo(cursorStart, doc.bulan);
+        const jumlah_harga = doc.harga * doc.bulan;
+        const now = new Date();
+        const periodeNew = toPeriod(cursorStart);
+        await TTVpsDetail.create({
+          periode: periodeNew,
+          chain_id: doc.chain_id,
+          toko: doc.toko,
+          program: doc.program,
+          daerah: (doc as any).daerah,
+          start: formatYMD(cursorStart),
+          bulan: doc.bulan,
+          tempo: formatYMD(tempo),
+          harga: doc.harga,
+          jumlah_harga,
+          diskon: 0,
+          diskon_percent: 0,
+          total_harga: jumlah_harga,
+          status: 'OPEN',
+          input_date: now,
+          update_date: now,
+          delete_date: null,
+          input_by: userTag,
+          update_by: userTag,
+          delete_by: null,
+        } as Partial<ITTVpsDetail>);
+        createdPeriodes.add(periodeNew);
+
+        const nextStart = addDays(tempo, 1);
+        if (nextStart > fiscalEndDate) break;
+        cursorStart = nextStart;
+      }
+
+      // 3) Recalculate aggregates for current and affected subsequent periodes
       const [yStr, mStr] = periode.split('-');
       const yNum = parseInt(yStr, 10);
       const mNum = parseInt(mStr, 10);
@@ -321,12 +366,14 @@ export const updateItem = async (req: Request, res: Response) => {
         const pad = (n: number) => String(n).padStart(2, '0');
         const startM = `${yStr}-${pad(mNum + 1)}`;
         const endM = `${yStr}-11`;
-        const startDate = new Date(startM + '-01T00:00:00.000Z');
-        const endDate = new Date(endM + '-01T00:00:00.000Z');
-        const months = enumerateMonthsInclusive(startDate, endDate);
+        const startMonthDate = new Date(startM + '-01T00:00:00.000Z');
+        const endMonthDate = new Date(endM + '-01T00:00:00.000Z');
+        const months = enumerateMonthsInclusive(startMonthDate, endMonthDate);
         for (const p of months) targets.push(p);
       }
-      for (const p of targets) await recalcAggregateForPeriode(p, (req as any).user);
+      for (const p of new Set<string>([...targets, ...Array.from(createdPeriodes)]) ) {
+        await recalcAggregateForPeriode(p, (req as any).user);
+      }
     } else if (startChanged) {
       const subsequent = await TTVpsDetail.find({
         chain_id: doc.chain_id,

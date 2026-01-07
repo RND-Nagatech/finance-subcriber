@@ -1,5 +1,4 @@
 // Soft delete detail and update tt_finance aggregation
-import TtFinanceDetail from '../models/TtFinanceDetail';
 
 export const deleteTransaksi = async (req: Request, res: Response) => {
   try {
@@ -30,7 +29,7 @@ export const deleteTransaksi = async (req: Request, res: Response) => {
     const totalBulan = sum[0]?.total || 0;
 
     // Find tt_finance doc
-    let tahunFiskal = detail.tahun_fiskal;
+    let tahunFiskal: string | undefined = undefined;
     if (!tahunFiskal && detail.bulan) {
       const match = detail.bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
       if (match) {
@@ -268,13 +267,14 @@ export const listTransaksi = async (req: Request, res: Response) => {
       sortStage.akun = 1;
       sortStage.sub_kategori = 1;
       sortStage.bulan = 1;
+      const bulanStr = bulan ? String(bulan) : null;
       const pipeline: any[] = [
         ...matchStage,
         { $unwind: '$data_bulanan' },
-        ...(bulan ? [{ $match: { $or: [
-          { 'data_bulanan.bulan': bulan },
-          { 'data_bulanan.bulan': bulan.replace(/\s*-\s*/, '-') },
-          { 'data_bulanan.bulan': bulan.replace(/\s*-\s*/, ' - ') }
+        ...(bulanStr ? [{ $match: { $or: [
+          { 'data_bulanan.bulan': bulanStr },
+          { 'data_bulanan.bulan': bulanStr.replace(/\s*-\s*/, '-') },
+          { 'data_bulanan.bulan': bulanStr.replace(/\s*-\s*/, ' - ') }
         ] } }] : []),
         {
           $project: {
@@ -471,14 +471,15 @@ export const updateTransaksi = async (req: Request, res: Response) => {
     const monthIdxNew = parseInt(mmNew, 10) - 1;
     const bulanFiskalNew = `${monthNames[monthIdxNew]}-${yyyyNew.slice(2)}`;
     // Pastikan tahun_fiskal tidak null
-    let tahunFiskalDaily = tahun_fiskal || detail.tahun_fiskal;
+    let tahunFiskalDaily = tahun_fiskal as string | undefined;
     if (!tahunFiskalDaily && (bulan || detail.bulan)) {
       const bulanStr = (bulan || detail.bulan);
       const match = bulanStr.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
       if (match) {
         let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
-        const bulanMap = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
-        const bulanAngka = bulanMap[match[1].toUpperCase()] || 1;
+        const bulanMap = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 } as const;
+        const key = (match[1] as string).toUpperCase() as keyof typeof bulanMap;
+        const bulanAngka = bulanMap[key] || 1;
         tahunFiskalDaily = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
       }
     }
@@ -538,8 +539,10 @@ export const updateTransaksi = async (req: Request, res: Response) => {
     // Find doc for new values
     let tahunFiskalNew = tahun_fiskal;
     let docNew = null;
-    if (!tahunFiskalNew && bulan) {
-      const match = bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+    // Pastikan tahunFiskalNew selalu terisi dari bulan baru ATAU bulan lama detail
+    const bulanRef = bulan || detail.bulan;
+    if (!tahunFiskalNew && bulanRef) {
+      const match = bulanRef.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
       if (match) {
         const bulanStr = match[1].toUpperCase();
         let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
@@ -582,6 +585,23 @@ export const updateTransaksi = async (req: Request, res: Response) => {
       await docNew.save();
     } else {
       // Buat dokumen baru jika belum ada
+      if (!tahunFiskalNew) {
+        // Safety net: derive from bulan detail jika masih kosong
+        const match = (bulan || detail.bulan)?.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+        if (match) {
+          const bulanStr = match[1].toUpperCase();
+          let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
+          const bulanMap: Record<string, number> = {
+            JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+            JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
+          };
+          const bulanAngka = bulanMap[bulanStr] || 1;
+          tahunFiskalNew = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
+        }
+      }
+      if (!tahunFiskalNew) {
+        return res.status(400).json({ message: 'Gagal menentukan tahun_fiskal untuk transaksi baru.' });
+      }
       const newTransaksi = new Transaksi({
         kategori: kategori || detail.kategori,
         sub_kategori: sub_kategori || detail.sub_kategori,
@@ -647,6 +667,25 @@ export const batchCreateTransaksi = async (req: Request, res: Response) => {
           results.errorCount++;
           continue;
           // ...existing code...
+        }
+
+        // Derive tahun fiskal dari input atau dari bulan (DEC -> tahun+1; lainnya -> tahun)
+        let tahunFiskal: string | undefined = tahun_fiskal;
+        if (!tahunFiskal && bulan) {
+          const match = String(bulan).match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+          if (match) {
+            const bulanStr = match[1].toUpperCase();
+            let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
+            const bulanMap: Record<string, number> = {
+              JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+              JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
+            };
+            const bulanAngka = bulanMap[bulanStr] || 1;
+            tahunFiskal = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
+          }
+        }
+        if (!tahunFiskal) {
+          throw new Error('tahun_fiskal tidak dapat ditentukan dari bulan');
         }
 
         // Cari dokumen tt_finance berdasarkan kategori, sub_kategori, akun, tahun_fiskal

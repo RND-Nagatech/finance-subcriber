@@ -136,6 +136,14 @@ export default function VPS() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal ubah status'),
   });
 
+  // Summary for current table view
+  const summary = useMemo(() => {
+    const rows = Array.isArray(combinedItems) ? combinedItems : [];
+    const total = rows.reduce((sum: number, it: any) => sum + (Number(it?.total_harga) || 0), 0);
+    const uniqueToko = new Set(rows.map((r: any) => r.toko)).size;
+    return { total, uniqueToko, count: rows.length };
+  }, [combinedItems]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -242,7 +250,13 @@ export default function VPS() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Daftar VPS</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Daftar VPS</CardTitle>
+            <div className="text-sm text-gray-700 flex items-center gap-4">
+              <span className="font-semibold">Total: {currency(summary.total)}</span>
+              <span>Subscriber: <span className="font-semibold">{summary.uniqueToko}</span></span>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {(detailQueries as any).pending ? (
@@ -524,7 +538,6 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
 
         {selectedSub ? (
           <div className="space-y-2">
-                  <SelectItem value="PROCESS">PROCESS</SelectItem>
             <Label>Program</Label>
             <Input value={selectedSub.program} readOnly />
           </div>

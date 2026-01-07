@@ -320,6 +320,17 @@ export default function Dashboard() {
     }))
   })();
 
+  // Totals for stacked bar sections
+  const asetDanGajiTotal = asetDanGajiTahunanChartData.reduce((sum, row) => {
+    return sum + row.subs.reduce((s, sub) => s + (sub.total || 0), 0);
+  }, 0);
+  const implementasiMarketingLainnyaTotal = implementasiMarketingLainnyaTahunanChartData.reduce((sum, row) => {
+    return sum + row.subs.reduce((s, sub) => s + (sub.total || 0), 0);
+  }, 0);
+  const biayaBiayaTotal = biayaBiayaTahunanChartData.reduce((sum, row) => {
+    return sum + row.subs.reduce((s, sub) => s + (sub.total || 0), 0);
+  }, 0);
+
   // Data untuk line chart gross margin tahunan
   const grossMarginTahunanLineData = grossMarginTahunanData
     .map((bulanData: any) => ({
@@ -343,21 +354,8 @@ export default function Dashboard() {
     }))
   }));
 
-  const toFixReal = (value: number) => {
-    //for example 2.199835406 => 2.199
-    return Math.floor(value * 1000) / 1000;
-  }
-
   const formatCurrency = (value: number) => {
-    if (value >= 1000000000) {
-      return `${toFixReal(value / 1000000000)}M`;
-    } else if (value >= 1000000) {
-      return `${toFixReal(value / 1000000)}jt`;
-    } else if (value >= 1000) {
-      return `${toFixReal(value / 1000)}rb`;
-    } else {
-      return value.toString();
-    }
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
   };
 
   return (
@@ -461,7 +459,11 @@ export default function Dashboard() {
                       <CardHeader className="pb-3">
                         <CardTitle className="text-lg font-bold text-gray-900">{kategoriData.kategori}</CardTitle>
                         <CardDescription className="text-gray-600 text-sm">
-                          Monthly breakdown in {year}
+                          {month === 'ANNUAL' ? (
+                            <>Monthly breakdown in {year}</>
+                          ) : (
+                            <>Daily breakdown in {month} {year}</>
+                          )}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="pt-0">
@@ -506,6 +508,10 @@ export default function Dashboard() {
               <div className="mb-8">
                 <Card className="border-2 border-dashed border-orange-200 bg-white backdrop-blur-sm hover:border-orange-400 transition-all duration-300">
                   <CardContent className='pt-6'>
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-lg font-bold">Aset dan Gaji</h2>
+                      <div className="text-lg font-bold text-orange-600">Total: {formatCurrency(asetDanGajiTotal)}</div>
+                    </div>
                     <StackedBarKategori
                       data={asetDanGajiTahunanChartData}
                       title="Aset dan Gaji Monthly Breakdown"
@@ -521,6 +527,10 @@ export default function Dashboard() {
               <div className="mb-8">
                 <Card className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
                   <CardContent className='pt-6'>
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-lg font-bold">Implementasi, Marketing & Lainnya</h2>
+                      <div className="text-lg font-bold text-purple-600">Total: {formatCurrency(implementasiMarketingLainnyaTotal)}</div>
+                    </div>
                     <StackedBarKategori
                       data={implementasiMarketingLainnyaTahunanChartData}
                       title="Implementasi, Marketing & Lainnya Monthly Breakdown"
@@ -536,6 +546,10 @@ export default function Dashboard() {
               <div className="mb-8">
                 <Card className="border-2 border-dashed border-red-200 bg-white backdrop-blur-sm hover:border-red-400 transition-all duration-300">
                   <CardContent className='pt-6'>
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-lg font-bold">Biaya Biaya</h2>
+                      <div className="text-lg font-bold text-red-600">Total: {formatCurrency(biayaBiayaTotal)}</div>
+                    </div>
                     <StackedBarKategori
                       data={biayaBiayaTahunanChartData}
                       title="Biaya Biaya Monthly Breakdown"
