@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal } from '@/api/ttvps';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Combobox, ComboboxOption } from '@/components/ui/Combobox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 
 function currency(n: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
@@ -111,15 +112,37 @@ export default function VPS() {
     return String(y + 1);
   }, [lastPeriodData]);
 
-  const genMut = useMutation({
-    mutationFn: generateNextFiscal,
-    onSuccess: (res) => {
-      toast.success(`Generate ${res.nextFiscalLabel} berhasil (${res.affected.length} periode)`);
-      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
-      qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal generate data'),
-  });
+  const [genJob, setGenJob] = useState<{ jobId: string; total: number; done: number; label: number; status: 'running'|'done'|'error' } | null>(null);
+  const handleStartGenerate = async () => {
+    try {
+      const res = await startGenerateNextFiscal();
+      setGenJob({ jobId: res.jobId, total: res.total || 0, done: 0, label: res.nextFiscalLabel, status: 'running' });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Gagal mulai generate data');
+    }
+  };
+  useEffect(() => {
+    if (!genJob || genJob.status !== 'running') return;
+    const id = setInterval(async () => {
+      try {
+        const st = await getGenerateStatus(genJob.jobId);
+        setGenJob((prev) => prev ? { ...prev, done: st.done, status: st.status } : prev);
+        if (st.status === 'done') {
+          clearInterval(id);
+          toast.success(`Generate ${st.nextFiscalLabel} berhasil (${st.total} toko)`);
+          qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+          qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
+        } else if (st.status === 'error') {
+          clearInterval(id);
+          toast.error(st.error || 'Generate gagal');
+        }
+      } catch (e: any) {
+        clearInterval(id);
+        toast.error('Gagal memantau progres generate');
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [genJob?.jobId, genJob?.status]);
 
   const startCreate = () => { setEditItem(null); setOpen(true); };
   const startEdit = (item: any) => { setEditItem(item); setOpenEdit(true); };
@@ -159,14 +182,21 @@ export default function VPS() {
             title="Generate Data?"
             description={nextFiscalLabel ? `Anda yakin ingin generate data VPS untuk periode ${nextFiscalLabel}?` : 'Menentukan tahun...'}
             actionText="Ya, Generate"
-            onConfirm={() => genMut.mutate()}
+            onConfirm={handleStartGenerate}
           >
             <Button
-              disabled={genMut.isPending || !nextFiscalLabel}
+              disabled={(genJob?.status === 'running') || !nextFiscalLabel}
               className="bg-gradient-to-r from-purple-600 to-fuchsia-700 hover:from-purple-700 hover:to-fuchsia-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
               title={nextFiscalLabel ? `Generate Data ${nextFiscalLabel}` : 'Menentukan tahun...'}
             >
-              {nextFiscalLabel ? `Generate Data ${nextFiscalLabel}` : 'Generate Data'}
+              {(genJob?.status === 'running') ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin"></span>
+                  <span>Generate...</span>
+                </span>
+              ) : (
+                nextFiscalLabel ? `Generate Data ${nextFiscalLabel}` : 'Generate Data'
+              )}
             </Button>
           </ConfirmAction>
         </div>
@@ -428,6 +458,20 @@ export default function VPS() {
           )}
         </CardContent>
       </Card>
+
+      {genJob?.status === 'running' && (
+        <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white rounded-lg p-5 shadow-xl w-[460px]">
+            <div className="mb-3 font-semibold">Generate data {genJob?.label || nextFiscalLabel || ''}...</div>
+            <Progress value={genJob?.total ? Math.round(((genJob?.done || 0) / genJob.total) * 100) : 0} />
+            <div className="mt-2 text-sm text-gray-600 flex justify-between">
+              <span>{genJob?.done || 0} / {genJob?.total || 0} toko</span>
+              <span>{genJob?.total ? Math.round(((genJob?.done || 0) / genJob.total) * 100) : 0}%</span>
+            </div>
+            <div className="mt-1 text-xs text-gray-400">Mohon tunggu, proses bisa memakan waktu.</div>
+          </div>
+        </div>
+      )}
 
       <VpsFormDialog
         open={open}

@@ -518,3 +518,110 @@ export const generateNextFiscal = async (req: Request, res: Response) => {
     return res.status(500).json({ message: 'internal error', error: err?.message });
   }
 };
+
+// In-memory progress tracker for generate job
+const generateJobs: Record<string, { status: 'running'|'done'|'error'; nextFiscalLabel: number; total: number; done: number; startedAt: number; finishedAt?: number; error?: string }> = {};
+
+export const startGenerateNextFiscal = async (req: Request, res: Response) => {
+  try {
+    const lastDoc = await TTVpsDetail.findOne({}, { periode: 1 }).sort({ periode: -1 }).lean();
+    if (!lastDoc?.periode) return res.status(400).json({ message: 'Tidak ada data periode terakhir' });
+    const [lastYearStr] = lastDoc.periode.split('-');
+    const lastYear = parseInt(lastYearStr, 10);
+    const nextFiscalLabel = lastYear + 1;
+    const rangeStart = `${lastYear - 1}-12`;
+    const rangeEnd = `${lastYear}-11`;
+    const fiscalDocs = await TTVpsDetail.find({ periode: { $gte: rangeStart, $lte: rangeEnd } }).lean();
+
+    type Item = ITTVpsDetail & { _id?: any };
+    const tokoLatest: Record<string, { last: Item }> = {};
+    for (const it of fiscalDocs) {
+      const key = it.toko;
+      const currTempo = new Date(it.tempo + 'T00:00:00.000Z').getTime();
+      const existing = tokoLatest[key]?.last;
+      const existingTempo = existing ? new Date(existing.tempo + 'T00:00:00.000Z').getTime() : -Infinity;
+      if (!existing || currTempo > existingTempo) {
+        tokoLatest[key] = { last: it as Item };
+      }
+    }
+
+    const jobId = new mongoose.Types.ObjectId().toString();
+    generateJobs[jobId] = { status: 'running', nextFiscalLabel, total: Object.keys(tokoLatest).length, done: 0, startedAt: Date.now() };
+
+    // Run the heavy work asynchronously
+    (async () => {
+      try {
+        const affectedPeriodes = new Set<string>();
+        const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
+        for (const [toko, info] of Object.entries(tokoLatest)) {
+          const last = info.last;
+          const program = last.program;
+          const daerah = (last as any).daerah || '';
+          const harga = last.harga;
+          const initialMonths = last.bulan;
+          const startDate = addDays(new Date(last.tempo + 'T00:00:00.000Z'), 1);
+
+          const entries: { start: Date; bulan: number; tempo: Date; diskon: number }[] = [];
+          const firstTempo = calcTempo(startDate, initialMonths);
+          entries.push({ start: startDate, bulan: initialMonths, tempo: firstTempo, diskon: 0 });
+          let cursorStart = addDays(firstTempo, 1);
+          const endYear = startDate.getUTCMonth() === 11 ? startDate.getUTCFullYear() + 1 : startDate.getUTCFullYear();
+          const fiscalEndDate = new Date(Date.UTC(endYear, 11, 0));
+          while (cursorStart <= fiscalEndDate) {
+            const tempo = calcTempo(cursorStart, initialMonths);
+            entries.push({ start: cursorStart, bulan: initialMonths, tempo, diskon: 0 });
+            const nextStart = addDays(tempo, 1);
+            if (nextStart > fiscalEndDate) break;
+            cursorStart = nextStart;
+          }
+
+          const chainId = new mongoose.Types.ObjectId().toString();
+          for (const e of entries) {
+            const periode = toPeriod(e.start);
+            affectedPeriodes.add(periode);
+            await TTVpsDetail.create({
+              periode,
+              chain_id: chainId,
+              toko,
+              program,
+              daerah,
+              start: formatYMD(e.start),
+              bulan: e.bulan,
+              tempo: formatYMD(e.tempo),
+              harga,
+              jumlah_harga: harga * e.bulan,
+              diskon: 0,
+              diskon_percent: 0,
+              total_harga: harga * e.bulan,
+              status: 'OPEN',
+              input_date: new Date(),
+              update_date: new Date(),
+              input_by: userTag,
+              update_by: userTag,
+            });
+          }
+          generateJobs[jobId].done += 1;
+        }
+        for (const p of affectedPeriodes) await recalcAggregateForPeriode(p, (req as any).user);
+        generateJobs[jobId].status = 'done';
+        generateJobs[jobId].finishedAt = Date.now();
+      } catch (e: any) {
+        generateJobs[jobId].status = 'error';
+        generateJobs[jobId].error = e?.message || 'error';
+        generateJobs[jobId].finishedAt = Date.now();
+      }
+    })();
+
+    return res.json({ jobId, nextFiscalLabel, total: generateJobs[jobId].total });
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({ message: 'internal error', error: err?.message });
+  }
+};
+
+export const getGenerateStatus = async (req: Request, res: Response) => {
+  const { jobId } = req.query as { jobId?: string };
+  if (!jobId || !generateJobs[jobId]) return res.status(404).json({ message: 'job not found' });
+  const job = generateJobs[jobId];
+  return res.json({ status: job.status, nextFiscalLabel: job.nextFiscalLabel, total: job.total, done: job.done, startedAt: job.startedAt, finishedAt: job.finishedAt, error: job.error });
+};

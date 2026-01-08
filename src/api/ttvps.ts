@@ -89,3 +89,13 @@ export async function generateNextFiscal(): Promise<{ message: string; nextFisca
   const { data } = await axiosInstance.post('/tt-vps/generate-next-year');
   return data;
 }
+
+export async function startGenerateNextFiscal(): Promise<{ jobId: string; nextFiscalLabel: number; total: number }> {
+  const { data } = await axiosInstance.post('/tt-vps/generate-next-year/start');
+  return data;
+}
+
+export async function getGenerateStatus(jobId: string): Promise<{ status: 'running'|'done'|'error'; nextFiscalLabel: number; total: number; done: number; startedAt: number; finishedAt?: number; error?: string }> {
+  const { data } = await axiosInstance.get('/tt-vps/generate-next-year/status', { params: { jobId } });
+  return data;
+}

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authMiddleware';
-import { createSchedule, deleteItem, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal } from '../controllers/vpsTTController2';
+import { createSchedule, deleteItem, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus } from '../controllers/vpsTTController2';
 
 const router = Router();
 
@@ -15,6 +15,8 @@ router.get('/details-by-toko', getDetailsByToko);
 router.get('/aggregate', getAggregateByPeriode);
 router.get('/last-period', getLastPeriod);
 router.post('/generate-next-year', generateNextFiscal);
+router.post('/generate-next-year/start', startGenerateNextFiscal);
+router.get('/generate-next-year/status', getGenerateStatus);
 
 // Update status or delete an item inside a periode doc
 router.patch('/details/:periode/item/:itemId/status', updateItemStatus);
