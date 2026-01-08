@@ -433,7 +433,7 @@ export default function VPS() {
         open={open}
         onOpenChange={setOpen}
         editItem={null}
-        onSuccess={() => { setOpen(false); qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); }}
+          onSuccess={() => { qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); }}
       />
       <TTVpsEditDialog
         open={openEdit}
@@ -451,7 +451,17 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
   const createMut = useMutation({
     mutationFn: (payload: { subscriberId?: string; startDate: string; months: number; discount?: number; discountPercent?: number }) =>
       createSchedule({ subscriber_id: payload.subscriberId, start: payload.startDate, bulan: payload.months, diskon: payload.discount, diskon_percent: payload.discountPercent }),
-    onSuccess: () => { toast.success('Data disimpan'); onSuccess(); qc.invalidateQueries({ queryKey: ['vps-available-subs'] }); qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); },
+    onSuccess: () => {
+      toast.success('Data disimpan');
+      // Tetap buka form; reset field agar siap input berikutnya
+      setSubscriberId('');
+      setStartDate('');
+      setMonthsText('');
+      setDiscountPercentText('');
+      onSuccess();
+      qc.invalidateQueries({ queryKey: ['vps-available-subs'] });
+      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+    },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal simpan data'),
   });
   // Update/edit for TT items will be added after edit semantics are confirmed
