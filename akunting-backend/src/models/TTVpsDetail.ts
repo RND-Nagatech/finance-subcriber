@@ -56,6 +56,16 @@ const TTVpsDetailSchema: Schema = new Schema(
 
 TTVpsDetailSchema.index({ periode: 1, chain_id: 1, toko: 1, start: 1 }, { unique: true });
 
+// Additional indexes to optimize common queries
+// - by periode (details list, aggregates, last-period)
+TTVpsDetailSchema.index({ periode: 1 });
+// - by toko with sorting by periode and start (details-by-toko)
+TTVpsDetailSchema.index({ toko: 1, periode: 1, start: 1 });
+// - by chain_id (remove/resync by chain, maintenance)
+TTVpsDetailSchema.index({ chain_id: 1 });
+// - by status and tgl_lunas prefix search for realisasi queries
+TTVpsDetailSchema.index({ status: 1, tgl_lunas: 1 });
+
 export default mongoose.model<ITTVpsDetail>(
   'TTVpsDetail',
   TTVpsDetailSchema,

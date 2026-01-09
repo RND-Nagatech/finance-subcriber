@@ -84,19 +84,24 @@ export default function VPS() {
     enabled: !periodFrom && !periodTo && tokoFilter !== 'ALL'
   });
 
-  const combinedItems = useMemo(() => {
-    // Struktur baru: data sudah berupa array flat of docs
+  const [localItems, setLocalItems] = useState<any[]>([]);
+  useEffect(() => {
+    // Sync localItems with fetched data
     const docs = months.length > 0 ? ((detailQueries as any).data as any[]) : ((detailsByToko.data as any[]) || []);
-    if (!Array.isArray(docs)) return [];
+    if (!Array.isArray(docs)) return setLocalItems([]);
     const items = docs.map(doc => ({ ...doc, __periode: doc.periode }));
+    setLocalItems(items);
+  }, [detailQueries, detailsByToko.data, months.length]);
+
+  const combinedItems = useMemo(() => {
     const containsText = (s: string, q: string) => s?.toLowerCase().includes(q.toLowerCase());
-    return items.filter((it) => {
+    return localItems.filter((it) => {
       const matchStatus = statusFilter === 'ALL' ? true : it.status === statusFilter;
       const matchToko = tokoFilter === 'ALL' ? true : it.toko === tokoFilter;
       const matchSearch = !searchTerm || containsText(it.toko, searchTerm) || containsText(it.program, searchTerm) || containsText((it as any).daerah, searchTerm);
       return matchStatus && matchToko && matchSearch;
     });
-  }, [detailQueries, detailsByToko.data, months.length, statusFilter, tokoFilter, searchTerm]);
+  }, [localItems, statusFilter, tokoFilter, searchTerm]);
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const toggleExpand = (id: string, periode: string) => {
@@ -149,13 +154,25 @@ export default function VPS() {
 
   const delMut = useMutation({
     mutationFn: ({ periode, itemId }: { periode: string; itemId: string }) => deleteTTItem({ periode, itemId }),
-    onSuccess: () => { toast.success('Data dihapus'); qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); },
+    onSuccess: (_data, variables) => {
+      toast.success('Data dihapus');
+      setLocalItems((prev) => prev.filter((item) => !(item.__periode === variables.periode && item._id === variables.itemId)));
+      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+    },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal hapus data'),
   });
 
   const updateStatusMut = useMutation({
     mutationFn: ({ periode, itemId, status, tanggalLunas }: { periode: string; itemId: string; status: 'OPEN' | 'PROCESS' | 'DONE'; tanggalLunas?: string }) => updateItemStatus({ periode, itemId, status, tanggalLunas }),
-    onSuccess: () => { toast.success('Status diperbarui'); qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); },
+    onSuccess: (_data, variables) => {
+      toast.success('Status diperbarui');
+      setLocalItems((prev) => prev.map((item) =>
+        item.__periode === variables.periode && item._id === variables.itemId
+          ? { ...item, status: variables.status, tanggalLunas: variables.tanggalLunas ?? item.tanggalLunas }
+          : item
+      ));
+      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+    },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal ubah status'),
   });
 
@@ -351,23 +368,41 @@ export default function VPS() {
                           </ConfirmAction>
                         )}
                         {item.status === 'PROCESS' && (
-                          <ConfirmAction
-                            title="Selesaikan VPS?"
-                            description="Status akan diubah menjadi DONE. Pilih tanggal lunas:"
-                            actionText="Ya, Selesaikan"
-                            showDate
-                            onConfirm={(tanggalLunas?: string) => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'DONE', tanggalLunas })}
-                          >
-                            <Button
-                              size="icon"
-                              aria-label="Tandai selesai"
-                              title="Tandai selesai"
-                              className="rounded-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                              disabled={updateStatusMut.isPending}
+                          <>
+                            <ConfirmAction
+                              title="Selesaikan VPS?"
+                              description="Status akan diubah menjadi DONE. Pilih tanggal lunas:"
+                              actionText="Ya, Selesaikan"
+                              showDate
+                              onConfirm={(tanggalLunas?: string) => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'DONE', tanggalLunas })}
                             >
-                              <CheckCircle2 className="h-5 w-5" />
-                            </Button>
-                          </ConfirmAction>
+                              <Button
+                                size="icon"
+                                aria-label="Tandai selesai"
+                                title="Tandai selesai"
+                                className="rounded-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                                disabled={updateStatusMut.isPending}
+                              >
+                                <CheckCircle2 className="h-5 w-5" />
+                              </Button>
+                            </ConfirmAction>
+                            <ConfirmAction
+                              title="Batalkan Proses?"
+                              description="Status akan dikembalikan ke OPEN. Data akan bisa diedit dan dihapus kembali."
+                              actionText="Ya, Batalkan"
+                              onConfirm={() => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'OPEN' })}
+                            >
+                              <Button
+                                size="icon"
+                                aria-label="Batalkan proses"
+                                title="Batalkan proses"
+                                className="rounded-full bg-gradient-to-r from-orange-400 to-yellow-500 hover:from-orange-500 hover:to-yellow-600 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                                disabled={updateStatusMut.isPending}
+                              >
+                                <RotateCcw className="h-5 w-5" />
+                              </Button>
+                            </ConfirmAction>
+                          </>
                         )}
                         {item.status === 'DONE' && (
                           <ConfirmAction
