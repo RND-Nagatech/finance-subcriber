@@ -95,11 +95,20 @@ export default function VPS() {
 
   const combinedItems = useMemo(() => {
     const containsText = (s: string, q: string) => s?.toLowerCase().includes(q.toLowerCase());
-    return localItems.filter((it) => {
+    const filtered = localItems.filter((it) => {
       const matchStatus = statusFilter === 'ALL' ? true : it.status === statusFilter;
       const matchToko = tokoFilter === 'ALL' ? true : it.toko === tokoFilter;
       const matchSearch = !searchTerm || containsText(it.toko, searchTerm) || containsText(it.program, searchTerm) || containsText((it as any).daerah, searchTerm);
       return matchStatus && matchToko && matchSearch;
+    });
+    // Sort by start date ascending, then by toko name ascending
+    return filtered.sort((a: any, b: any) => {
+      const da = new Date(a?.start || 0).getTime();
+      const db = new Date(b?.start || 0).getTime();
+      if (da !== db) return da - db;
+      const ta = String(a?.toko || '');
+      const tb = String(b?.toko || '');
+      return ta.localeCompare(tb, 'id-ID', { sensitivity: 'base' });
     });
   }, [localItems, statusFilter, tokoFilter, searchTerm]);
 
@@ -354,6 +363,7 @@ export default function VPS() {
                             title="Invoice telah dibuat?"
                             description="Status akan diubah menjadi PROCESS. Setelah itu bisa dilunasi."
                             actionText="Ya, Invoice dibuat"
+                            preview={<VpsItemPreview item={item} />}
                             onConfirm={() => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'PROCESS' })}
                           >
                             <Button
@@ -374,6 +384,7 @@ export default function VPS() {
                               description="Status akan diubah menjadi DONE. Pilih tanggal lunas:"
                               actionText="Ya, Selesaikan"
                               showDate
+                              preview={<VpsItemPreview item={item} />}
                               onConfirm={(tanggalLunas?: string) => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'DONE', tanggalLunas })}
                             >
                               <Button
@@ -864,8 +875,64 @@ function CurrencyInput({ value, onChange }: { value: number; onChange: (n: numbe
 }
 
 import { useState } from 'react';
-function ConfirmAction({ title, description, actionText, onConfirm, children, showDate }: { title: string; description: string; actionText: string; onConfirm: (date?: string) => void; children: React.ReactElement; showDate?: boolean }) {
-  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
+
+function VpsItemPreview({ item }: { item: any }) {
+  const jumlah = (Number(item?.harga) || 0) * (Number(item?.bulan) || 0);
+  const diskonPercent = Number(item?.diskon_percent) || 0;
+  const diskonRp = Number(item?.diskon) || 0;
+  const total = Number(item?.total_harga) || Math.max(0, jumlah - diskonRp);
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div>
+        <div className="text-xs text-slate-500">Toko</div>
+        <div className="text-sm font-medium">{item?.toko}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Program</div>
+        <div className="text-sm font-medium">{item?.program}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Daerah</div>
+        <div className="text-sm font-medium">{item?.daerah}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Start Date</div>
+        <div className="text-sm font-medium">{item?.start ? format(new Date(item.start), 'dd MMM yyyy') : '-'}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Bulan</div>
+        <div className="text-sm font-medium">{item?.bulan}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Tempo</div>
+        <div className="text-sm font-medium">{item?.tempo ? format(new Date(item.tempo), 'dd MMM yyyy') : '-'}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Harga/Bln</div>
+        <div className="text-sm font-medium">{currency(Number(item?.harga) || 0)}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Jumlah Harga</div>
+        <div className="text-sm font-medium">{currency(jumlah)}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Diskon (%)</div>
+        <div className="text-sm font-medium">{diskonPercent}%</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Diskon (Rp)</div>
+        <div className="text-sm font-medium">{currency(diskonRp)}</div>
+      </div>
+      <div>
+        <div className="text-xs text-slate-500">Total Harga</div>
+        <div className="text-sm font-medium">{currency(total)}</div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmAction({ title, description, actionText, onConfirm, children, showDate, preview }: { title: string; description: string; actionText: string; onConfirm: (date?: string) => void; children: React.ReactElement; showDate?: boolean; preview?: React.ReactNode }) {
+  const [date, setDate] = useState<string>('');
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
@@ -874,6 +941,11 @@ function ConfirmAction({ title, description, actionText, onConfirm, children, sh
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
+        {preview ? (
+          <div className="my-3 p-3 border rounded bg-slate-50">
+            {preview}
+          </div>
+        ) : null}
         {showDate && (
           <div className="my-2">
             <Label htmlFor="tanggal-lunas">Tanggal Lunas</Label>
@@ -882,7 +954,7 @@ function ConfirmAction({ title, description, actionText, onConfirm, children, sh
         )}
         <AlertDialogFooter>
           <AlertDialogCancel>Batal</AlertDialogCancel>
-          <AlertDialogAction onClick={() => onConfirm(showDate ? date : undefined)}>{actionText}</AlertDialogAction>
+          <AlertDialogAction onClick={() => onConfirm(showDate ? date : undefined)} disabled={!!showDate && !date}>{actionText}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
