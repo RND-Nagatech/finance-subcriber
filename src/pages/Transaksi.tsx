@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 // Helper: extract year from fiscal month string (e.g. 'JAN-25' or 'JAN - 25')
 function getFiscalMonthYear(bulanFiskal: string): number | null {
   if (!bulanFiskal) return null;
@@ -142,6 +142,7 @@ export default function Transaksi() {
 
   const [filterBulan, setFilterBulan] = useState('ALL');
   const [filterTahun, setFilterTahun] = useState(currentYear.toString());
+  const [filterPerusahaan, setFilterPerusahaan] = useState('');
   const [filterKategori, setFilterKategori] = useState('');
   const [filterSubKategori, setFilterSubKategori] = useState('');
     // Helper untuk menentukan bulan fiskal dari tanggal (calendar month)
@@ -205,6 +206,8 @@ export default function Transaksi() {
             input_by: detail.input_by || detail.created_by,
             tanggal: detail.tanggal || '',
             keterangan: detail.keterangan || '',
+            perusahaan_id: perusahaanList.find((p) => p.nama_perusahaan === detail.nama_perusahaan)?._id || '',
+            rekening_id: rekeningList.find((r) => r.no_rekening === detail.no_rekening && r.kode_bank === detail.kode_bank)?._id || '',
           });
           setEditModalOpen(true);
         } catch (err) {
@@ -222,7 +225,27 @@ export default function Transaksi() {
       // Handler simpan edit
       const handleEditSave = async () => {
         try {
-          // Pastikan field sama dengan tambah data
+          // Validasi field wajib
+          if (!editData.perusahaan_id) {
+            toast.error('Perusahaan wajib dipilih!');
+            return;
+          }
+          // Nilai 0 dianggap valid, hanya undefined/null/kosong yang tidak valid
+          if (
+            !editData.kategori ||
+            !editData.sub_kategori ||
+            !editData.akun ||
+            editData.nilai === undefined || editData.nilai === null || editData.nilai === '' ||
+            !editData.tanggal
+          ) {
+            toast.error('Pastikan semua field wajib sudah diisi!');
+            return;
+          }
+          const perusahaanObj = perusahaanList.find((p) => p._id === editData.perusahaan_id);
+          let rekeningObj = null;
+          if (editData.rekening_id && editData.rekening_id !== 'none') {
+            rekeningObj = rekeningList.find((r) => r._id === editData.rekening_id);
+          }
           const payload = {
             kategori: editData.kategori,
             sub_kategori: editData.sub_kategori,
@@ -232,6 +255,10 @@ export default function Transaksi() {
             input_by: editData.input_by,
             tanggal: editData.tanggal,
             keterangan: editData.keterangan,
+            kode_perusahaan: perusahaanObj?.kode_perusahaan || '',
+            nama_perusahaan: perusahaanObj?.nama_perusahaan || '',
+            kode_bank: rekeningObj?.kode_bank || '',
+            no_rekening: rekeningObj?.no_rekening || '',
           };
           await axiosInstance.put(`/transaksi/${editData.id}`, payload);
           setEditModalOpen(false);
@@ -271,7 +298,25 @@ export default function Transaksi() {
       const [page, setPage] = useState<number>(1);
       const [pageSize, setPageSize] = useState<number>(10);
 
-  const [formData, setFormData] = useState<Transaksi>({
+  // Fetch perusahaan for dropdown
+  const { data: perusahaanList = [] } = useQuery({
+    queryKey: ['perusahaan-all'],
+    queryFn: async () => {
+      const res = await axiosInstance.get('/master/perusahaan?all=true');
+      return res.data || [];
+    },
+  });
+
+  // Fetch rekening for dropdown
+  const { data: rekeningList = [] } = useQuery({
+    queryKey: ['rekening-all'],
+    queryFn: async () => {
+      const res = await axiosInstance.get('/master/rekening?all=true');
+      return res.data || [];
+    },
+  });
+
+  const [formData, setFormData] = useState({
     kategori_id: '',
     subkategori_id: '',
     akun_id: '',
@@ -279,7 +324,9 @@ export default function Transaksi() {
     nilai: 0,
     input_by: '',
     keterangan: '',
-    tanggal: '', // tambahkan tanggal untuk date picker
+    tanggal: '',
+    perusahaan_id: '', // new
+    rekening_id: '',   // new
   });
 
   // Fiscal month validation hooks (must be after formData, editModalOpen, editData)
@@ -429,7 +476,10 @@ export default function Transaksi() {
 
   const editFilteredAccounts = editData?.sub_kategori && editData?.kategori
     ? accounts.filter((acc) => {
-        const selectedSubKategori = subCategories.find((sk) => sk.sub_kategori === editData.sub_kategori);
+        // Temukan sub kategori yang cocok dengan nama dan kategori
+        const selectedSubKategori = subCategories.find(
+          (sk) => sk.sub_kategori === editData.sub_kategori && sk.kategori === editData.kategori
+        );
         return (
           acc.sub_kategori === editData.sub_kategori &&
           acc.kategori === editData.kategori &&
@@ -451,6 +501,7 @@ export default function Transaksi() {
       pageSize,
       filterTanggalDari,
       filterTanggalSampai,
+      filterPerusahaan,
       filterBulan,
       filterTahun,
       filterKategori,
@@ -464,23 +515,24 @@ export default function Transaksi() {
         const params = new URLSearchParams();
         if (filterTanggalDari) params.append('from', filterTanggalDari);
         if (filterTanggalSampai) params.append('to', filterTanggalSampai);
+        if (filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
         params.append('page', String(page));
         params.append('limit', String(pageSize));
         if (kategoriSort) params.append('sortKategori', kategoriSort);
         const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
-        return { data: response.data.data, totalPages: 1 };
+        return { data: response.data.data, totalPages: response.data.totalPages || 1 };
       } else {
         // Query tt_finance (rekap)
         const params = new URLSearchParams();
         if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
           const tahun2Digit = String(filterTahun).slice(-2);
-          // Kirim dua format: "NOV-25" dan "NOV - 25" (tanpa dan dengan spasi)
+          // Kirim satu format; backend sudah handle variasi spasi
           params.append('bulan', `${filterBulan}-${tahun2Digit}`);
-          params.append('bulan', `${filterBulan} - ${tahun2Digit}`);
         }
         if (filterTahun) params.append('tahun', filterTahun);
+        if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
         params.append('flatten', '1');
@@ -488,15 +540,24 @@ export default function Transaksi() {
         params.append('limit', String(pageSize));
         if (kategoriSort) params.append('sortKategori', kategoriSort);
         const response = await axiosInstance.get(`/transaksi?${params.toString()}`);
-        return { data: response.data.data, totalPages: response.data.totalPages };
+        return { data: response.data.data, totalPages: response.data.totalPages, total: response.data.total, totalNilai: response.data.totalNilai };
       }
     },
   });
 
   const transaksiList = (transaksiResp as any)?.data || [];
+  // Apply client-side perusahaan filter as a safety net
+  const perusahaanFilteredList = (() => {
+    const arr = Array.isArray(transaksiList) ? transaksiList : [];
+    // Hanya filter perusahaan pada Detail; Rekap tidak memiliki field perusahaan
+    if (typeData === 'Detail' && filterPerusahaan) {
+      return arr.filter((row: any) => (row?.nama_perusahaan || '').trim() === filterPerusahaan);
+    }
+    return arr;
+  })();
   // Sort ascending: Detail by tanggal, Rekap by bulan (fiscal order DEC..NOV)
   const sortedTransaksiList = (() => {
-    const arr = Array.isArray(transaksiList) ? [...transaksiList] : [];
+    const arr = [...perusahaanFilteredList];
     if (typeData === 'Detail') {
       return arr.sort((a: any, b: any) => {
         const da = new Date(a.tanggal || '1970-01-01').getTime();
@@ -513,7 +574,54 @@ export default function Transaksi() {
       return arr.sort((a: any, b: any) => idx(a.bulan) - idx(b.bulan));
     }
   })();
+  // Use backend-provided total pages for both modes
   const totalPages = (transaksiResp as any)?.totalPages || 1;
+  // Rows to display: backend already paginates Detail and Rekap
+  const displayRows = sortedTransaksiList;
+  // Totals based on currently displayed rows
+  const totalDataDisplayed = Array.isArray(displayRows) ? displayRows.length : 0;
+  const totalNilaiDisplayed = Array.isArray(displayRows)
+    ? displayRows.reduce((sum: number, row: any) => sum + (Number(row?.nilai) || 0), 0)
+    : 0;
+
+  // Aggregate totals across all pages via backend aggregate
+  const { data: aggregateTotals } = useQuery({
+    queryKey: [
+      'transaksi-aggregate',
+      typeData,
+      filterTanggalDari,
+      filterTanggalSampai,
+      filterBulan,
+      filterTahun,
+      filterPerusahaan,
+      filterKategori,
+      filterSubKategori,
+      fiscalYear,
+    ],
+    queryFn: async () => {
+      if (typeData === 'Detail') {
+        const params = new URLSearchParams();
+        if (filterTanggalDari) params.append('from', filterTanggalDari);
+        if (filterTanggalSampai) params.append('to', filterTanggalSampai);
+        if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
+        if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
+        if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+        params.append('aggregate', '1');
+        const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
+        return response.data || { totalNilai: 0, totalCount: 0 };
+      } else {
+        // For Rekap, totals are included in main response already
+        return {
+          totalNilai: (transaksiResp as any)?.totalNilai || 0,
+          totalCount: (transaksiResp as any)?.total || 0,
+        };
+      }
+    },
+    enabled: !!transaksiResp,
+  });
+
+  const totalDataAllPages = (aggregateTotals as any)?.totalCount || 0;
+  const totalNilaiAllPages = (aggregateTotals as any)?.totalNilai || 0;
   // Reset to first page if pageSize changes
   useEffect(() => {
     setPage(1);
@@ -534,6 +642,10 @@ export default function Transaksi() {
         bulan_fiskal: '',
         nilai: 0,
         input_by: '',
+        keterangan: '',
+        tanggal: '',
+        perusahaan_id: '',
+        rekening_id: '',
       });
       setFormattedNilai('');
     },
@@ -545,20 +657,38 @@ export default function Transaksi() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Ambil nama sub_kategori dan akun dari master data
+    // Validasi field wajib
+    if (!formData.perusahaan_id) {
+      toast.error('Perusahaan wajib dipilih!');
+      return;
+    }
+    if (!formData.kategori_id || !formData.subkategori_id || !formData.akun_id || !formData.bulan_fiskal || !formData.nilai || !formData.tanggal) {
+      toast.error('Pastikan semua field wajib sudah diisi!');
+      return;
+    }
     const akunObj = accounts.find((a) => a._id === formData.akun_id);
     const subKategoriObj = subCategories.find((sk) => sk._id === formData.subkategori_id);
-    // Ambil tahun dari bulan_fiskal
     const kategoriObj = categories.find((k) => k._id === formData.kategori_id);
-    const payload = {
+    const perusahaanObj = perusahaanList.find((p) => p._id === formData.perusahaan_id);
+    let rekeningObj = null;
+    if (formData.rekening_id && formData.rekening_id !== 'none') {
+      rekeningObj = rekeningList.find((r) => r._id === formData.rekening_id);
+    }
+    const payload: any = {
       kategori: kategoriObj?.kategori || '',
       sub_kategori: subKategoriObj?.sub_kategori || '',
       akun: akunObj?.akun || '',
       bulan: formData.bulan_fiskal,
       nilai: formData.nilai,
       input_by: user?.name || 'Unknown',
-      tanggal: formData.tanggal, // pastikan tanggal dikirim ke backend
+      tanggal: formData.tanggal,
       keterangan: formData.keterangan || '',
+      // Properti perusahaan
+      kode_perusahaan: perusahaanObj?.kode_perusahaan || '',
+      nama_perusahaan: perusahaanObj?.nama_perusahaan || '',
+      // Properti rekening
+      kode_bank: rekeningObj?.kode_bank || '',
+      no_rekening: rekeningObj?.no_rekening || '',
     };
     createMutation.mutate(payload);
   };
@@ -636,6 +766,20 @@ export default function Transaksi() {
                 <Label htmlFor="tanggalSampai" className="text-sm font-semibold text-gray-700 mb-1">Tanggal Sampai</Label>
                 <Input id="tanggalSampai" type="date" value={filterTanggalSampai} onChange={e => setFilterTanggalSampai(e.target.value)} className="border-2 border-gray-200" />
               </div>
+              <div className="flex flex-col">
+                <Label htmlFor="filterPerusahaan" className="text-sm font-semibold text-gray-700 mb-1">Perusahaan</Label>
+                <Select value={filterPerusahaan || 'ALL'} onValueChange={v => setFilterPerusahaan(v === 'ALL' ? '' : v)}>
+                  <SelectTrigger className="w-40 border-2 border-gray-200">
+                    <SelectValue placeholder="Semua" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Semua</SelectItem>
+                    {perusahaanList.map((p) => (
+                      <SelectItem key={p._id} value={p.nama_perusahaan}>{p.nama_perusahaan}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </>
           )}
           {/* Filter for Rekap */}
@@ -693,6 +837,15 @@ export default function Transaksi() {
               </SelectContent>
             </Select>
           </div>
+          {/* Totals Summary */}
+          <div className="flex flex-col self-center leading-tight mt-4">
+            <div className="text-sm font-semibold text-gray-700">
+              Total Nilai: {formatCurrency(totalNilaiAllPages)}
+            </div>
+            <div className="text-sm text-gray-600">
+              Total Data: {totalDataAllPages}
+            </div>
+          </div>
         </div>
 
         {/* Modal Input Transaksi */}
@@ -723,6 +876,47 @@ export default function Transaksi() {
                     </div>
                   )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Perusahaan Dropdown */}
+                    <div className="grid gap-2">
+                      <Label htmlFor="perusahaan_id" className="text-sm font-semibold text-gray-700">Perusahaan</Label>
+                      <Select
+                        value={formData.perusahaan_id}
+                        onValueChange={value => setFormData({ ...formData, perusahaan_id: value })}
+                        required
+                      >
+                        <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                          <SelectValue placeholder="Pilih perusahaan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {perusahaanList.map((p) => (
+                            <SelectItem key={p._id} value={p._id}>
+                              {p.nama_perusahaan}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Rekening Dropdown */}
+                    <div className="grid gap-2">
+                      <Label htmlFor="rekening_id" className="text-sm font-semibold text-gray-700">No Rekening</Label>
+                      <Select
+                        value={formData.rekening_id}
+                        onValueChange={value => setFormData({ ...formData, rekening_id: value })}
+                        required={false}
+                      >
+                        <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                          <SelectValue placeholder="Pilih rekening (opsional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
+                          {rekeningList.map((r) => (
+                            <SelectItem key={r._id} value={r._id}>
+                              {r.kode_bank} - {r.no_rekening}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     {/* Tanggal */}
                     <div className="grid gap-2">
                       <Label htmlFor="tanggal" className="text-sm font-semibold text-gray-700">Tanggal</Label>
@@ -912,7 +1106,7 @@ export default function Transaksi() {
                 <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Sub Kategori</TableHead>
                 <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Akun</TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900 text-right">Nilai</TableHead>
-                <TableHead className="w-24 px-6 py-4 font-semibold text-gray-900">Input By</TableHead>
+                {/* <TableHead className="w-24 px-6 py-4 font-semibold text-gray-900">Input By</TableHead> */}
                 {typeData === 'Detail' && (
                   <TableHead className="w-32 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
                 )}
@@ -942,9 +1136,15 @@ export default function Transaksi() {
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedTransaksiList.map((row: any, idx: number) => (
-                  <>
-                  <TableRow key={(row.parentId || row._id) + '-' + idx} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
+                displayRows.map((row: any, idx: number) => (
+                  <React.Fragment key={row._id || row.parentId || idx}>
+                  <TableRow
+                    key={(row.parentId || row._id) + '-' + idx}
+                    className={
+                      `hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50` +
+                      (typeData === 'Detail' && expandedRows[row._id || String(idx)] ? ' pb-6 align-top' : '')
+                    }
+                  >
                     {typeData === 'Detail' && (
                       <TableCell className="w-10 px-2 py-4">
                         <Button variant="ghost" size="sm" onClick={() => toggleExpandedRow(row._id || String(idx))} aria-label="Expand">
@@ -965,9 +1165,9 @@ export default function Transaksi() {
                     <TableCell className="w-40 px-6 py-4 text-gray-700">{row.sub_kategori}</TableCell>
                     <TableCell className="w-40 px-6 py-4 text-gray-700">{row.akun}</TableCell>
                     <TableCell className="w-32 px-6 py-4 text-gray-700 text-right font-medium">
-                      {formatCurrency(row.nilai)}
+                      <span className="break-words whitespace-normal block">{formatCurrency(row.nilai)}</span>
                     </TableCell>
-                    <TableCell className="w-24 px-6 py-4 text-gray-700">{row.input_by || row.created_by}</TableCell>
+                    {/* <TableCell className="w-24 px-6 py-4 text-gray-700">{row.input_by || row.created_by}</TableCell> */}
                     {typeData === 'Detail' && (
                       <TableCell className="w-32 px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
@@ -993,26 +1193,34 @@ export default function Transaksi() {
                     )}
                   </TableRow>
                   {typeData === 'Detail' && expandedRows[row._id || String(idx)] && (
-                    <TableRow className="bg-slate-50">
-                      <TableCell colSpan={10} className="py-2 px-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                          <div>
-                            <div className="text-xs text-slate-500">Keterangan</div>
-                            <div className="text-sm font-medium">{row.keterangan || '-'}</div>
+                    <TableRow className="bg-transparent">
+                      <TableCell colSpan={9} className="pt-0 pb-4 px-0 border-none align-top">
+                        <div className="bg-white rounded-lg border border-slate-200 mx-2 my-0 p-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
+                          <div className="flex flex-col min-w-[120px]">
+                            <span className="text-[11px] text-slate-500 leading-tight">Keterangan</span>
+                            <span className="font-medium text-gray-900 truncate">{row.keterangan || '-'}</span>
                           </div>
-                          <div>
-                            <div className="text-xs text-slate-500">Referensi</div>
-                            <div className="text-sm font-medium">{row.referensi || '-'}</div>
+                          <div className="flex flex-col min-w-[120px]">
+                            <span className="text-[11px] text-slate-500 leading-tight">Perusahaan</span>
+                            <span className="font-medium text-gray-900 truncate">{row.nama_perusahaan || '-'}</span>
                           </div>
-                          <div>
-                            <div className="text-xs text-slate-500">Tanggal Input</div>
-                            <div className="text-sm font-medium">{row.input_date ? new Date(row.input_date).toLocaleDateString('id-ID') : '-'}</div>
+                          <div className="flex flex-col min-w-[90px]">
+                            <span className="text-[11px] text-slate-500 leading-tight">Kode Bank</span>
+                            <span className="font-medium text-gray-900 truncate">{row.kode_bank || '-'}</span>
+                          </div>
+                          <div className="flex flex-col min-w-[110px]">
+                            <span className="text-[11px] text-slate-500 leading-tight">No Rekening</span>
+                            <span className="font-medium text-gray-900 truncate">{row.no_rekening || '-'}</span>
+                          </div>
+                          <div className="flex flex-col min-w-[90px]">
+                            <span className="text-[11px] text-slate-500 leading-tight">Input By</span>
+                            <span className="font-medium text-gray-900 truncate">{row.input_by || row.created_by || '-'}</span>
                           </div>
                         </div>
                       </TableCell>
                     </TableRow>
                   )}
-                  </>
+                  </React.Fragment>
                 ))
               )}
             </TableBody>
@@ -1080,6 +1288,47 @@ export default function Transaksi() {
                     </div>
                   )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Perusahaan Dropdown (Edit) */}
+                    <div className="grid gap-2">
+                      <Label htmlFor="edit-perusahaan_id" className="text-sm font-semibold text-gray-700">Perusahaan</Label>
+                      <Select
+                        value={editData?.perusahaan_id || ''}
+                        onValueChange={value => setEditData({ ...editData, perusahaan_id: value })}
+                        required
+                      >
+                        <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                          <SelectValue placeholder="Pilih perusahaan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {perusahaanList.map((p) => (
+                            <SelectItem key={p._id} value={p._id}>
+                              {p.nama_perusahaan}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Rekening Dropdown (Edit) */}
+                    <div className="grid gap-2">
+                      <Label htmlFor="edit-rekening_id" className="text-sm font-semibold text-gray-700">No Rekening</Label>
+                      <Select
+                        value={editData?.rekening_id || 'none'}
+                        onValueChange={value => setEditData({ ...editData, rekening_id: value })}
+                        required={false}
+                      >
+                        <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                          <SelectValue placeholder="Pilih rekening (opsional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
+                          {rekeningList.map((r) => (
+                            <SelectItem key={r._id} value={r._id}>
+                              {r.kode_bank} - {r.no_rekening}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     {/* Tanggal */}
                     <div className="grid gap-2">
                       <Label htmlFor="edit-tanggal" className="text-sm font-semibold text-gray-700">Tanggal</Label>

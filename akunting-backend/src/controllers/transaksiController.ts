@@ -111,7 +111,7 @@ import TtFinanceDaily from '../models/TtFinanceDaily';
 
 export const createTransaksi = async (req: Request, res: Response) => {
   try {
-    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan } = req.body;
+    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening } = req.body;
     if (!kategori || !sub_kategori || !akun || !bulan || nilai === undefined) {
       return res.status(400).json({ message: 'kategori, sub_kategori, akun, bulan, nilai required' });
     }
@@ -202,9 +202,13 @@ export const createTransaksi = async (req: Request, res: Response) => {
       sub_kategori,
       akun,
       nilai,
-      keterangan: keterangan ? keterangan.toUpperCase() : undefined,
+      keterangan: keterangan && keterangan.trim() !== '' ? keterangan.toUpperCase() : '-',
       created_by: input_by,
       created_at: new Date(),
+      kode_perusahaan: kode_perusahaan || '',
+      nama_perusahaan: nama_perusahaan || '',
+      kode_bank: kode_bank && kode_bank.trim() !== '' ? kode_bank : '-',
+      no_rekening: no_rekening && no_rekening.trim() !== '' ? no_rekening : '-',
     });
 
     await detail.save();
@@ -297,6 +301,9 @@ export const listTransaksi = async (req: Request, res: Response) => {
             ],
             totalCount: [
               { $count: 'count' }
+            ],
+            totalSum: [
+              { $group: { _id: null, sum: { $sum: '$nilai' } } }
             ]
           }
         }
@@ -305,13 +312,19 @@ export const listTransaksi = async (req: Request, res: Response) => {
       const aggRes = await Model.aggregate(pipeline).allowDiskUse(true).exec();
       const paged = aggRes[0]?.pagedResults || [];
       const total = (aggRes[0]?.totalCount && aggRes[0].totalCount[0] && aggRes[0].totalCount[0].count) || 0;
+      const totalSum = (aggRes[0]?.totalSum && aggRes[0].totalSum[0] && aggRes[0].totalSum[0].sum) || 0;
       const totalPages = Math.ceil(total / limitNum) || 1;
-      return res.json({ data: paged, total, page: pageNum, totalPages });
+      return res.json({ data: paged, total, totalNilai: totalSum, page: pageNum, totalPages });
     }
 
     // Default: return paginated documents (grouped per transaksi)
     const total = await Model.countDocuments(filter);
     const totalPages = Math.ceil(total / limitNum) || 1;
+    const sumAgg = await Model.aggregate([
+      { $match: filter },
+      { $group: { _id: null, sum: { $sum: '$total_tahunan' } } }
+    ]).exec();
+    const totalSum = sumAgg[0]?.sum || 0;
     const sortObj: any = {};
     if (sortKategori === 'asc') sortObj.kategori = 1;
     else if (sortKategori === 'desc') sortObj.kategori = -1;
@@ -321,7 +334,7 @@ export const listTransaksi = async (req: Request, res: Response) => {
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
-    res.json({ data: list, total, page: pageNum, totalPages });
+    res.json({ data: list, total, totalNilai: totalSum, page: pageNum, totalPages });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
   }
@@ -330,7 +343,7 @@ export const listTransaksi = async (req: Request, res: Response) => {
 export const updateTransaksi = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan } = req.body;
+    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening } = req.body;
     // Cari detail transaksi di tt_finance_detail
     const detail = await TtFinanceDetail.findById(id);
     if (!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
@@ -459,9 +472,13 @@ export const updateTransaksi = async (req: Request, res: Response) => {
       sub_kategori: sub_kategori || detail.sub_kategori,
       akun: akun || detail.akun,
       nilai: nilai !== undefined ? nilai : detail.nilai,
-      keterangan: keterangan ? keterangan.toUpperCase() : undefined,
+      keterangan: keterangan && keterangan.trim() !== '' ? keterangan.toUpperCase() : '-',
       created_by: input_by || detail.created_by,
       created_at: new Date(),
+      kode_perusahaan: kode_perusahaan || '',
+      nama_perusahaan: nama_perusahaan || '',
+      kode_bank: kode_bank && kode_bank.trim() !== '' ? kode_bank : '-',
+      no_rekening: no_rekening && no_rekening.trim() !== '' ? no_rekening : '-',
     });
     await newDetail.save();
 

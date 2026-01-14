@@ -188,6 +188,9 @@ export default function AppSidebar() {
                         { key: "subkategori", label: "Sub Kategori" },
                         { key: "akun", label: "Akun" },
                         { key: "program", label: "Program" },
+                        { key: "perusahaan", label: "Master Perusahaan" },
+                        { key: "bank", label: "Master Bank" },
+                        { key: "rekening", label: "Master Rekening" },
                       ].map((item, index) => (
                         <SidebarMenuSubItem key={item.key}>
                           <NavLink to={`/master/${item.key}`}>
@@ -197,12 +200,11 @@ export default function AppSidebar() {
                                 location.pathname === `/master/${item.key}`
                               }
                               className={cn(
-                                "group relative rounded-lg px-3 py-3 text-slate-400 hover:text-white transition-all duration-300",
+                                "group relative rounded-lg px-3 py-2 text-slate-400 hover:text-white transition-all duration-300",
                                 "hover:bg-gradient-to-r hover:from-slate-600/40 hover:to-slate-500/40",
                                 "hover:translate-x-1",
                                 "data-[active=true]:bg-gradient-to-r data-[active=true]:from-blue-600/30 data-[active=true]:to-indigo-600/30",
-                                "data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-blue-500/20",
-                                 "py-5"
+                                "data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-blue-500/20"
                               )}
                               style={{ animationDelay: `${index * 100}ms` }}
                             >

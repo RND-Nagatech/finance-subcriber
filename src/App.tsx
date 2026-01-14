@@ -1,3 +1,16 @@
+          <Route
+            path="/master/perusahaan"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Perusahaan />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+import Perusahaan from "./pages/MasterData/Perusahaan";
+import Bank from './pages/MasterData/Bank';
+import Rekening from './pages/MasterData/Rekening';
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -40,6 +53,36 @@ const App = () => (
       <FiscalYearInitializer />
       <BrowserRouter>
         <Routes>
+                    <Route
+                      path="/master/perusahaan"
+                      element={
+                        <ProtectedRoute>
+                          <MainLayout>
+                            <Perusahaan />
+                          </MainLayout>
+                        </ProtectedRoute>
+                      }
+                    />
+                      <Route
+                        path="/master/bank"
+                        element={
+                          <ProtectedRoute>
+                            <MainLayout>
+                              <Bank />
+                            </MainLayout>
+                          </ProtectedRoute>
+                        }
+                      />
+                      <Route
+                        path="/master/rekening"
+                        element={
+                          <ProtectedRoute>
+                            <MainLayout>
+                              <Rekening />
+                            </MainLayout>
+                          </ProtectedRoute>
+                        }
+                      />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />

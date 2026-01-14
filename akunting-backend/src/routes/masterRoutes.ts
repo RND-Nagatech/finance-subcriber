@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import perusahaanRoutes from './perusahaanRoutes';
+import bankRoutes from './bankRoutes';
+import rekeningRoutes from './rekeningRoutes';
 import {
   listKategori, createKategori, updateKategori, deleteKategori,
   listSubKategori, createSubKategori, updateSubKategori, deleteSubKategori,
@@ -40,5 +43,11 @@ router.get('/program', listProgram);
 router.post('/program', authenticate, createProgram);
 router.put('/program/:id', authenticate, updateProgram);
 router.delete('/program/:id', authenticate, deleteProgram);
+
+
+// Perusahaan routes (delegated to perusahaanRoutes for CRUD)
+router.use('/perusahaan', perusahaanRoutes);
+router.use('/bank', bankRoutes);
+router.use('/rekening', rekeningRoutes);
 
 export default router;

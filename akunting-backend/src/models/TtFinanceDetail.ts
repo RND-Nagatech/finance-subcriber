@@ -32,6 +32,10 @@ const TtFinanceDetailSchema: Schema = new Schema({
   deleted_by: { type: String },
   deleted_at: { type: Date },
   status_deleted: { type: Boolean, default: false },
+  kode_perusahaan: { type: String },
+  nama_perusahaan: { type: String },
+  kode_bank: { type: String },
+  no_rekening: { type: String },
 });
 
 export default mongoose.model<ITtFinanceDetail>('tt_finance_detail', TtFinanceDetailSchema);
