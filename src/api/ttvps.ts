@@ -16,6 +16,7 @@ export interface TTVpsDetailItemDTO {
   diskon: number;
   diskon_percent: number;
   total_harga: number;
+  is_active?: boolean;
   status: TTVpsStatus;
   tgl_lunas?: string;
 }
@@ -77,6 +78,12 @@ export async function fetchAvailableSubscribers(): Promise<VpsSubscriberOption[]
 export async function updateItem(params: { periode: string; itemId: string; start?: string; bulan?: number; harga?: number; diskon?: number; diskon_percent?: number; status?: TTVpsStatus }) {
   const { periode, itemId, ...body } = params;
   const { data } = await axiosInstance.patch(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}`, body);
+  return data;
+}
+
+export async function updateItemActive(params: { periode: string; itemId: string; is_active: boolean }) {
+  const { periode, itemId, is_active } = params;
+  const { data } = await axiosInstance.patch(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/active`, { is_active });
   return data;
 }
 

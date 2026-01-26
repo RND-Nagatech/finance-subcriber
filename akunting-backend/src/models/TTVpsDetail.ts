@@ -17,6 +17,7 @@ export interface ITTVpsDetail extends Document {
   diskon: number;
   diskon_percent: number;
   total_harga: number;
+  is_active?: boolean;
   status: VpsStatus;
   tgl_lunas?: string;
   input_date: Date;
@@ -42,6 +43,7 @@ const TTVpsDetailSchema: Schema = new Schema(
     diskon: { type: Number, required: true, min: 0, default: 0 },
     diskon_percent: { type: Number, required: true, min: 0, default: 0 },
     total_harga: { type: Number, required: true, min: 0 },
+    is_active: { type: Boolean, required: false, default: true },
     status: { type: String, enum: ['OPEN', 'PROCESS', 'DONE'], default: 'OPEN' },
     tgl_lunas: { type: String, required: false },
     input_date: { type: Date, default: Date.now },

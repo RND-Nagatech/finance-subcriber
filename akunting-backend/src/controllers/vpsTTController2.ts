@@ -9,7 +9,7 @@ function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }
 
 async function recalcAggregateForPeriode(periode: string, user: any) {
   const allDetailsDocs = await TTVpsDetail.find({});
-  const periodeDocs = allDetailsDocs.filter(d => d.periode === periode);
+  const periodeDocs = allDetailsDocs.filter(d => d.periode === periode && (d as any).is_active !== false);
   const estimasi = sum(periodeDocs.map(d => d.total_harga));
   const total_toko_estimasi = periodeDocs.length;
   const realisasiDetails = allDetailsDocs.filter(d => d.status === 'DONE' && d.tgl_lunas && d.tgl_lunas.slice(0,7) === periode);
@@ -115,6 +115,7 @@ export const createSchedule = async (req: Request, res: Response) => {
         diskon: e.diskon,
         diskon_percent: e === entries[0] ? (diskonPercentFirst || (jumlah_harga > 0 ? Math.round((diskonFirst / jumlah_harga) * 100) : 0)) : 0,
         total_harga: jumlah_harga - e.diskon,
+        is_active: true,
         status: 'OPEN',
         input_date: now,
         update_date: now,
@@ -163,10 +164,11 @@ export const getAggregateByPeriode = async (req: Request, res: Response) => {
     if (!periode) return res.status(400).json({ message: 'periode is required' });
 
     const detailsDocsPerPeriod = await TTVpsDetail.find({ periode });
-    const computedEstimasi = detailsDocsPerPeriod.reduce((acc, d) => acc + (d.total_harga || 0), 0);
+    const activeDetails = detailsDocsPerPeriod.filter(d => (d as any).is_active !== false);
+    const computedEstimasi = activeDetails.reduce((acc, d) => acc + (d.total_harga || 0), 0);
     const realisasiDocs = await TTVpsDetail.find({ status: 'DONE', tgl_lunas: { $regex: `^${periode}` } });
     const computedRealisasi = realisasiDocs.reduce((acc, d) => acc + (d.total_harga || 0), 0);
-    const computedTotalTokoEstimasi = detailsDocsPerPeriod.length;
+    const computedTotalTokoEstimasi = activeDetails.length;
     const computedTotalTokoRealisasi = realisasiDocs.length;
 
     await TTVps.updateOne(
@@ -220,6 +222,10 @@ export const updateItemStatus = async (req: Request, res: Response) => {
     const item = await TTVpsDetail.findOne({ _id: itemId, periode });
     if (!item) return res.status(404).json({ message: 'item not found' });
     const prevLunasPeriod = item.tgl_lunas ? item.tgl_lunas.slice(0,7) : undefined;
+    // Block status changes if item is inactive (except ensuring it's OPEN)
+    if ((item as any).is_active === false && status !== 'OPEN') {
+      return res.status(400).json({ message: 'Data nonaktif. Aktifkan terlebih dahulu sebelum proses/invoice/pelunasan.' });
+    }
     // Enforce workflow: OPEN -> PROCESS -> DONE
     if (status === 'DONE') {
       if (item.status !== 'PROCESS') {
@@ -502,6 +508,7 @@ export const generateNextFiscal = async (req: Request, res: Response) => {
           diskon: 0,
           diskon_percent: 0,
           total_harga: harga * e.bulan,
+            is_active: true,
           status: 'OPEN',
           input_date: new Date(),
           update_date: new Date(),
@@ -593,6 +600,7 @@ export const startGenerateNextFiscal = async (req: Request, res: Response) => {
               diskon: 0,
               diskon_percent: 0,
               total_harga: harga * e.bulan,
+              is_active: true,
               status: 'OPEN',
               input_date: new Date(),
               update_date: new Date(),
@@ -624,4 +632,48 @@ export const getGenerateStatus = async (req: Request, res: Response) => {
   if (!jobId || !generateJobs[jobId]) return res.status(404).json({ message: 'job not found' });
   const job = generateJobs[jobId];
   return res.json({ status: job.status, nextFiscalLabel: job.nextFiscalLabel, total: job.total, done: job.done, startedAt: job.startedAt, finishedAt: job.finishedAt, error: job.error });
+};
+
+export const updateItemActive = async (req: Request, res: Response) => {
+  try {
+    const { periode, itemId } = req.params as { periode: string; itemId: string };
+    const { is_active } = req.body as { is_active: boolean };
+    if (typeof is_active !== 'boolean') return res.status(400).json({ message: 'is_active harus boolean' });
+    const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
+
+    const item = await TTVpsDetail.findOne({ _id: itemId, periode });
+    if (!item) return res.status(404).json({ message: 'item not found' });
+
+    // Only OPEN items can be deactivated
+    if (is_active === false && item.status !== 'OPEN') {
+      return res.status(400).json({ message: 'Hanya data dengan status OPEN yang bisa dinonaktifkan' });
+    }
+
+    (item as any).is_active = is_active;
+    item.update_date = new Date();
+    item.update_by = userTag;
+    await item.save();
+
+    await recalcAggregateForPeriode(periode, (req as any).user);
+
+    const aggregateDoc = await TTVps.findOne({ periode });
+    return res.json(aggregateDoc ? {
+      _id: aggregateDoc._id,
+      periode: aggregateDoc.periode,
+      estimasi: aggregateDoc.estimasi,
+      realisasi: aggregateDoc.realisasi,
+      total_toko_estimasi: aggregateDoc.total_toko_estimasi,
+      total_toko_realisasi: aggregateDoc.total_toko_realisasi,
+    } : {
+      _id: undefined,
+      periode,
+      estimasi: 0,
+      realisasi: 0,
+      total_toko_estimasi: 0,
+      total_toko_realisasi: 0,
+    });
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({ message: 'internal error', error: err?.message });
+  }
 };

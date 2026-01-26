@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus } from '@/api/ttvps';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -171,6 +171,21 @@ export default function VPS() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal hapus data'),
   });
 
+  const updateActiveMut = useMutation({
+    mutationFn: ({ periode, itemId, is_active }: { periode: string; itemId: string; is_active: boolean }) => updateItemActive({ periode, itemId, is_active }),
+    onSuccess: (_data, variables) => {
+      toast.success(variables.is_active ? 'Data diaktifkan' : 'Data dinonaktifkan');
+      setLocalItems((prev) => prev.map((item) =>
+        item.__periode === variables.periode && item._id === variables.itemId
+          ? { ...item, is_active: variables.is_active }
+          : item
+      ));
+      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal ubah status aktif'),
+  });
+
   const updateStatusMut = useMutation({
     mutationFn: ({ periode, itemId, status, tanggalLunas }: { periode: string; itemId: string; status: 'OPEN' | 'PROCESS' | 'DONE'; tanggalLunas?: string }) => updateItemStatus({ periode, itemId, status, tanggalLunas }),
     onSuccess: (_data, variables) => {
@@ -188,8 +203,9 @@ export default function VPS() {
   // Summary for current table view
   const summary = useMemo(() => {
     const rows = Array.isArray(combinedItems) ? combinedItems : [];
-    const total = rows.reduce((sum: number, it: any) => sum + (Number(it?.total_harga) || 0), 0);
-    const uniqueToko = new Set(rows.map((r: any) => r.toko)).size;
+    const activeRows = rows.filter((it: any) => (it?.is_active ?? true) !== false);
+    const total = activeRows.reduce((sum: number, it: any) => sum + (Number(it?.total_harga) || 0), 0);
+    const uniqueToko = new Set(activeRows.map((r: any) => r.toko)).size;
     return { total, uniqueToko, count: rows.length };
   }, [combinedItems]);
 
@@ -356,6 +372,9 @@ export default function VPS() {
                         ) : (
                           <span className="inline-flex items-center rounded-full bg-gray-200 text-gray-700 px-2 py-0.5 text-xs font-medium">OPEN</span>
                         )}
+                        {(item.is_active ?? true) === false && (
+                          <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium ml-2">Nonaktif</span>
+                        )}
                       </td>
                       <td className="py-2 pr-4 flex gap-2">
                         {item.status === 'OPEN' && (
@@ -371,11 +390,50 @@ export default function VPS() {
                               aria-label="Invoice dibuat"
                               title="Invoice dibuat"
                               className="rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                              disabled={updateStatusMut.isPending}
+                              disabled={updateStatusMut.isPending || ((item.is_active ?? true) === false)}
                             >
                               <FileCheck className="h-5 w-5" />
                             </Button>
                           </ConfirmAction>
+                        )}
+                        {item.status === 'OPEN' && (
+                          (item.is_active ?? true) !== false ? (
+                            <ConfirmAction
+                              title="Nonaktifkan VPS?"
+                              description="Data akan dinonaktifkan untuk periode ini. Tidak bisa diproses invoice/pelunasan hingga diaktifkan kembali."
+                              actionText="Ya, Nonaktifkan"
+                              preview={<VpsItemPreview item={item} />}
+                              onConfirm={() => updateActiveMut.mutate({ periode: item.__periode, itemId: item._id, is_active: false })}
+                            >
+                              <Button
+                                size="icon"
+                                aria-label="Nonaktifkan"
+                                title="Nonaktifkan data"
+                                className="rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                                disabled={updateActiveMut.isPending}
+                              >
+                                <span className="font-bold">Ø</span>
+                              </Button>
+                            </ConfirmAction>
+                          ) : (
+                            <ConfirmAction
+                              title="Aktifkan kembali?"
+                              description="Data akan diaktifkan kembali dan kembali dihitung dalam estimasi."
+                              actionText="Ya, Aktifkan"
+                              preview={<VpsItemPreview item={item} />}
+                              onConfirm={() => updateActiveMut.mutate({ periode: item.__periode, itemId: item._id, is_active: true })}
+                            >
+                              <Button
+                                size="icon"
+                                aria-label="Aktifkan kembali"
+                                title="Aktifkan kembali"
+                                className="rounded-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                                disabled={updateActiveMut.isPending}
+                              >
+                                <span className="font-bold">↺</span>
+                              </Button>
+                            </ConfirmAction>
+                          )
                         )}
                         {item.status === 'PROCESS' && (
                           <>
