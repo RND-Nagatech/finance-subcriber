@@ -356,7 +356,7 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
 
                 {/* USERS - Only for Super Admin */}
-                {user?.role === 'superadmin' && (
+                {user?.role === 'superuser' && (
                   <SidebarMenuItem>
                     <NavLink to="/users">
                       <SidebarMenuButton
