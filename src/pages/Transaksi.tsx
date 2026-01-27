@@ -1500,7 +1500,7 @@ export default function Transaksi() {
                                 {row.attachments.map((att, idx) => (
                                   <div key={idx} className="flex items-center gap-1 bg-blue-50 rounded px-2 py-1">
                                     <a
-                                      href={`http://192.168.110.49:5001${att.path}`}
+                                      href={`${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="text-blue-600 hover:text-blue-800 underline text-xs"
