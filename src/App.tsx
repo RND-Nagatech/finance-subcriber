@@ -41,6 +41,7 @@ import PublicDashboard from "./pages/public-dashboard";
 import Budget from "./pages/Budget";
 import BudgetUsage from "./pages/BudgetUsage";
 import VPS from "./pages/VPS";
+import Users from "./pages/Users";
 
 const queryClient = new QueryClient();
 
@@ -159,6 +160,17 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <VPS />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Users />
                 </MainLayout>
               </ProtectedRoute>
             }

@@ -8,6 +8,10 @@ export interface IDataBulanan {
   nilai: number;
 }
 
+export interface IAttachment {
+  path: string;
+}
+
 export interface ITransaksi extends Document {
   kategori: string;
   sub_kategori: string;
@@ -16,6 +20,7 @@ export interface ITransaksi extends Document {
   total_tahunan: number;
   input_by: string;
   tahun_fiskal: string;
+  attachments: IAttachment[];
   created_at: Date;
   updated_at: Date;
 }
@@ -23,6 +28,10 @@ export interface ITransaksi extends Document {
 const DataBulananSchema: Schema = new Schema({
   bulan: { type: String, required: true },
   nilai: { type: Number, required: true },
+});
+
+const AttachmentSchema: Schema = new Schema({
+  path: { type: String, required: true },
 });
 
 const TransaksiSchema: Schema = new Schema({
@@ -33,6 +42,7 @@ const TransaksiSchema: Schema = new Schema({
   total_tahunan: { type: Number, default: 0 },
   input_by: { type: String, required: true },
   tahun_fiskal: { type: String, required: true },
+  attachments: { type: [AttachmentSchema], default: [] },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
 });

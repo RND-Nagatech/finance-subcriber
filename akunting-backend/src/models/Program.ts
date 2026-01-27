@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IProgram extends Document {
   nama: string;
   kode: string;
+  internal_kode: string;
   biaya: number;
   group_program: string;
   total_subscriber?: number;
@@ -19,6 +20,7 @@ export interface IProgram extends Document {
 const ProgramSchema: Schema = new Schema({
   nama: { type: String, required: true, unique: true },
   kode: { type: String, required: true, unique: true },
+  internal_kode: { type: String, required: true },
   biaya: { type: Number, required: true, min: 0 },
     group_program: { type: String, required: true },
     total_subscriber: { type: Number, required: false, default: 0 },

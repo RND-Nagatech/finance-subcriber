@@ -17,6 +17,7 @@ import {
 import { LogIn } from "lucide-react";
 import { base64URLToBuffer, bufferToBase64URL } from "@/utils/webauthn";
 import { useAppStore } from "@/store/useAppStore";
+import { secureStorage } from "@/utils/secureStorage";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -36,9 +37,10 @@ export default function Login() {
     onSuccess: (data) => {
       const { token, user } = data;
       // Simpan token & user
-      localStorage.setItem("auth_token", token);
-      localStorage.setItem("user_name", user.name);
-      setUser({ name: user.name, email: user.email });
+      secureStorage.setItem("auth_token", token);
+      secureStorage.setItem("user_name", user.name);
+      secureStorage.setItem("user_role", user.role);
+      setUser({ name: user.name, email: user.email, role: user.role });
       toast.success("Login berhasil!");
       navigate("/dashboard");
     },
@@ -115,10 +117,12 @@ export default function Login() {
 
       if (verifyRes.data.success) {
         // Simpan token & user (gunakan nama dari backend jika ada)
-        localStorage.setItem("auth_token", "webauthn_dummy_token");
+        secureStorage.setItem("auth_token", "webauthn_dummy_token");
         const userName = verifyRes.data.user?.name || email;
-        localStorage.setItem("user_name", userName);
-        setUser({ name: userName, email });
+        const userRole = verifyRes.data.user?.role || 'user';
+        secureStorage.setItem("user_name", userName);
+        secureStorage.setItem("user_role", userRole);
+        setUser({ name: userName, email, role: userRole });
         toast.success("Login YubiKey berhasil!");
         navigate("/dashboard");
       } else {

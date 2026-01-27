@@ -531,9 +531,9 @@ export const listProgram = async (req: Request, res: Response) => {
 
 export const createProgram = async (req: Request, res: Response) => {
   try {
-    const { nama, biaya, group_program } = req.body;
-    if (!nama || biaya === undefined || biaya === null || !group_program) {
-      return res.status(400).json({ message: 'nama, biaya, dan group_program required' });
+    const { nama, biaya, group_program, internal_kode } = req.body;
+    if (!nama || biaya === undefined || biaya === null || !group_program || !internal_kode) {
+      return res.status(400).json({ message: 'nama, biaya, group_program, dan internal_kode required' });
     }
 
     if (biaya < 0) {
@@ -546,6 +546,7 @@ export const createProgram = async (req: Request, res: Response) => {
     const p = new Program({
       nama,
       kode: finalKode,
+      internal_kode,
       biaya,
       group_program,
       input_date: new Date(),
@@ -567,7 +568,7 @@ export const createProgram = async (req: Request, res: Response) => {
 export const updateProgram = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { nama, biaya, group_program } = req.body;
+    const { nama, biaya, group_program, internal_kode } = req.body;
     const userId = resolveUserId(req);
 
     const old = await Program.findById(id);
@@ -584,6 +585,7 @@ export const updateProgram = async (req: Request, res: Response) => {
     old.nama = nama ?? old.nama;
     old.biaya = biaya ?? old.biaya;
     old.group_program = group_program ?? old.group_program;
+    old.internal_kode = internal_kode ?? old.internal_kode;
     old.update_date = new Date();
     old.update_by = userId;
     old.status_aktv = req.body.status_aktv ?? old.status_aktv;
@@ -625,7 +627,34 @@ export const listSubscriber = async (req: Request, res: Response) => {
     if (!req.query.all) {
       filter = { status_aktv: true };
     };
-    const list = await Subscriber.find(filter).sort({ tanggal: -1 });
+    const list = await Subscriber.aggregate([
+      { $match: filter },
+      {
+        $lookup: {
+          from: 'tm_program',
+          localField: 'program',
+          foreignField: 'nama',
+          as: 'program_info'
+        }
+      },
+      {
+        $unwind: {
+          path: '$program_info',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $addFields: {
+          internal_kode: { $ifNull: ['$program_info.internal_kode', '-'] }
+        }
+      },
+      {
+        $project: {
+          program_info: 0
+        }
+      },
+      { $sort: { tanggal: -1 } }
+    ]);
     res.json(list);
   } catch (error) {
     console.error('❌ Error in listSubscriber:', error);

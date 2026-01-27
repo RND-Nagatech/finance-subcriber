@@ -112,6 +112,7 @@ export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
                 </g>
               );
             }}
+            
           />
           <YAxis
             width={80}
@@ -129,18 +130,6 @@ export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
-            <LabelList
-              dataKey="value"
-              position="top"
-              offset={15}
-              formatter={(value: number) => `Rp.${value.toLocaleString('id-ID')}`}
-              style={{
-                fontSize: 12,
-                fill: '#374151',
-                fontWeight: 600,
-                textShadow: '0 1px 2px rgba(255,255,255,0.8)'
-              }}
-            />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

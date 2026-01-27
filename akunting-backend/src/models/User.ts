@@ -4,6 +4,7 @@ export interface IUser extends Document {
   username: string;
   password: string;
   name?: string;
+  role: string;
   createdAt: Date;
   credentials: Array<{
     credentialID: string;
@@ -24,6 +25,7 @@ const UserSchema = new Schema(
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     name: { type: String },
+    role: { type: String, enum: ['superuser', 'admin', 'finance', 'corsec', 'user'], default: 'user' },
     credentials: [CredentialSchema],
     currentChallenge: { type: String },
   },

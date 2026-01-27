@@ -45,6 +45,12 @@ export function SubscriberCumulativeChart({ data }: SubscriberCumulativeChartPro
             tick={({ x, y, payload }) => {
               const barCenter = x;
               const text = payload.value;
+              
+              // Format label: jika YYYY-MM-DD, tampilkan hanya hari (DD)
+              const formattedText = typeof text === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(text) 
+                ? text.split('-')[2] 
+                : text;
+              
               return (
                 <text
                   x={barCenter}
@@ -54,7 +60,7 @@ export function SubscriberCumulativeChart({ data }: SubscriberCumulativeChartPro
                   fontWeight={600}
                   fill="#374151"
                 >
-                  {text}
+                  {formattedText}
                 </text>
               );
             }}

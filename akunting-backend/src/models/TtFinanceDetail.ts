@@ -1,8 +1,13 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export interface IAttachment {
+  path: string;
+}
+
 export interface ITtFinanceDetail extends Document {
   tanggal: string;
   bulan: string;
+  tahun_fiskal?: string;
   kategori: string;
   sub_kategori: string;
   akun: string;
@@ -15,11 +20,13 @@ export interface ITtFinanceDetail extends Document {
   deleted_by?: string;
   deleted_at?: Date;
   status_deleted?: boolean;
+  attachments?: IAttachment[];
 }
 
 const TtFinanceDetailSchema: Schema = new Schema({
   tanggal: { type: String, required: true },
   bulan: { type: String, required: true },
+  tahun_fiskal: { type: String},
   kategori: { type: String, required: true },
   sub_kategori: { type: String, required: true },
   akun: { type: String, required: true },
@@ -36,6 +43,7 @@ const TtFinanceDetailSchema: Schema = new Schema({
   nama_perusahaan: { type: String },
   kode_bank: { type: String },
   no_rekening: { type: String },
+  attachments: { type: [{ path: { type: String, required: true } }], default: [] },
 });
 
 export default mongoose.model<ITtFinanceDetail>('tt_finance_detail', TtFinanceDetailSchema);

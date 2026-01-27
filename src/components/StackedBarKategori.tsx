@@ -30,6 +30,38 @@ export default function StackedBarKategori({ data, title, description }: IStacke
     row._total = totalKategori;
     return row;
   })
+
+  // tolong chartData diurutkan berdasarkan kategori , isi dari kategori string tanggal dalam format YYYY-MM-DD atau bisa saja JAN-26 sampai DES-26 misalkan
+  chartData.sort((a, b) => {
+    // check apakah kategori foramtnya adalah DES - 24 , JAN - 26, FEB - 26 , atau format YYYY-MM-DD
+    const monthOrder = ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV'];
+    const isMonthFormatA = monthOrder.includes(a.kategori.trim().split('-')[0].trim());
+    const isMonthFormatB = monthOrder.includes(b.kategori.trim().split('-')[0].trim());
+    if (isMonthFormatA && isMonthFormatB) {
+      console.log("DISINI");
+      
+      const [monthA, yearA] = a.kategori.trim().split('-');
+      const [monthB, yearB] = b.kategori.trim().split('-');
+      console.log(monthA, yearA, yearB);
+      
+      if (yearA !== yearB) {
+        return parseInt(yearA) - parseInt(yearB);
+      } else {
+        return monthOrder.indexOf(monthA) - monthOrder.indexOf(monthB);
+      }
+    }
+
+    // Jika bukan format bulan-tahun, anggap formatnya adalah YYYY-MM-DD
+    
+    const dateA = new Date(a.kategori);
+    const dateB = new Date(b.kategori);
+    if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+      return dateA.getTime() - dateB.getTime();
+    } else {
+      return a.kategori.localeCompare(b.kategori);
+    }
+  });
+  
   
 
   // Bar size dinamis: jika kategori < 4, bar lebih lebar
@@ -69,16 +101,22 @@ export default function StackedBarKategori({ data, title, description }: IStacke
             tick={({ x, y, payload, index }) => {
               // Center label by shifting x by half barSize
               const barCenter = x + barSize / 2;
+              let value = payload.value
+               // Jika format YYYY-MM-DD, tampilkan hanya hari (DD)
+              if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                value = value.split('-')[2];
+              }
+              // Jika format lain seperti JAN-26, tampilkan apa adanya
               return (
                 <g>
                   <text
-                    x={barCenter}
+                    x={x}
                     y={y + 16}
                     textAnchor="middle"
                     fontSize={13}
                     fill="#606060ff"
                   >
-                    {payload.value}
+                    {value}
                   </text>
                 </g>
               );
@@ -163,49 +201,7 @@ export default function StackedBarKategori({ data, title, description }: IStacke
               isAnimationActive={true}
             />
           ))}
-          {/* Label total tahunan kategori di atas bar stack */}
-          <Bar dataKey="_total" fill="transparent">
-            <LabelList
-              dataKey="_total"
-              position="top"
 
-              content={({ x, y, value, index }) => {
-                if (!value) return null;
-                const barCenter = Number(x) + barSize / 2;
-                const textWidth = `Rp ${value.toLocaleString('id-ID')}`.length * 6; // rough estimate
-                const adjustedX = barCenter - textWidth / 2 - 45; // geser ke kiri 10px
-                const textY = Number(y) - 20;
-                const barTop = Number(y) ; // posisi lebih dekat ke bar
-
-                return (
-                  <g>
-                    {/* Garis penghubung dari text ke bar */}
-                    <line
-                      x1={barCenter - 50}
-                      y1={textY } // mulai dari bawah text
-                      x2={barCenter - 50}
-                      y2={barTop } // ke bar
-                      stroke="#333333"
-                      strokeWidth={1}
-                      opacity={0.8}
-                    />
-                    {/* Text label */}
-                    <text
-                      x={adjustedX}
-                      y={textY}
-                      textAnchor="start"
-                      fontSize={12}
-                      fill="#000000"
-                      fontWeight={900}
-                      style={{ textShadow: '0 1px 2px #fff' }}
-                    >
-                      {`Rp ${value.toLocaleString('id-ID')}`}
-                    </text>
-                  </g>
-                );
-              }}
-            />
-          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>

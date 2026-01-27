@@ -39,6 +39,7 @@ interface Program {
   _id?: string;
   nama: string;
   kode: string;
+  internal_kode?: string;
   biaya: number;
   group_program?: string;
   status_aktv?: boolean;
@@ -54,7 +55,7 @@ export default function Program() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Program>({ nama: '', kode: '', biaya: 0, group_program: '', input_by: '' });
+  const [formData, setFormData] = useState<Program>({ nama: '', kode: '', internal_kode: '', biaya: 0, group_program: '', input_by: '' });
   const { user } = useAppStore();
 
   // Formatted input for biaya
@@ -81,6 +82,7 @@ export default function Program() {
           nama: payload.nama,
           biaya: payload.biaya,
           group_program: payload.group_program,
+          internal_kode: payload.internal_kode,
           update_by: user?.name || 'Unknown',
         });
       }
@@ -97,6 +99,7 @@ export default function Program() {
         nama: payload.nama,
         biaya: payload.biaya,
         group_program: payload.group_program,
+        internal_kode: payload.internal_kode,
         input_by: payload.input_by
       });
     },
@@ -197,7 +200,7 @@ export default function Program() {
   const handleCloseModal = () => {
     setModalOpen(false);
     setEditId(null);
-    setFormData({ nama: '', kode: '', biaya: 0, group_program: '', input_by: '' });
+    setFormData({ nama: '', kode: '', internal_kode: '', biaya: 0, group_program: '', input_by: '' });
     setFormattedBiaya('');
   };
 
@@ -234,6 +237,7 @@ export default function Program() {
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-50 hover:to-indigo-50 border-b border-blue-200/50">
                 <TableHead className="w-20 px-6 py-4 font-semibold text-gray-900">Kode</TableHead>
+                <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Internal Kode</TableHead>
                 <TableHead className="w-64 px-6 py-4 font-semibold text-gray-900">Nama Program</TableHead>
                 <TableHead className="w-48 px-6 py-4 font-semibold text-gray-900">Group Program</TableHead>
                 <TableHead className="w-48 px-6 py-4 font-semibold text-gray-900">Biaya</TableHead>
@@ -244,7 +248,7 @@ export default function Program() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12">
+                  <TableCell colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data program...</p>
@@ -253,7 +257,7 @@ export default function Program() {
                 </TableRow>
               ) : programList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12">
+                  <TableCell colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,6 +272,7 @@ export default function Program() {
                 programList.map((item) => (
                   <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-20 px-6 py-4 font-semibold text-gray-900">{item.kode}</TableCell>
+                    <TableCell className="w-32 px-6 py-4 text-gray-700">{item.internal_kode || '-'}</TableCell>
                     <TableCell className="w-64 px-6 py-4 font-medium text-gray-900">{item.nama}</TableCell>
                     <TableCell className="w-48 px-6 py-4 text-gray-700">{item.group_program || '-'}</TableCell>
                     <TableCell className="w-48 px-6 py-4 text-gray-700 font-semibold">{formatCurrency(item.biaya)}</TableCell>
@@ -313,12 +318,23 @@ export default function Program() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="group_program" className="text-sm font-semibold text-gray-700">Group Program</Label>
+              <Label htmlFor="kode" className="text-sm font-semibold text-gray-700">Kode Program</Label>
               <Input
-                id="group_program"
-                value={formData.group_program || ''}
-                onChange={e => setFormData({...formData, group_program: e.target.value})}
-                placeholder="Masukkan group program"
+                id="kode"
+                value={formData.kode}
+                onChange={e => setFormData({...formData, kode: e.target.value})}
+                placeholder="Kode akan di-generate otomatis"
+                className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                readOnly
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="internal_kode" className="text-sm font-semibold text-gray-700">Internal Kode</Label>
+              <Input
+                id="internal_kode"
+                value={formData.internal_kode}
+                onChange={e => setFormData({...formData, internal_kode: e.target.value})}
+                placeholder="Masukkan internal kode"
                 className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 required
               />

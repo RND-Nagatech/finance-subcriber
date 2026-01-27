@@ -46,7 +46,7 @@ export const login = async (req: Request, res: Response) => {
     if (!match) return res.status(401).json({ message: 'Email atau password salah' });
 
     const token = jwt.sign({ id: user._id, username: user.username, name: user.name }, JWT_SECRET, { expiresIn: '8h' });
-    return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.username } });
+    return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.username, role: user.role } });
   } catch (err) {
     return res.status(500).json({ message: 'Server error', err });
   }
@@ -168,10 +168,45 @@ export const verifyLoginResponse = async (req: Request, res: Response) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.username
+        email: user.username,
+        role: user.role
       }
     });
   } catch (err) {
     return res.status(500).json({ error: 'Gagal verifikasi login', detail: err });
+  }
+};
+
+/* ===== Get all users ===== */
+export const getUsers = async (req: Request, res: Response) => {
+  try {
+    const users = await User.find({}, '-password -credentials -currentChallenge');
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', err });
+  }
+};
+
+/* ===== Update user ===== */
+export const updateUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { name, role } = req.body;
+    const user = await User.findByIdAndUpdate(id, { name, role }, { new: true });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', err });
+  }
+};
+
+/* ===== Delete user ===== */
+export const deleteUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await User.findByIdAndDelete(id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', err });
   }
 };

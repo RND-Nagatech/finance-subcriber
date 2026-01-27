@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, LabelList } from 'recharts';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChartDonut } from '@/components/ChartDonut';
 import { ChartBar } from '@/components/ChartBar';
 import StackedBarKategori from '@/components/StackedBarKategori';
@@ -19,7 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { useQueryClient } from '@tanstack/react-query';
+import { useAppStore } from '@/store/useAppStore';
 
 import {
   Select,
@@ -46,15 +46,20 @@ const MONTH_OPTIONS = [
 ];
 
 export default function Dashboard() {
-  const queryClient = useQueryClient();
+  const { user } = useAppStore();
   // Year state; start empty then set to latest fiscal year when list arrives
   const [year, setYear] = useState<string>('');
-  const [month, setMonth] = useState<string>('ANNUAL');
+  const [month, setMonth] = useState<string>(new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase());
   const [chartType, setChartType] = useState<'donut' | 'bar'>('donut');
   const [vpsMetric, setVpsMetric] = useState<'estimasi' | 'realisasi'>('estimasi');
   const [exporting, setExporting] = useState<boolean>(false);
   const userSelectedYearRef = useRef(false);
   const vpsCardRef = useRef<HTMLDivElement | null>(null);
+
+  // Helper function to check if user can view restricted content
+  const canViewRestrictedContent = () => {
+    return user?.role === 'corsec' || user?.role === 'superuser';
+  };
 
   // Helper: load image from URL as data URL with original dimensions
   const loadImageAsDataURL = (url: string): Promise<{ dataUrl: string; width: number; height: number } | null> => {
@@ -455,34 +460,56 @@ export default function Dashboard() {
                       return aOrder - bOrder;
                     })
                     .map((kategoriData: any, idx: number) => (
-                    <Card key={idx} className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg font-bold text-gray-900">{kategoriData.kategori}</CardTitle>
-                        <CardDescription className="text-gray-600 text-sm">
-                          {month === 'ANNUAL' ? (
-                            <>Monthly breakdown in {year}</>
-                          ) : (
-                            <>Daily breakdown in {month} {year}</>
+                    <div key={idx} className="relative">
+                      <Card className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-lg font-bold text-gray-900">{kategoriData.kategori}</CardTitle>
+                          {month === 'ANNUAL' && (
+                            <CardDescription className="text-gray-400 text-sm">
+                            {month === 'ANNUAL' ? (
+                              <>Monthly breakdown in {year}</>
+                            ) : (
+                              <>Daily breakdown in {month} {year}</>
+                            )}
+                          </CardDescription>
                           )}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <div className="mb-3">
-                          <span className="text-sm font-medium text-purple-600">
-                            Total: {formatCurrency(kategoriData.total_tahunan)}
-                          </span>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="mb-3">
+                            <span className="text-m text-purple-600 font-bold">
+                              Total: {formatCurrency(kategoriData.total_tahunan)}
+                            </span>
+                          </div>
+                          {month === 'ANNUAL' ? (
+                            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-2">
+                            {kategoriData.data_bulanan
+                              .map((bulanData: any, bulanIdx: number) => {
+                                // Format label: jika YYYY-MM-DD, tampilkan hanya hari (DD)
+                                const formattedBulan = typeof bulanData.bulan === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(bulanData.bulan) 
+                                  ? bulanData.bulan.split('-')[2] 
+                                  : bulanData.bulan;
+                                
+                                return (
+                                  <div key={bulanIdx} className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-md p-2 text-center">
+                                    <div className="text-xs font-medium text-purple-700 mb-1">{formattedBulan}</div>
+                                    <div className="text-xs font-bold text-purple-900">Rp {bulanData.total.toLocaleString('id-ID')}</div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                          ) : <></>}
+                        </CardContent>
+                      </Card>
+                      {!canViewRestrictedContent() && (
+                        <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                          <div className="text-center">
+                            <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                            <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                            <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-2">
-                          {kategoriData.data_bulanan
-                            .map((bulanData: any, bulanIdx: number) => (
-                              <div key={bulanIdx} className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-md p-2 text-center">
-                                <div className="text-xs font-medium text-purple-700 mb-1">{bulanData.bulan}</div>
-                                <div className="text-xs font-bold text-purple-900">Rp {bulanData.total.toLocaleString('id-ID')}</div>
-                              </div>
-                            ))}
-                        </div>
-                      </CardContent>
-                    </Card>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -491,165 +518,230 @@ export default function Dashboard() {
             {/* Line chart untuk kategori PEMBELIAN */}
             {pembelianLineData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-green-200 bg-white backdrop-blur-sm hover:border-green-400 transition-all duration-300">
-                  <CardContent className='pt-6'>
-                    <LineChartKategori 
-                      data={pembelianLineData} 
-                      title={`PEMBELIAN Monthly Trend - ${year}`}
-                      description="Monthly purchasing trend throughout the year"
-                    />
-                  </CardContent>
-                </Card>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-green-200 bg-white backdrop-blur-sm hover:border-green-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <LineChartKategori 
+                        data={pembelianLineData} 
+                        title={`PEMBELIAN Monthly Trend - ${year}`}
+                        description="Monthly purchasing trend throughout the year"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Stacked bar chart untuk Aset dan Gaji per bulan */}
             {asetDanGajiTahunanChartData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-orange-200 bg-white backdrop-blur-sm hover:border-orange-400 transition-all duration-300">
-                  <CardContent className='pt-6'>
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-lg font-bold">Aset dan Gaji</h2>
-                      <div className="text-lg font-bold text-orange-600">Total: {formatCurrency(asetDanGajiTotal)}</div>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-orange-200 bg-white backdrop-blur-sm hover:border-orange-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <StackedBarKategori
+                        data={asetDanGajiTahunanChartData}
+                        title="Aset dan Gaji Monthly Breakdown"
+                        description="Monthly comparison of assets and salary expenses"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
                     </div>
-                    <StackedBarKategori
-                      data={asetDanGajiTahunanChartData}
-                      title="Aset dan Gaji Monthly Breakdown"
-                      description="Monthly comparison of assets and salary expenses"
-                    />
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Stacked bar chart untuk Biaya Lain per bulan */}
             {implementasiMarketingLainnyaTahunanChartData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
-                  <CardContent className='pt-6'>
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-lg font-bold">Implementasi, Marketing & Lainnya</h2>
-                      <div className="text-lg font-bold text-purple-600">Total: {formatCurrency(implementasiMarketingLainnyaTotal)}</div>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <StackedBarKategori
+                        data={implementasiMarketingLainnyaTahunanChartData}
+                        title="Implementasi, Marketing & Lainnya Monthly Breakdown"
+                        description="Monthly breakdown of implementation, marketing, and other expenses"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
                     </div>
-                    <StackedBarKategori
-                      data={implementasiMarketingLainnyaTahunanChartData}
-                      title="Implementasi, Marketing & Lainnya Monthly Breakdown"
-                      description="Monthly breakdown of implementation, marketing, and other expenses"
-                    />
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Stacked bar chart untuk Biaya Biaya per bulan */}
             {biayaBiayaTahunanChartData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-red-200 bg-white backdrop-blur-sm hover:border-red-400 transition-all duration-300">
-                  <CardContent className='pt-6'>
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-lg font-bold">Biaya Biaya</h2>
-                      <div className="text-lg font-bold text-red-600">Total: {formatCurrency(biayaBiayaTotal)}</div>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-red-200 bg-white backdrop-blur-sm hover:border-red-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <StackedBarKategori
+                        data={biayaBiayaTahunanChartData}
+                        title="Biaya Biaya Monthly Breakdown"
+                        description="Monthly breakdown of PPH21, VPS, RND, BPJS, and return sales expenses"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
                     </div>
-                    <StackedBarKategori
-                      data={biayaBiayaTahunanChartData}
-                      title="Biaya Biaya Monthly Breakdown"
-                      description="Monthly breakdown of PPH21, VPS, RND, BPJS, and return sales expenses"
-                    />
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Line chart untuk Gross Margin per bulan */}
             {grossMarginTahunanLineData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-teal-200 bg-white backdrop-blur-sm hover:border-teal-400 transition-all duration-300">
-                  <CardContent className='pt-6'>
-                    <LineChartKategori 
-                      data={grossMarginTahunanLineData} 
-                      title={`Gross Margin - ${year}`}
-                      description="Monthly gross margin trend (Omzet - Biaya - Pembelian)"
-                    />
-                  </CardContent>
-                </Card>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-teal-200 bg-white backdrop-blur-sm hover:border-teal-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <LineChartKategori 
+                        data={grossMarginTahunanLineData} 
+                        title={`Gross Margin - ${year}`}
+                        description="Monthly gross margin trend (Omzet - Biaya - Pembelian)"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Subscriber per Program Chart */}
             {subscriberChartData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-cyan-200 bg-white backdrop-blur-sm hover:border-cyan-400 transition-all duration-300">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-2xl font-bold text-gray-900">Subscriber Program Overview</CardTitle>
-                    <CardDescription className="text-gray-600 text-sm">
-                      Cumulative subscribers and costs per program in {year} (accumulated from start of year)
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {subscriberChartData.map((program: any, idx: number) => (
-                        <div key={idx} className="bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-lg p-4 border border-cyan-200">
-                          <h4 className="font-semibold text-cyan-900 mb-2">{program.program}</h4>
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-cyan-700">Total Subscribers (Cumulative):</span>
-                              <span className="font-bold text-cyan-900">{program.total_subscriber_tahunan}</span>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-cyan-200 bg-white backdrop-blur-sm hover:border-cyan-400 transition-all duration-300">
+                    <CardHeader className="pb-4">
+                      <CardTitle className="text-2xl font-bold text-gray-900">Subscriber Program Overview</CardTitle>
+                      <CardDescription className="text-gray-600 text-sm">
+                        Cumulative subscribers and costs per program in {year} (accumulated from start of year)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {subscriberChartData.map((program: any, idx: number) => (
+                          <div key={idx} className="bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-lg p-4 border border-cyan-200">
+                            <h4 className="font-semibold text-cyan-900 mb-2">{program.program}</h4>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-cyan-700">Total Subscribers (Cumulative):</span>
+                                <span className="font-bold text-cyan-900">{program.total_subscriber_tahunan}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-cyan-700">Total Cost (Cumulative):</span>
+                                <span className="font-bold text-cyan-900">Rp {program.total_biaya_tahunan.toLocaleString('id-ID')}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-cyan-700">Avg Cost/Subscriber:</span>
+                                <span className="font-bold text-cyan-900">
+                                  Rp {(program.total_biaya_tahunan / program.total_subscriber_tahunan).toLocaleString('id-ID')}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-cyan-700">Total Cost (Cumulative):</span>
-                              <span className="font-bold text-cyan-900">Rp {program.total_biaya_tahunan.toLocaleString('id-ID')}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-cyan-700">Avg Cost/Subscriber:</span>
-                              <span className="font-bold text-cyan-900">
-                                Rp {(program.total_biaya_tahunan / program.total_subscriber_tahunan).toLocaleString('id-ID')}
-                              </span>
+                            {/* Monthly cumulative breakdown */}
+                            <div className="mt-3 pt-3 border-t border-cyan-200">
+                              <div className="text-xs text-cyan-700 mb-2">Cumulative by Month:</div>
+                              <div className="grid grid-cols-3 gap-1">
+                                {program.data_bulanan.map((bulanData: any, bulanIdx: number) => (
+                                  <div key={bulanIdx} className="text-center">
+                                    <div className="text-xs font-medium text-cyan-800">{bulanData.bulan}</div>
+                                    <div className="text-xs text-cyan-600">{bulanData.jumlah_subscriber}</div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                          {/* Monthly cumulative breakdown */}
-                          <div className="mt-3 pt-3 border-t border-cyan-200">
-                            <div className="text-xs text-cyan-700 mb-2">Cumulative by Month:</div>
-                            <div className="grid grid-cols-3 gap-1">
-                              {program.data_bulanan.map((bulanData: any, bulanIdx: number) => (
-                                <div key={bulanIdx} className="text-center">
-                                  <div className="text-xs font-medium text-cyan-800">{bulanData.bulan}</div>
-                                  <div className="text-xs text-cyan-600">{bulanData.jumlah_subscriber}</div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Subscriber Combined Chart */}
             {subscriberCombinedData && subscriberCombinedData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-emerald-200 bg-white backdrop-blur-sm hover:border-emerald-400 transition-all duration-300">
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-2xl font-bold text-gray-900">Subscriber Analytics</CardTitle>
-                      <div className="flex flex-col items-end space-y-1">
-                        <span className="font-semibold text-blue-600">
-                          Total Growth: {subscriberCombinedData.reduce((sum, item) => sum + item.count, 0).toLocaleString('id-ID')} subscribers
-                        </span>
-                        <span className="font-semibold text-green-600">
-                          Total Subscribers: {subscriberCombinedData[subscriberCombinedData.length - 1]?.total.toLocaleString('id-ID') || 0}
-                        </span>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-emerald-200 bg-white backdrop-blur-sm hover:border-emerald-400 transition-all duration-300">
+                    <CardHeader className="pb-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-2xl font-bold text-gray-900">Subscriber Analytics</CardTitle>
+                        <div className="flex flex-col items-end space-y-1">
+                          <span className="font-semibold text-blue-600">
+                            Total Growth: {subscriberCombinedData.reduce((sum, item) => sum + item.count, 0).toLocaleString('id-ID')} subscribers
+                          </span>
+                          <span className="font-semibold text-green-600">
+                            Total Subscribers: {subscriberCombinedData[subscriberCombinedData.length - 1]?.total.toLocaleString('id-ID') || 0}
+                          </span>
+                        </div>
+                      </div>
+                      <CardDescription className="text-gray-600 text-sm">
+                        Combined view: Monthly additions (bars) & cumulative total (line) in {year} (fiscal year starting December)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <SubscriberCombinedChart data={subscriberCombinedData} />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
                       </div>
                     </div>
-                    <CardDescription className="text-gray-600 text-sm">
-                      Combined view: Monthly additions (bars) & cumulative total (line) in {year} (fiscal year starting December)
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <SubscriberCombinedChart data={subscriberCombinedData} />
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
             )}
 
@@ -658,119 +750,141 @@ export default function Dashboard() {
             {/* Subscriber by Program Chart */}
             {subscriberByProgramData && subscriberByProgramData.length > 0 && (
               <div className="mb-8">
-                <Card className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-2xl font-bold text-gray-900">Subscriber by Program</CardTitle>
-                      <span className="font-semibold text-blue-600">
-                        Total Subscribers: {subscriberByProgramData.reduce((sum, item) => sum + item.total_subscriber, 0).toLocaleString('id-ID')}
-                      </span>
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
+                    <CardHeader className="pb-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-2xl font-bold text-gray-900">Subscriber by Program</CardTitle>
+                        <span className="font-semibold text-blue-600">
+                          Total Subscribers: {subscriberByProgramData.reduce((sum, item) => sum + item.total_subscriber, 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                      <CardDescription className="text-gray-600 text-sm">
+                        Cumulative subscribers by program up to {month} {year}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <SubscriberByProgramChart data={subscriberByProgramData} />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
                     </div>
-                    <CardDescription className="text-gray-600 text-sm">
-                      Cumulative subscribers by program up to {month} {year}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <SubscriberByProgramChart data={subscriberByProgramData} />
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
             )}
 
             {vpsMonthlyData && vpsMonthlyData.length > 0 && (
               <div className="mb-8" ref={vpsCardRef}>
-                <Card className="vps-card border-2 border-dashed border-blue-200 bg-white backdrop-blur-sm hover:border-blue-400 transition-all duration-300">
-                  <CardHeader className="vps-card-header pb-4">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-2xl font-bold text-gray-900">Perolehan VPS {year}</CardTitle>
-                      {/* Actions: radio toggle & export */}
-                      <div className="flex items-center gap-3 no-export-pdf">
-                        {(() => {
-                          return (
-                            <div className="flex items-center gap-2 bg-gray-100/50 rounded-lg p-1">
-                              <button onClick={() => setVpsMetric('estimasi')} className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${ (vpsMetric === 'estimasi') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200' }`}>
-                                Estimasi
-                              </button>
-                              <button onClick={() => setVpsMetric('realisasi')} className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${ (vpsMetric === 'realisasi') ? 'bg-green-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200' }`}>
-                                Realisasi
-                              </button>
+                <div className="relative">
+                  <Card className="vps-card border-2 border-dashed border-blue-200 bg-white backdrop-blur-sm hover:border-blue-400 transition-all duration-300">
+                    <CardHeader className="vps-card-header pb-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-2xl font-bold text-gray-900">Perolehan VPS {year}</CardTitle>
+                        {/* Actions: radio toggle & export */}
+                        <div className="flex items-center gap-3 no-export-pdf">
+                          {(() => {
+                            return (
+                              <div className="flex items-center gap-2 bg-gray-100/50 rounded-lg p-1">
+                                <button onClick={() => setVpsMetric('estimasi')} className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${ (vpsMetric === 'estimasi') ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200' }`}>
+                                  Estimasi
+                                </button>
+                                <button onClick={() => setVpsMetric('realisasi')} className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${ (vpsMetric === 'realisasi') ? 'bg-green-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-200' }`}>
+                                  Realisasi
+                                </button>
+                              </div>
+                            );
+                          })()}
+                          <button
+                            onClick={handleExportPDF}
+                            disabled={exporting}
+                            className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 border border-blue-300 ${exporting ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white text-blue-700 hover:bg-blue-50'}`}
+                            title="Export chart as PDF"
+                          >
+                            Export PDF
+                          </button>
+                        </div>
+                      </div>
+                      <CardDescription className="text-gray-600 text-sm">
+                        Data Estimasi & Realisasi VPS
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {(() => {
+                        const chartData = vpsMonthlyData.map(({ label, agg }) => ({
+                          name: label,
+                          estimasi: agg?.estimasi || 0,
+                          realisasi: agg?.realisasi || 0,
+                        }));
+
+                        const selectedKey = (typeof vpsMetric !== 'undefined' ? vpsMetric : 'estimasi');
+                        const total = chartData.reduce((sum, item) => sum + (item as any)[selectedKey], 0);
+                        const average = Math.round(total / 12);
+                        const color = selectedKey === 'estimasi' ? '#3b82f6' : '#10b981';
+                        const maxSelected = Math.max(
+                          0,
+                          ...chartData.map((item) => Number((item as any)[selectedKey]) || 0)
+                        );
+                        const step = 500_000_000; // 500M step as requested
+                        const minMaxTick = 1_500_000_000; // Ensure at least up to 1.5B
+                        const maxTick = Math.max(minMaxTick, Math.ceil(maxSelected / step) * step);
+                        const ticks = Array.from({ length: Math.floor(maxTick / step) + 1 }, (_, i) => i * step);
+
+                        return (
+                          <div>
+                            <div className="vps-total-caption mb-3 text-right">
+                              <div className={`vps-total-value text-sm font-medium ${selectedKey === 'estimasi' ? 'text-blue-600' : 'text-green-600'}`}>
+                                Total {selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'}: Rp {formatCurrency(total)}
+                              </div>
+                              <div className="vps-average-value text-xs font-medium text-gray-700">
+                                Rata-Rata: Rp {average.toLocaleString('id-ID')}
+                              </div>
                             </div>
-                          );
-                        })()}
-                        <button
-                          onClick={handleExportPDF}
-                          disabled={exporting}
-                          className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 border border-blue-300 ${exporting ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white text-blue-700 hover:bg-blue-50'}`}
-                          title="Export chart as PDF"
-                        >
-                          Export PDF
-                        </button>
+                            <ResponsiveContainer width="100%" height={400}>
+                              <BarChart data={chartData} margin={{ top: 20, right: 30, left: 55, bottom: 20 }}>
+                                <XAxis
+                                  dataKey="name"
+                                  interval={0}
+                                  tick={{ fontSize: 12, fill: '#374151' }}
+                                />
+                                <YAxis
+                                  width={70}
+                                  tickMargin={6}
+                                  ticks={ticks}
+                                  domain={[0, maxTick]}
+                                  allowDecimals={false}
+                                  tickFormatter={(value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value))}
+                                  fontSize={12}
+                                />
+                                <Tooltip
+                                  formatter={(value: any) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value))}
+                                />
+                                <Bar dataKey={selectedKey} name={selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'} fill={color} radius={[4,4,0,0]} barSize={50}>
+                                  <LabelList dataKey={selectedKey} position="top" offset={10} formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} style={{ fontSize: 11, fill: '#374151', fontWeight: 600 }} />
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
                       </div>
                     </div>
-                    <CardDescription className="text-gray-600 text-sm">
-                      Data Estimasi & Realisasi VPS
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {(() => {
-                      const chartData = vpsMonthlyData.map(({ label, agg }) => ({
-                        name: label,
-                        estimasi: agg?.estimasi || 0,
-                        realisasi: agg?.realisasi || 0,
-                      }));
-
-                      const selectedKey = (typeof vpsMetric !== 'undefined' ? vpsMetric : 'estimasi');
-                      const total = chartData.reduce((sum, item) => sum + (item as any)[selectedKey], 0);
-                      const average = Math.round(total / 12);
-                      const color = selectedKey === 'estimasi' ? '#3b82f6' : '#10b981';
-                      const maxSelected = Math.max(
-                        0,
-                        ...chartData.map((item) => Number((item as any)[selectedKey]) || 0)
-                      );
-                      const step = 500_000_000; // 500M step as requested
-                      const minMaxTick = 1_500_000_000; // Ensure at least up to 1.5B
-                      const maxTick = Math.max(minMaxTick, Math.ceil(maxSelected / step) * step);
-                      const ticks = Array.from({ length: Math.floor(maxTick / step) + 1 }, (_, i) => i * step);
-
-                      return (
-                        <div>
-                          <div className="vps-total-caption mb-3 text-right">
-                            <div className={`vps-total-value text-sm font-medium ${selectedKey === 'estimasi' ? 'text-blue-600' : 'text-green-600'}`}>
-                              Total {selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'}: Rp {total.toLocaleString('id-ID')}
-                            </div>
-                            <div className="vps-average-value text-xs font-medium text-gray-700">
-                              Rata-Rata: Rp {average.toLocaleString('id-ID')}
-                            </div>
-                          </div>
-                          <ResponsiveContainer width="100%" height={400}>
-                            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 55, bottom: 20 }}>
-                              <XAxis
-                                dataKey="name"
-                                interval={0}
-                                tick={{ fontSize: 12, fill: '#374151' }}
-                              />
-                              <YAxis
-                                width={70}
-                                tickMargin={6}
-                                ticks={ticks}
-                                domain={[0, maxTick]}
-                                allowDecimals={false}
-                                tickFormatter={(value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value))}
-                                fontSize={12}
-                              />
-                              <Tooltip
-                                formatter={(value: any) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value))}
-                              />
-                              <Bar dataKey={selectedKey} name={selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'} fill={color} radius={[4,4,0,0]} barSize={50}>
-                                <LabelList dataKey={selectedKey} position="top" offset={10} formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} style={{ fontSize: 11, fill: '#374151', fontWeight: 600 }} />
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      );
-                    })()}
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               </div>
             )}
              <div className="flex justify-center mb-4">
@@ -801,15 +915,16 @@ export default function Dashboard() {
             {[...rekapData, ...asetDanGajiData, ...biayaBiayaData].filter((a) => a.kategori != "BIAYA").map((item: any, idx: number) => {
               const isBiaya = item.kategori === 'BIAYA';
               return (
-                  <Card key={idx} className={`border-2 border-dashed border-blue-200 bg-white backdrop-blur-sm hover:border-blue-400 transition-all duration-300 ${isBiaya ? 'lg:col-span-2' : ''}`}>
+                <div key={idx} className="relative">
+                  <Card className={`border-2 border-dashed border-blue-200 bg-white backdrop-blur-sm hover:border-blue-400 transition-all duration-300 ${isBiaya ? 'lg:col-span-2' : ''}`}>
                     <CardHeader className="pb-4">
                       <CardTitle className="text-2xl font-bold text-gray-900">{item.kategori}</CardTitle>
                       <CardDescription className="text-gray-600 text-sm">
-                        Annual Total: <span className="font-semibold text-blue-600">{formatCurrency(item.total_kategori)}</span>
+                        Total : <span className="font-semibold text-blue-600">{formatCurrency(item.total_kategori)}</span>
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                     
+
                       {chartType === 'donut' ? (
                         <ChartDonut
                           data={
@@ -833,6 +948,16 @@ export default function Dashboard() {
                       )}
                     </CardContent>
                   </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
              </div>

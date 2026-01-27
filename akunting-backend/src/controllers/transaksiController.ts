@@ -1,37 +1,99 @@
-// Soft delete detail and update tt_finance aggregation
 
-export const deleteTransaksi = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const deleted_by = req.body?.deleted_by || req.query?.deleted_by || 'SYSTEM';
-    // Find detail
-    const detail = await TtFinanceDetail.findById(id);
-    if (!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
+import { Request, Response } from 'express';
+import Transaksi from '../models/Transaksi';
+import ThFinance from '../models/ThFinance';
+import FiscalConfig from '../models/FiscalConfig';
+import TtFinanceDetail from '../models/TtFinanceDetail';
+import TtFinanceDaily from '../models/TtFinanceDaily';
 
-    // Soft delete: set status_deleted, deleted_at, deleted_by
-    detail.status_deleted = true;
-    detail.deleted_at = new Date();
-    detail.deleted_by = deleted_by;
-    await detail.save();
+// Helper function to update tt_finance_daily
+async function updateTtFinanceDaily(tanggal: string, bulan: string, kategori: string, sub_kategori: string, akun: string, nilai: number, operation: 'increment' | 'decrement') {
+  // Calculate fiscal year from bulan
+  let tahunFiskal: string | undefined = undefined;
+  if (bulan) {
+    const match = bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+    if (match) {
+      const bulanStr = match[1].toUpperCase();
+      let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
+      const bulanMap: Record<string, number> = {
+        JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+        JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
+      };
+      const bulanAngka = bulanMap[bulanStr] || 1;
+      tahunFiskal = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
+    }
+  }
+  if (!tahunFiskal) return;
 
-    // Recalculate tt_finance aggregation for this kategori, sub_kategori, akun, tahun fiskal, bulan
-    // Only sum nilai where status_deleted != true
-    const sum = await TtFinanceDetail.aggregate([
-      { $match: {
-        kategori: detail.kategori,
-        sub_kategori: detail.sub_kategori,
-        akun: detail.akun,
-        bulan: detail.bulan,
-        status_deleted: { $ne: true }
-      } },
-      { $group: { _id: null, total: { $sum: "$nilai" } } }
-    ]);
-    const totalBulan = sum[0]?.total || 0;
+  // Format bulan fiskal from tanggal
+  const [yyyy, mm, dd] = tanggal.split('-');
+  const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const monthIdx = parseInt(mm, 10) - 1;
+  const bulanFiskal = `${monthNames[monthIdx]}-${yyyy.slice(2)}`;
 
-    // Find tt_finance doc
+  if (operation === 'increment') {
+    await TtFinanceDaily.findOneAndUpdate(
+      {
+        tanggal,
+        bulan_fiskal: bulanFiskal,
+        tahun_fiskal: tahunFiskal,
+        kategori,
+        sub_kategori,
+        akun
+      },
+      {
+        $inc: { total_nilai: nilai },
+        $setOnInsert: { created_at: new Date() }
+      },
+      { upsert: true, new: true }
+    );
+  } else if (operation === 'decrement') {
+    const existingDoc = await TtFinanceDaily.findOne({
+      tanggal,
+      bulan_fiskal: bulanFiskal,
+      tahun_fiskal: tahunFiskal,
+      kategori,
+      sub_kategori,
+      akun
+    });
+
+    if (existingDoc) {
+      const newTotalNilai = (existingDoc.total_nilai || 0) - nilai;
+
+      if (newTotalNilai <= 0) {
+        await TtFinanceDaily.findOneAndDelete({
+          tanggal,
+          bulan_fiskal: bulanFiskal,
+          tahun_fiskal: tahunFiskal,
+          kategori,
+          sub_kategori,
+          akun
+        });
+      } else {
+        await TtFinanceDaily.findOneAndUpdate(
+          {
+            tanggal,
+            bulan_fiskal: bulanFiskal,
+            tahun_fiskal: tahunFiskal,
+            kategori,
+            sub_kategori,
+            akun
+          },
+          {
+            $inc: { total_nilai: -nilai }
+          },
+          { new: true }
+        );
+      }
+    }
+  }
+}
+
+async function recalculateTransaksiAggregation(kategori: string, sub_kategori: string, akun: string, bulan: string, nilai: number, input_by: string, operation: 'increment' | 'decrement') {
+  // Find tt_finance doc
     let tahunFiskal: string | undefined = undefined;
-    if (!tahunFiskal && detail.bulan) {
-      const match = detail.bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+    if (!tahunFiskal && bulan) {
+      const match = bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
       if (match) {
         const bulanStr = match[1].toUpperCase();
         let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
@@ -43,23 +105,57 @@ export const deleteTransaksi = async (req: Request, res: Response) => {
         tahunFiskal = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
       }
     }
-    const doc = await Transaksi.findOne({ kategori: detail.kategori, sub_kategori: detail.sub_kategori, akun: detail.akun, tahun_fiskal: tahunFiskal });
-    if (!doc) return res.status(404).json({ message: 'Transaksi not found' });
+   // Cari dokumen tt_finance hanya berdasarkan kategori, sub_kategori, akun, tahun_fiskal
+    let doc = await Transaksi.findOne({ kategori, sub_kategori, akun, tahun_fiskal: tahunFiskal });
 
-    // Update or remove bulan in data_bulanan
-    const idx = doc.data_bulanan.findIndex((d: any) => d.bulan === detail.bulan);
-    if (idx >= 0) {
-      if (totalBulan > 0) {
-        doc.data_bulanan[idx].nilai = totalBulan;
+    if (!doc) {
+      // Buat baru jika belum ada
+      doc = new Transaksi({
+        kategori,
+        sub_kategori,
+        akun,
+        data_bulanan: [{ bulan, nilai }],
+        total_tahunan: nilai,
+        input_by,
+        tahun_fiskal: tahunFiskal,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    } else {
+      // Update data_bulanan jika sudah ada
+      const idx = doc.data_bulanan.findIndex((d: any) => d.bulan === bulan);
+      if (idx >= 0) {
+        // SUM nilai jika bulan sudah ada
+        doc.data_bulanan[idx].nilai += operation === 'increment' ? nilai : -nilai;
       } else {
-        doc.data_bulanan.splice(idx, 1);
+        doc.data_bulanan.push({ bulan, nilai });
       }
+      // Hitung total tahunan
+      doc.total_tahunan = doc.data_bulanan.reduce((sum: number, d: any) => sum + d.nilai, 0);
+      doc.updated_at = new Date();
+      doc.tahun_fiskal = tahunFiskal || doc.tahun_fiskal;
     }
-    doc.total_tahunan = doc.data_bulanan.reduce((sum: number, d: any) => sum + d.nilai, 0);
-    doc.updated_at = new Date();
     await doc.save();
+}
 
-    res.json({ success: true, message: 'Transaksi soft deleted', detail, doc });
+export const deleteTransaksi = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const deleted_by = req.body?.deleted_by || req.query?.deleted_by || 'SYSTEM';
+    // Find detail
+    const detail = await TtFinanceDetail.findById(id);
+    if(!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
+   
+    if(detail.attachments && detail.attachments.length > 0) {
+      return res.status(400).json({ message: 'Cannot delete transaksi with attachments. Please delete attachments first.' });
+    }
+    // Soft delete: set status_deleted, deleted_at, deleted_by
+    detail.status_deleted = true;
+    detail.deleted_at = new Date();
+    detail.deleted_by = deleted_by;
+    await detail.save();
+
+    res.json({ success: true, message: 'Transaksi soft deleted', detail });
   } catch (error) {
     console.error('❌ Error in deleteTransaksi:', error);
     res.status(500).json({ message: 'Server error', error });
@@ -100,14 +196,64 @@ export const deleteTransaksiBulanan = async (req: Request, res: Response) => {
   }
 };
 
-import { Request, Response } from 'express';
-import Transaksi from '../models/Transaksi';
-import ThFinance from '../models/ThFinance';
-import FiscalConfig from '../models/FiscalConfig';
-import Akun from '../models/Akun';
-import { fiscalMonthsForYear, periodeToTahunFiskal } from '../utils/fiscal';
-import TtFinanceDetail from '../models/TtFinanceDetail';
-import TtFinanceDaily from '../models/TtFinanceDaily';
+// Upload attachments for transaksi
+export const uploadAttachments = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) return res.status(400).json({ message: 'No files uploaded' });
+
+    const doc = await TtFinanceDetail.findById(id);
+    if (!doc) return res.status(404).json({ message: 'Transaksi not found' });
+
+    const newAttachments = files.map(file => ({
+      path: `/uploads/transaksi/${file.filename}`
+    }));
+    doc.attachments = [...(doc.attachments || []), ...newAttachments];
+    doc.updated_at = new Date();
+    await doc.save();
+
+    let tahunFiskal = doc.tahun_fiskal || doc.bulan.split('-')[1].padStart(4, '20');
+
+    // Update tt_finance_daily
+    await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment');
+
+    //update tt_finance
+    await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
+
+    res.json({ success: true, attachments: doc.attachments });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error });
+  }
+};
+
+// Delete attachment from transaksi
+export const deleteAttachment = async (req: Request, res: Response) => {
+  try {
+    const { id, filename } = req.params;
+    const doc = await TtFinanceDetail.findById(id);
+    if (!doc) return res.status(404).json({ message: 'Transaksi not found' });
+
+    // Filter out the attachment to be deleted
+    const filteredAttachments = (doc.attachments || []).filter(att => !att.path.includes(filename));
+    const wasLastAttachment = (doc.attachments || []).length > 0 && filteredAttachments.length === 0;
+
+    doc.attachments = filteredAttachments;
+    doc.updated_at = new Date();
+    await doc.save();
+
+    // If this was the last attachment, update tt_finance_daily
+    if (wasLastAttachment) {
+      await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'decrement');
+      await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'decrement');
+    }
+
+    res.json({ success: true, attachments: doc.attachments });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error });
+  }
+};
+
 
 export const createTransaksi = async (req: Request, res: Response) => {
   try {
@@ -158,37 +304,7 @@ export const createTransaksi = async (req: Request, res: Response) => {
     if (!tahunFiskal) {
       return res.status(400).json({ message: 'tahun_fiskal tidak ditemukan dari bulan' });
     }
-    // Cari dokumen tt_finance hanya berdasarkan kategori, sub_kategori, akun, tahun_fiskal
-    let doc = await Transaksi.findOne({ kategori, sub_kategori, akun, tahun_fiskal: tahunFiskal });
-
-    if (!doc) {
-      // Buat baru jika belum ada
-      doc = new Transaksi({
-        kategori,
-        sub_kategori,
-        akun,
-        data_bulanan: [{ bulan, nilai }],
-        total_tahunan: nilai,
-        input_by,
-        tahun_fiskal: tahunFiskal,
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
-    } else {
-      // Update data_bulanan jika sudah ada
-      const idx = doc.data_bulanan.findIndex((d: any) => d.bulan === bulan);
-      if (idx >= 0) {
-        // SUM nilai jika bulan sudah ada
-        doc.data_bulanan[idx].nilai += nilai;
-      } else {
-        doc.data_bulanan.push({ bulan, nilai });
-      }
-      // Hitung total tahunan
-      doc.total_tahunan = doc.data_bulanan.reduce((sum: number, d: any) => sum + d.nilai, 0);
-      doc.updated_at = new Date();
-      doc.tahun_fiskal = tahunFiskal;
-    }
-    await doc.save();
+   
 
     // Simpan detail transaksi ke tt_finance_detail
     // tanggal HARUS diambil dari input (bukan tanggal input), dan WAJIB ADA
@@ -209,33 +325,12 @@ export const createTransaksi = async (req: Request, res: Response) => {
       nama_perusahaan: nama_perusahaan || '',
       kode_bank: kode_bank && kode_bank.trim() !== '' ? kode_bank : '-',
       no_rekening: no_rekening && no_rekening.trim() !== '' ? no_rekening : '-',
+      tahun_fiskal
     });
 
     await detail.save();
 
-    // --- INCREMENT tt_finance_daily ---
-    // Format bulan fiskal: e.g. NOV-25
-    const [yyyy, mm, dd] = tanggal.split('-');
-    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const monthIdx = parseInt(mm, 10) - 1;
-    const bulanFiskal = `${monthNames[monthIdx]}-${yyyy.slice(2)}`;
-    await TtFinanceDaily.findOneAndUpdate(
-      {
-        tanggal,
-        bulan_fiskal: bulanFiskal,
-        tahun_fiskal: tahunFiskal,
-        kategori,
-        sub_kategori,
-        akun
-      },
-      {
-        $inc: { total_nilai: nilai },
-        $setOnInsert: { created_at: new Date() }
-      },
-      { upsert: true, new: true }
-    );
-
-    res.json(doc);
+    res.json(detail);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
   }

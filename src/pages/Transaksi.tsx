@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // Helper: extract year from fiscal month string (e.g. 'JAN-25' or 'JAN - 25')
 function getFiscalMonthYear(bulanFiskal: string): number | null {
   if (!bulanFiskal) return null;
@@ -45,6 +45,17 @@ import {
 } from '@/components/ui/table';
 import { Plus } from 'lucide-react';
 import { log } from 'console';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+interface IAttachment {
+  path: string;
+}
 
 interface Transaksi {
   _id?: string;
@@ -60,6 +71,7 @@ interface Transaksi {
   keterangan?: string;
   created_at?: string;
   tanggal?: string; // tambahkan tanggal untuk date picker
+  attachments?: IAttachment[];
 }
 
 
@@ -68,12 +80,165 @@ interface Option {
   nama: string;
 }
 
+
 // Bulan fiskal dinamis dari backend
 const currentYear = new Date().getFullYear();
 
+interface UploadAttachmentsFormProps {
+  transaksiId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function UploadAttachmentsForm({ transaksiId, onClose, onSuccess }: UploadAttachmentsFormProps) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const newFiles = Array.from(e.target.files);
+      setFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    setFiles(prev => [...prev, ...droppedFiles]);
+  };
+
+  const handleClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpload = async () => {
+    if (files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('attachments', file);
+      });
+
+      await axiosInstance.post(`/transaksi/${transaksiId}/attachments`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      toast.success(`${files.length} file(s) uploaded successfully!`);
+      setFiles([]); // Clear the list after successful upload
+      onSuccess();
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || 'Gagal mengupload attachment.';
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Drag & Drop Area */}
+      <div
+        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all duration-200 ${
+          isDragOver
+            ? 'border-blue-500 bg-blue-50'
+            : 'border-gray-300 hover:border-gray-400'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={handleClick}
+      >
+        <div className="flex flex-col items-center space-y-3">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+            isDragOver ? 'bg-blue-100' : 'bg-gray-100'
+          }`}>
+            <svg className={`w-5 h-5 ${isDragOver ? 'text-blue-600' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </div>
+          <div>
+            <p className={`text-sm font-medium ${isDragOver ? 'text-blue-700' : 'text-gray-700'}`}>
+              {isDragOver ? 'Drop files here' : 'Click to add files or drag & drop'}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              JPG, PNG, PDF, Excel files supported
+            </p>
+          </div>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".jpg,.jpeg,.png,.pdf,.xlsx,.xls"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+      </div>
+
+      {/* File List */}
+      {files.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Files to upload ({files.length}):</p>
+          <div className="max-h-40 overflow-y-auto space-y-2">
+            {files.map((file, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-gray-50 rounded p-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 truncate">{file.name}</p>
+                  <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeFile(idx)}
+                  className="text-red-600 hover:text-red-800 hover:bg-red-50 ml-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+        <Button onClick={handleUpload} disabled={uploading || files.length === 0}>
+          {uploading ? 'Uploading...' : `Upload ${files.length > 0 ? `${files.length} File${files.length > 1 ? 's' : ''}` : 'Files'}`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Transaksi() {
   // Tahun fiskal global dari store
-  const { fiscalYear } = useAppStore();
+  const { fiscalYear, user } = useAppStore();
 
   // ...existing state declarations...
 
@@ -163,8 +328,14 @@ export default function Transaksi() {
   } = useQuery({
     queryKey: ['fiscal-months', fiscalYear],
     queryFn: async () => {
-      const res = await axiosInstance.get(`/fiscal/months?tahun=${fiscalYear}`);
-      return res.data.months || [];
+      try {
+        const res = await axiosInstance.get(`/fiscal/months?tahun=${fiscalYear}`);
+        return res.data.months || [];
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data bulan fiskal.';
+        toast.error(msg);
+        throw error;
+      }
     },
   });
 
@@ -180,6 +351,10 @@ export default function Transaksi() {
       const [editData, setEditData] = useState<any>(null);
       const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
       const [deleteData, setDeleteData] = useState<any>(null);
+      const [deleteAttachmentDialogOpen, setDeleteAttachmentDialogOpen] = useState(false);
+      const [deleteAttachmentData, setDeleteAttachmentData] = useState<{ transaksiId: string; filename: string; fileUrl: string } | null>(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadData, setUploadData] = useState<any>(null);
 
       // Handler edit transaksi (open modal) for flattened row
       const handleEdit = async (row: any) => {
@@ -210,8 +385,9 @@ export default function Transaksi() {
             rekening_id: rekeningList.find((r) => r.no_rekening === detail.no_rekening && r.kode_bank === detail.kode_bank)?._id || '',
           });
           setEditModalOpen(true);
-        } catch (err) {
-          toast.error('Gagal mengambil detail transaksi.');
+        } catch (error: any) {
+          const msg = error?.response?.data?.message || 'Gagal mengambil detail transaksi.';
+          toast.error(msg);
         }
       };
 
@@ -277,6 +453,16 @@ export default function Transaksi() {
         setDeleteDialogOpen(true);
       };
 
+      const handleUploadAttachments = (row: any) => {
+        setUploadData(row);
+        setUploadModalOpen(true);
+      };
+
+      const handleDeleteAttachment = (transaksiId: string, filename: string, fileUrl: string) => {
+        setDeleteAttachmentData({ transaksiId, filename, fileUrl });
+        setDeleteAttachmentDialogOpen(true);
+      };
+
       // Handler konfirmasi hapus
       const handleConfirmDelete = async () => {
         if (!deleteData) return;
@@ -289,8 +475,25 @@ export default function Transaksi() {
           toast.success('Transaksi berhasil dihapus!');
           setDeleteDialogOpen(false);
           setDeleteData(null);
-        } catch {
-          toast.error('Gagal menghapus transaksi.');
+        } catch (error: any) {
+          const msg = error?.response?.data?.message || 'Gagal menghapus transaksi.';
+          toast.error(msg);
+        }
+      };
+
+      // Handler konfirmasi hapus attachment
+      const handleConfirmDeleteAttachment = async () => {
+        if (!deleteAttachmentData) return;
+        try {
+          await axiosInstance.delete(`/transaksi/${deleteAttachmentData.transaksiId}/attachments/${deleteAttachmentData.filename}`);
+          toast.success('Attachment berhasil dihapus!');
+          setDeleteAttachmentDialogOpen(false);
+          setDeleteAttachmentData(null);
+          // Refresh data
+          refetch();
+        } catch (error: any) {
+          const msg = error?.response?.data?.message || 'Gagal menghapus attachment.';
+          toast.error(msg);
         }
       };
         // ...existing code...
@@ -302,8 +505,14 @@ export default function Transaksi() {
   const { data: perusahaanList = [] } = useQuery({
     queryKey: ['perusahaan-all'],
     queryFn: async () => {
-      const res = await axiosInstance.get('/master/perusahaan?all=true');
-      return res.data || [];
+      try {
+        const res = await axiosInstance.get('/master/perusahaan?all=true');
+        return res.data || [];
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data perusahaan.';
+        toast.error(msg);
+        throw error;
+      }
     },
   });
 
@@ -311,8 +520,14 @@ export default function Transaksi() {
   const { data: rekeningList = [] } = useQuery({
     queryKey: ['rekening-all'],
     queryFn: async () => {
-      const res = await axiosInstance.get('/master/rekening?all=true');
-      return res.data || [];
+      try {
+        const res = await axiosInstance.get('/master/rekening?all=true');
+        return res.data || [];
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data rekening.';
+        toast.error(msg);
+        throw error;
+      }
     },
   });
 
@@ -405,14 +620,19 @@ export default function Transaksi() {
     }
   }, [formData.bulan_fiskal, selectedMonthKey]);
   // ...existing code...
-  const { user } = useAppStore();
 
   // Fetch categories
   const { data: categories = [] } = useQuery({
     queryKey: ['kategori'],
     queryFn: async () => {
-      const response = await axiosInstance.get('/master/kategori');
-      return response.data || [];
+      try {
+        const response = await axiosInstance.get('/master/kategori');
+        return response.data || [];
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data kategori.';
+        toast.error(msg);
+        throw error;
+      }
     },
   });
 
@@ -420,8 +640,14 @@ export default function Transaksi() {
   const { data: subCategories = [] } = useQuery({
     queryKey: ['subkategori'],
     queryFn: async () => {
-      const response = await axiosInstance.get('/master/subkategori');
-      return response.data || [];
+      try {
+        const response = await axiosInstance.get('/master/subkategori');
+        return response.data || [];
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data sub kategori.';
+        toast.error(msg);
+        throw error;
+      }
     },
   });
 
@@ -429,8 +655,14 @@ export default function Transaksi() {
   const { data: accounts = [] } = useQuery({
     queryKey: ['akun'],
     queryFn: async () => {
-      const response = await axiosInstance.get('/master/akun');
-      return response.data || [];
+      try {
+        const response = await axiosInstance.get('/master/akun');
+        return response.data || [];
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data akun.';
+        toast.error(msg);
+        throw error;
+      }
     },
   });
 
@@ -492,7 +724,8 @@ export default function Transaksi() {
   const {
     data: transaksiResp,
     isLoading,
-    error
+    error,
+    refetch
   } = useQuery({
     queryKey: [
       'transaksi',
@@ -510,37 +743,43 @@ export default function Transaksi() {
       kategoriSort,
     ],
     queryFn: async () => {
-      if (typeData === 'Detail') {
-        // Query tt_finance_detail
-        const params = new URLSearchParams();
-        if (filterTanggalDari) params.append('from', filterTanggalDari);
-        if (filterTanggalSampai) params.append('to', filterTanggalSampai);
-        if (filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
-        if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
-        if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
-        params.append('page', String(page));
-        params.append('limit', String(pageSize));
-        if (kategoriSort) params.append('sortKategori', kategoriSort);
-        const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
-        return { data: response.data.data, totalPages: response.data.totalPages || 1 };
-      } else {
-        // Query tt_finance (rekap)
-        const params = new URLSearchParams();
-        if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
-          const tahun2Digit = String(filterTahun).slice(-2);
-          // Kirim satu format; backend sudah handle variasi spasi
-          params.append('bulan', `${filterBulan}-${tahun2Digit}`);
+      try {
+        if (typeData === 'Detail') {
+          // Query tt_finance_detail
+          const params = new URLSearchParams();
+          if (filterTanggalDari) params.append('from', filterTanggalDari);
+          if (filterTanggalSampai) params.append('to', filterTanggalSampai);
+          if (filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
+          if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
+          if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+          params.append('page', String(page));
+          params.append('limit', String(pageSize));
+          if (kategoriSort) params.append('sortKategori', kategoriSort);
+          const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
+          return { data: response.data.data, totalPages: response.data.totalPages || 1 };
+        } else {
+          // Query tt_finance (rekap)
+          const params = new URLSearchParams();
+          if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
+            const tahun2Digit = String(filterTahun).slice(-2);
+            // Kirim satu format; backend sudah handle variasi spasi
+            params.append('bulan', `${filterBulan}-${tahun2Digit}`);
+          }
+          if (filterTahun) params.append('tahun', filterTahun);
+          if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
+          if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
+          if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+          params.append('flatten', '1');
+          params.append('page', String(page));
+          params.append('limit', String(pageSize));
+          if (kategoriSort) params.append('sortKategori', kategoriSort);
+          const response = await axiosInstance.get(`/transaksi?${params.toString()}`);
+          return { data: response.data.data, totalPages: response.data.totalPages, total: response.data.total, totalNilai: response.data.totalNilai };
         }
-        if (filterTahun) params.append('tahun', filterTahun);
-        if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
-        if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
-        if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
-        params.append('flatten', '1');
-        params.append('page', String(page));
-        params.append('limit', String(pageSize));
-        if (kategoriSort) params.append('sortKategori', kategoriSort);
-        const response = await axiosInstance.get(`/transaksi?${params.toString()}`);
-        return { data: response.data.data, totalPages: response.data.totalPages, total: response.data.total, totalNilai: response.data.totalNilai };
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data transaksi.';
+        toast.error(msg);
+        throw error;
       }
     },
   });
@@ -599,22 +838,28 @@ export default function Transaksi() {
       fiscalYear,
     ],
     queryFn: async () => {
-      if (typeData === 'Detail') {
-        const params = new URLSearchParams();
-        if (filterTanggalDari) params.append('from', filterTanggalDari);
-        if (filterTanggalSampai) params.append('to', filterTanggalSampai);
-        if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
-        if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
-        if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
-        params.append('aggregate', '1');
-        const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
-        return response.data || { totalNilai: 0, totalCount: 0 };
-      } else {
-        // For Rekap, totals are included in main response already
-        return {
-          totalNilai: (transaksiResp as any)?.totalNilai || 0,
-          totalCount: (transaksiResp as any)?.total || 0,
-        };
+      try {
+        if (typeData === 'Detail') {
+          const params = new URLSearchParams();
+          if (filterTanggalDari) params.append('from', filterTanggalDari);
+          if (filterTanggalSampai) params.append('to', filterTanggalSampai);
+          if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
+          if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
+          if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+          params.append('aggregate', '1');
+          const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
+          return response.data || { totalNilai: 0, totalCount: 0 };
+        } else {
+          // For Rekap, totals are included in main response already
+          return {
+            totalNilai: (transaksiResp as any)?.totalNilai || 0,
+            totalCount: (transaksiResp as any)?.total || 0,
+          };
+        }
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data total agregat.';
+        toast.error(msg);
+        throw error;
       }
     },
     enabled: !!transaksiResp,
@@ -630,7 +875,13 @@ export default function Transaksi() {
   // Create transaksi mutation
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
-      return axiosInstance.post('/transaksi', payload);
+      try {
+        return await axiosInstance.post('/transaksi', payload);
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal menyimpan transaksi.';
+        toast.error(msg);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transaksi'] });
@@ -1170,32 +1421,58 @@ export default function Transaksi() {
                     {/* <TableCell className="w-24 px-6 py-4 text-gray-700">{row.input_by || row.created_by}</TableCell> */}
                     {typeData === 'Detail' && (
                       <TableCell className="w-32 px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(row)}
-                            className="border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDelete(row)}
-                            className="border-red-300 hover:bg-red-50 hover:border-red-400 text-red-600 hover:text-red-700 transition-all duration-200"
-                          >
-                            Hapus
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-gray-300 hover:bg-gray-50 transition-all duration-200"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                              </svg>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuItem
+                              onClick={() => handleEdit(row)}
+                              className="cursor-pointer"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(row)}
+                              className="cursor-pointer text-red-600 focus:text-red-600"
+                            >
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Hapus
+                            </DropdownMenuItem>
+                            {(user?.role === 'superuser' || user?.role === 'corsec') && (
+                              <DropdownMenuItem
+                                onClick={() => handleUploadAttachments(row)}
+                                className="cursor-pointer text-green-600 focus:text-green-600"
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                                Upload
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
 
                     )}
                   </TableRow>
                   {typeData === 'Detail' && expandedRows[row._id || String(idx)] && (
                     <TableRow className="bg-transparent">
-                      <TableCell colSpan={9} className="pt-0 pb-4 px-0 border-none align-top">
-                        <div className="bg-white rounded-lg border border-slate-200 mx-2 my-0 p-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
+                      <TableCell colSpan={9} className="">
+                        <div className="bg-white rounded-lg border border-slate-200 my-0 p-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
                           <div className="flex flex-col min-w-[120px]">
                             <span className="text-[11px] text-slate-500 leading-tight">Keterangan</span>
                             <span className="font-medium text-gray-900 truncate">{row.keterangan || '-'}</span>
@@ -1216,6 +1493,34 @@ export default function Transaksi() {
                             <span className="text-[11px] text-slate-500 leading-tight">Input By</span>
                             <span className="font-medium text-gray-900 truncate">{row.input_by || row.created_by || '-'}</span>
                           </div>
+                          {row.attachments && row.attachments.length > 0 && (user?.role === 'superuser' || user?.role === 'corsec') && (
+                            <div className="flex flex-col min-w-[200px]">
+                              <span className="text-[11px] text-slate-500 leading-tight">Attachments</span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {row.attachments.map((att, idx) => (
+                                  <div key={idx} className="flex items-center gap-1 bg-blue-50 rounded px-2 py-1">
+                                    <a
+                                      href={`http://192.168.110.49:5001${att.path}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 underline text-xs"
+                                    >
+                                      {att.path.split('/').pop()}
+                                    </a>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteAttachment(row._id, att.path.split('/').pop() || '', att.path)}
+                                      className="h-3 w-3 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                      title="Delete attachment"
+                                    >
+                                      ×
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1571,6 +1876,82 @@ export default function Transaksi() {
           </div>
         )}
       </div>
+
+      {/* Upload Attachments Modal */}
+      <Dialog open={uploadModalOpen} onOpenChange={setUploadModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Upload Attachments</DialogTitle>
+            <DialogDescription>
+              Upload multiple documents (images, PDFs, Excel) for this transaction.
+            </DialogDescription>
+          </DialogHeader>
+          <UploadAttachmentsForm
+            transaksiId={uploadData?._id}
+            onClose={() => setUploadModalOpen(false)}
+            onSuccess={() => {
+              setUploadModalOpen(false);
+              // Refresh data
+              refetch();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Attachment Confirmation Dialog */}
+      {deleteAttachmentDialogOpen && deleteAttachmentData && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 bg-gradient-to-br from-red-100 to-red-200 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold bg-gradient-to-r from-red-900 to-red-600 bg-clip-text text-transparent">
+                    Konfirmasi Hapus Attachment
+                  </h3>
+                  <p className="text-gray-600 mt-1">Apakah Anda yakin ingin menghapus file ini?</p>
+                </div>
+              </div>
+
+              <div className="bg-red-50/50 rounded-lg p-4 mb-6 border border-red-200/50">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-700">Nama File:</span>
+                    <span className="text-gray-900 font-mono text-xs">{deleteAttachmentData.filename}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium text-gray-700">Path:</span>
+                    <span className="text-gray-900 font-mono text-xs truncate max-w-[200px]">{deleteAttachmentData.fileUrl}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDeleteAttachmentDialogOpen(false);
+                    setDeleteAttachmentData(null);
+                  }}
+                  className="border-gray-300 hover:bg-gray-50 transition-all duration-200"
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={handleConfirmDeleteAttachment}
+                  className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+                >
+                  Hapus File
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

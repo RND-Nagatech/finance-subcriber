@@ -43,6 +43,7 @@ interface Subscriber {
   alamat: string | null;
   daerah: string;
   program: string;
+  internal_kode?: string;
   vb_online: string | null;
   biaya: number;
   prev_subscriber: number;
@@ -340,6 +341,7 @@ export default function Subscriber() {
     return (
       subscriber.toko?.toLowerCase().includes(searchLower) ||
       subscriber.program?.toLowerCase().includes(searchLower) ||
+      subscriber.internal_kode?.toLowerCase().includes(searchLower) ||
       subscriber.daerah?.toLowerCase().includes(searchLower) ||
       subscriber.kode?.toLowerCase().includes(searchLower) ||
       subscriber.no_ok?.toLowerCase().includes(searchLower) ||
@@ -476,6 +478,7 @@ export default function Subscriber() {
                 <TableHead className="w-12 px-4 py-4 font-semibold text-gray-900"></TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Toko</TableHead>
                 <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Program</TableHead>
+                <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Internal Kode</TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Biaya</TableHead>
                 <TableHead className="w-28 px-6 py-4 font-semibold text-gray-900">Tanggal</TableHead>
                 <TableHead className="w-24 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
@@ -484,7 +487,7 @@ export default function Subscriber() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12">
+                  <TableCell colSpan={11} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data subscriber...</p>
@@ -493,7 +496,7 @@ export default function Subscriber() {
                 </TableRow>
               ) : filteredSubscribers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12">
+                  <TableCell colSpan={11} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -529,6 +532,7 @@ export default function Subscriber() {
                       </TableCell>
                       <TableCell className="w-32 px-6 py-4 text-gray-700 font-medium">{item.toko}</TableCell>
                       <TableCell className="w-40 px-6 py-4 text-gray-700">{item.program}</TableCell>
+                      <TableCell className="w-32 px-6 py-4 text-gray-700">{item.internal_kode || '-'}</TableCell>
                       <TableCell className="w-32 px-6 py-4 text-gray-700 font-semibold">{formatCurrency(item.biaya)}</TableCell>
                       <TableCell className="w-28 px-6 py-4 text-gray-700">{new Date(item.tanggal).toLocaleDateString('id-ID')}</TableCell>
                       <TableCell className="w-24 px-6 py-4 text-right">
@@ -554,7 +558,7 @@ export default function Subscriber() {
                     </TableRow>
                     {expandedRows.has(item._id || '') && (
                       <TableRow className="bg-blue-50/30 border-b border-gray-100/50">
-                        <TableCell colSpan={6} className="px-6 py-4">
+                        <TableCell colSpan={7} className="px-6 py-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                             <div className="space-y-2">
                               <div className="flex justify-between">

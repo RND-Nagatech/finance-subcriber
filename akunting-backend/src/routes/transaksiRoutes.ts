@@ -1,8 +1,22 @@
 
 import { Router } from 'express';
-import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi } from '../controllers/transaksiController';
+import multer from 'multer';
+import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment } from '../controllers/transaksiController';
 import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
 const router = Router();
+
+// Multer config for attachments
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/transaksi/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + '.' + file.mimetype.split('/')[1]);
+  }
+});
+const upload = multer({ storage });
+
 router.get('/tt-finance-detail', listTtFinanceDetail);
 
 router.post('/', createTransaksi);
@@ -15,5 +29,9 @@ router.delete('/:id', deleteTransaksi);
 router.put('/:id/bulan/:bulan', editTransaksiBulanan);
 // Hapus data bulanan
 router.delete('/:id/bulan/:bulan', deleteTransaksiBulanan);
+
+// Attachments
+router.post('/:id/attachments', upload.array('attachments'), uploadAttachments);
+router.delete('/:id/attachments/:filename', deleteAttachment);
 
 export default router;

@@ -1,8 +1,10 @@
 import { create } from 'zustand';
+import { secureStorage } from '@/utils/secureStorage';
 
 interface User {
   name: string;
   email: string;
+  role: string;
 }
 
 interface AppState {
@@ -15,19 +17,20 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  user: localStorage.getItem('user_name') 
-    ? { name: localStorage.getItem('user_name') || '', email: '' }
+  user: secureStorage.getItem('user_name') 
+    ? { name: secureStorage.getItem('user_name') || '', email: '', role: secureStorage.getItem('user_role') || 'user' }
     : null,
-  isAuthenticated: !!localStorage.getItem('auth_token'),
+  isAuthenticated: !!secureStorage.getItem('auth_token'),
   setUser: (user) => set({ user, isAuthenticated: !!user }),
   logout: () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user_name');
+    secureStorage.removeItem('auth_token');
+    secureStorage.removeItem('user_name');
+    secureStorage.removeItem('user_role');
     set({ user: null, isAuthenticated: false });
   },
-  fiscalYear: Number(localStorage.getItem('fiscal_year')) || new Date().getFullYear(),
+  fiscalYear: Number(secureStorage.getItem('fiscal_year')) || new Date().getFullYear(),
   setFiscalYear: (year: number) => {
-    localStorage.setItem('fiscal_year', String(year));
+    secureStorage.setItem('fiscal_year', String(year));
     set({ fiscalYear: year });
   },
 }));

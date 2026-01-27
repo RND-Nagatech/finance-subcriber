@@ -29,7 +29,7 @@ export default function LineChartKategori({ data, title, description }: LineChar
   return (
     <div className="bg-white">
       {title && (
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">{title}</h2>
           <div className="text-lg font-bold text-blue-600">
             Total: Rp {totalValue.toLocaleString('id-ID')}
@@ -44,6 +44,14 @@ export default function LineChartKategori({ data, title, description }: LineChar
             interval={0}
             dy={10}
             tick={{ fontSize: 11 }}
+            tickFormatter={(value) => {
+              // Jika format YYYY-MM-DD, tampilkan hanya hari (DD)
+              if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                return value.split('-')[2];
+              }
+              // Jika format lain seperti JAN-26, tampilkan apa adanya
+              return value;
+            }}
           />
           <YAxis
             width={100}
@@ -75,14 +83,14 @@ export default function LineChartKategori({ data, title, description }: LineChar
                       <div style={{
                         width: 12,
                         height: 12,
-                        backgroundColor: '#0088FE',
+                        backgroundColor: (data.value as number) < 0 ? '#ef4444' : '#0088FE' ,
                         marginRight: 8,
                         borderRadius: 2
                       }}></div>
                       <div style={{ flex: 1 }}>
                         <span style={{ fontWeight: 500 }}>Nominal:</span>
                       </div>
-                      <div style={{ fontWeight: 600, color: (data.value as number) < 0 ? '#ef4444' : '#000000' }}>
+                      <div style={{ fontWeight: 600, color: (data.value as number) < 0 ? '#ef4444' : '#0088FE' }}>
                         Rp {(data.value as number).toLocaleString('id-ID')}
                       </div>
                     </div>
@@ -93,7 +101,24 @@ export default function LineChartKategori({ data, title, description }: LineChar
             }}
           />
           {/* <Legend verticalAlign="top" align="right" height={24} iconType="circle" /> */}
-          <Line type="monotone" dataKey="nominal" stroke="#0088FE" dot label={<CustomLabel dataLength={data.length} />} />
+          <Line 
+            type="monotone" 
+            dataKey="nominal" 
+            stroke="#0088FE" 
+            dot={(props) => {
+              const { payload } = props;
+              const isNegative = payload && payload.nominal < 0;
+              return (
+                <circle
+                  {...props}
+                  r={4}
+                  fill={isNegative ? '#ef4444' : '#0088FE'}
+                  stroke={isNegative ? '#ef4444' : '#0088FE'}
+                  strokeWidth={2}
+                />
+              );
+            }}
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>
