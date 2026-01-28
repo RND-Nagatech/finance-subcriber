@@ -629,30 +629,6 @@ export const listSubscriber = async (req: Request, res: Response) => {
     };
     const list = await Subscriber.aggregate([
       { $match: filter },
-      {
-        $lookup: {
-          from: 'tm_program',
-          localField: 'program',
-          foreignField: 'nama',
-          as: 'program_info'
-        }
-      },
-      {
-        $unwind: {
-          path: '$program_info',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $addFields: {
-          internal_kode: { $ifNull: ['$program_info.internal_kode', '-'] }
-        }
-      },
-      {
-        $project: {
-          program_info: 0
-        }
-      },
       { $sort: { tanggal: -1 } }
     ]);
     res.json(list);
@@ -675,12 +651,13 @@ export const createSubscriber = async (req: Request, res: Response) => {
       biaya: customBiaya,
       tanggal,
       implementator,
-      via
+      via,
+      internal_kode
     } = req.body;
 
     // Validate required fields only
-    if (!toko || !daerah || !programName || !tanggal || !via) {
-      return res.status(400).json({ message: 'Toko, Daerah, Program, Tanggal, dan Via wajib diisi' });
+    if (!toko || !daerah || !programName || !tanggal || !via || !internal_kode) {
+      return res.status(400).json({ message: 'Toko, Daerah, Program, Tanggal, Via, dan Internal Kode wajib diisi' });
     }
 
     // Get program details
@@ -719,6 +696,7 @@ export const createSubscriber = async (req: Request, res: Response) => {
       tanggal: new Date(tanggal),
       implementator,
       via,
+      internal_kode,
       prev_subscriber: prevSubscriber,
       current_subscriber: currentSubscriber,
       prev_biaya: prevBiaya,
@@ -753,7 +731,8 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       biaya: customBiaya,
       tanggal,
       implementator,
-      via
+      via,
+      internal_kode
     } = req.body;
 
     const userId = resolveUserId(req);
@@ -776,6 +755,9 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     }
     if (via !== undefined && !via) {
       return res.status(400).json({ message: 'Via wajib diisi' });
+    }
+    if (internal_kode !== undefined && !internal_kode) {
+      return res.status(400).json({ message: 'Internal Kode wajib diisi' });
     }
 
     // Get program details if program changed
@@ -821,6 +803,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     old.tanggal = tanggal ? new Date(tanggal) : old.tanggal;
     old.implementator = implementator ?? old.implementator;
     old.via = via ?? old.via;
+    old.internal_kode = internal_kode ?? old.internal_kode;
     old.prev_subscriber = prevSubscriber;
     old.current_subscriber = currentSubscriber;
     old.prev_biaya = prevBiaya;

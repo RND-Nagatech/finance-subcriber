@@ -13,6 +13,7 @@ export interface ISubscriber extends Document {
   tanggal: Date;
   implementator: string | null;
   via: 'VISIT' | 'ONLINE';
+  internal_kode: string;
   prev_subscriber: number;
   current_subscriber: number;
   prev_biaya: number;
@@ -39,6 +40,7 @@ const SubscriberSchema: Schema = new Schema({
   tanggal: { type: Date, required: true },
   implementator: { type: String, required: false, default: null },
   via: { type: String, required: true, enum: ['VISIT', 'ONLINE'] },
+  internal_kode: { type: String, required: true },
   prev_subscriber: { type: Number, required: true, default: 0 },
   current_subscriber: { type: Number, required: true, default: 1 },
   prev_biaya: { type: Number, required: true, default: 0 },

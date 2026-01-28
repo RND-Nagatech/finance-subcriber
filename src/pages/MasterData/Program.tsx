@@ -41,7 +41,7 @@ interface Program {
   kode: string;
   internal_kode?: string;
   biaya: number;
-  group_program?: string;
+  group_program: string;
   status_aktv?: boolean;
   input_date?: string;
   update_date?: string;
@@ -335,6 +335,17 @@ export default function Program() {
                 value={formData.internal_kode}
                 onChange={e => setFormData({...formData, internal_kode: e.target.value})}
                 placeholder="Masukkan internal kode"
+                className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="group_program" className="text-sm font-semibold text-gray-700">Group Program</Label>
+              <Input
+                id="group_program"
+                value={formData.group_program}
+                onChange={e => setFormData({...formData, group_program: e.target.value})}
+                placeholder="Masukkan group program"
                 className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 required
               />

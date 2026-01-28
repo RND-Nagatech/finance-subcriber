@@ -43,7 +43,7 @@ interface Subscriber {
   alamat: string | null;
   daerah: string;
   program: string;
-  internal_kode?: string;
+  internal_kode: string;
   vb_online: string | null;
   biaya: number;
   prev_subscriber: number;
@@ -67,6 +67,7 @@ interface Program {
   kode: string;
   nama: string;
   biaya: number;
+  internal_kode: string;
 }
 
 export default function Subscriber() {
@@ -80,6 +81,7 @@ export default function Subscriber() {
     toko: '',
     alamat: null,
     daerah: '',
+    internal_kode: '',
     program: '',
     vb_online: null,
     biaya: 0,
@@ -164,6 +166,7 @@ export default function Subscriber() {
           toko: payload.toko,
           alamat: payload.alamat,
           daerah: payload.daerah,
+          internal_kode: payload.internal_kode,
           program: payload.program,
           vb_online: payload.vb_online,
           biaya: payload.biaya,
@@ -179,6 +182,7 @@ export default function Subscriber() {
         toko: payload.toko,
         alamat: payload.alamat,
         daerah: payload.daerah,
+        internal_kode: payload.internal_kode,
         program: payload.program,
         vb_online: payload.vb_online,
         biaya: payload.biaya,
@@ -286,6 +290,7 @@ export default function Subscriber() {
       toko: '',
       alamat: null,
       daerah: '',
+      internal_kode: '',
       program: '',
       vb_online: null,
       biaya: 0,
@@ -306,7 +311,8 @@ export default function Subscriber() {
     setFormData({
       ...formData,
       program: program.nama,
-      biaya: program.biaya,
+      biaya: program.biaya, 
+      internal_kode: program.internal_kode
     });
     setFormattedBiaya(formatNumberInput(program.biaya.toString()));
   };
@@ -387,6 +393,7 @@ export default function Subscriber() {
                 toko: '',
                 alamat: null,
                 daerah: '',
+                internal_kode: '',
                 program: '',
                 vb_online: null,
                 biaya: 0,
@@ -704,6 +711,18 @@ export default function Subscriber() {
                   value={formData.daerah}
                   onChange={(e) => setFormData({ ...formData, daerah: e.target.value })}
                   placeholder="Masukkan daerah"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="internal_kode" className="text-sm font-semibold text-gray-700">Internal Kode</Label>
+                <Input
+                  id="internal_kode"
+                  value={formData.internal_kode || ''}
+                  onChange={(e) => setFormData({ ...formData, internal_kode: e.target.value })}
+                  placeholder="Masukkan internal kode"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   required
                 />
