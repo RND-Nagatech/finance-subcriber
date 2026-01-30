@@ -1462,7 +1462,8 @@ export default function Transaksi() {
                     key={(row.parentId || row._id) + '-' + idx}
                     className={
                       `hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50` +
-                      (typeData === 'Detail' && expandedRows[row._id || String(idx)] ? ' pb-6 align-top' : '')
+                      (typeData === 'Detail' && expandedRows[row._id || String(idx)] ? ' pb-6 align-top' : '') +
+                      (row.is_validated ? ' bg-green-50 !border-green-300' : '')
                     }
                   >
                     {typeData === 'Detail' && (
