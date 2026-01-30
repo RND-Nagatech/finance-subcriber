@@ -1532,8 +1532,8 @@ export default function Transaksi() {
                                 Upload
                               </DropdownMenuItem>
                             )}
-                            {/* Button Validasi hanya untuk superuser dan corsec */}
-                            {(user?.role === 'superuser' || user?.role === 'corsec') && (
+                            {/* Button Validasi hanya untuk superuser dan corsec, dan hanya jika belum divalidasi */}
+                            {(user?.role === 'superuser' || user?.role === 'corsec') && !row.is_validated && (
                               <DropdownMenuItem
                                 onClick={() => handleValidate(row)}
                                 className="cursor-pointer text-blue-600 focus:text-blue-600"
@@ -1544,6 +1544,10 @@ export default function Transaksi() {
                                 Validasi
                               </DropdownMenuItem>
                             )}
+                    {/* Badge status validasi */}
+                    {row.is_validated && (
+                      <span className="inline-block ml-2 px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">Sudah divalidasi</span>
+                    )}
 
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -2047,8 +2051,9 @@ export default function Transaksi() {
           {validateRow && validateRow.attachments && validateRow.attachments.length > 0 ? (
             <div className="flex flex-wrap gap-4 mb-4">
               {validateRow.attachments.map((att: any, idx: number) => {
-                const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`;
-                const fileName = att.path.split('/').pop();
+                const cleanPath = att.path.replace(/^\/?uploads\//, '');
+                const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${cleanPath}`;
+                const fileName = cleanPath.split('/').pop();
                 const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
                 return (
                   <div key={idx} className="flex flex-col items-center w-32">

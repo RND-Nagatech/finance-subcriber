@@ -21,12 +21,14 @@ export interface ITtFinanceDetail extends Document {
   deleted_at?: Date;
   status_deleted?: boolean;
   attachments?: IAttachment[];
+  is_validated?: boolean;
 }
 
 const TtFinanceDetailSchema: Schema = new Schema({
+  is_validated: { type: Boolean, default: false },
   tanggal: { type: String, required: true },
   bulan: { type: String, required: true },
-  tahun_fiskal: { type: String},
+  tahun_fiskal: { type: String },
   kategori: { type: String, required: true },
   sub_kategori: { type: String, required: true },
   akun: { type: String, required: true },

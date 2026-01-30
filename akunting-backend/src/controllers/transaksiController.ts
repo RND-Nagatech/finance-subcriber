@@ -9,9 +9,14 @@ export const validateAttachment = async (req: Request, res: Response) => {
     if (!id) return res.status(400).json({ message: 'ID is required' });
     const doc = await TtFinanceDetail.findById(id);
     if (!doc) return res.status(404).json({ message: 'Transaksi detail not found' });
+    if (doc.is_validated) {
+      return res.status(400).json({ message: 'Transaksi sudah divalidasi, tidak bisa divalidasi ulang.' });
+    }
     // Jalankan update aggregation
     await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment');
     await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
+    doc.is_validated = true;
+    await doc.save();
     res.json({ success: true, message: 'Validasi berhasil' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error });
@@ -164,9 +169,8 @@ export const deleteTransaksi = async (req: Request, res: Response) => {
     // Find detail
     const detail = await TtFinanceDetail.findById(id);
     if(!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
-   
-    if(detail.attachments && detail.attachments.length > 0) {
-      return res.status(400).json({ message: 'Cannot delete transaksi with attachments. Please delete attachments first.' });
+    if (detail.is_validated) {
+      return res.status(400).json({ message: 'Transaksi sudah divalidasi, tidak bisa dihapus.' });
     }
     // Soft delete: set status_deleted, deleted_at, deleted_by
     detail.status_deleted = true;
@@ -455,7 +459,9 @@ export const updateTransaksi = async (req: Request, res: Response) => {
     // Cari detail transaksi di tt_finance_detail
     const detail = await TtFinanceDetail.findById(id);
     if (!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
-
+    if (detail.is_validated) {
+      return res.status(400).json({ message: 'Transaksi sudah divalidasi, tidak bisa diedit.' });
+    }
     // --- Fiscal year validation for update ---
     // Determine fiscal year from new bulan or tahun_fiskal
     let fiscalYearInput = tahun_fiskal;
@@ -564,6 +570,22 @@ export const updateTransaksi = async (req: Request, res: Response) => {
     if (!doc) {
       doc = await Transaksi.findOne({ kategori: oldKategori, sub_kategori: oldSubKategori, akun: oldAkun, tahun_fiskal: oldTahunFiskal });
     }
+    if (!doc) {
+      // Buat dokumen baru jika tidak ditemukan
+      doc = new Transaksi({
+        kategori: kategori || detail.kategori,
+        sub_kategori: sub_kategori || detail.sub_kategori,
+        akun: akun || detail.akun,
+        data_bulanan: [],
+        total_tahunan: 0,
+        input_by: input_by || detail.created_by || 'system',
+        tahun_fiskal: tahunFiskal,
+        attachments: [],
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+      await doc.save();
+    }
     if (!doc) return res.status(404).json({ message: 'Transaksi not found' });
 
     // 1. Soft delete old detail
@@ -587,42 +609,9 @@ export const updateTransaksi = async (req: Request, res: Response) => {
       nama_perusahaan: nama_perusahaan || '',
       kode_bank: kode_bank && kode_bank.trim() !== '' ? kode_bank : '-',
       no_rekening: no_rekening && no_rekening.trim() !== '' ? no_rekening : '-',
+      attachments: detail.attachments && detail.attachments.length > 0 ? [...detail.attachments] : [],
     });
     await newDetail.save();
-
-    // --- INCREMENT tt_finance_daily untuk detail baru ---
-    const [yyyyNew, mmNew, ddNew] = (tanggal || detail.tanggal).split('-');
-    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const monthIdxNew = parseInt(mmNew, 10) - 1;
-    const bulanFiskalNew = `${monthNames[monthIdxNew]}-${yyyyNew.slice(2)}`;
-    // Pastikan tahun_fiskal tidak null
-    let tahunFiskalDaily = tahun_fiskal as string | undefined;
-    if (!tahunFiskalDaily && (bulan || detail.bulan)) {
-      const bulanStr = (bulan || detail.bulan);
-      const match = bulanStr.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
-      if (match) {
-        let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
-        const bulanMap = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 } as const;
-        const key = (match[1] as string).toUpperCase() as keyof typeof bulanMap;
-        const bulanAngka = bulanMap[key] || 1;
-        tahunFiskalDaily = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
-      }
-    }
-    await TtFinanceDaily.findOneAndUpdate(
-      {
-        tanggal: tanggal || detail.tanggal,
-        bulan_fiskal: bulanFiskalNew,
-        tahun_fiskal: tahunFiskalDaily,
-        kategori: kategori || detail.kategori,
-        sub_kategori: sub_kategori || detail.sub_kategori,
-        akun: akun || detail.akun
-      },
-      {
-        $inc: { total_nilai: nilai !== undefined ? nilai : detail.nilai },
-        $setOnInsert: { created_at: new Date() }
-      },
-      { upsert: true, new: true }
-    );
 
     // 3. Update tt_finance aggregation for old and new bulan
     // Find doc for old values
@@ -661,6 +650,12 @@ export const updateTransaksi = async (req: Request, res: Response) => {
       await docOld.save();
     }
 
+    // HAPUS seluruh blok berikut:
+    // Update/create docNew untuk new values (tt_finance)
+    // const sumNew = await TtFinanceDetail.aggregate([...]);
+    // const totalBulanNew = sumNew[0]?.total || 0;
+    // if (docNew) { ... } else { ... }
+
     // Find doc for new values
     let tahunFiskalNew = tahun_fiskal;
     let docNew = null;
@@ -687,59 +682,41 @@ export const updateTransaksi = async (req: Request, res: Response) => {
       if (docNew) tahunFiskalNew = docNew.tahun_fiskal;
     }
     // Always aggregate and update/create docNew for new values
-    const sumNew = await TtFinanceDetail.aggregate([
-      { $match: {
-        kategori: kategori || detail.kategori,
-        sub_kategori: sub_kategori || detail.sub_kategori,
-        akun: akun || detail.akun,
-        bulan: bulan || detail.bulan,
-        status_deleted: { $ne: true }
-      } },
-      { $group: { _id: null, total: { $sum: "$nilai" } } }
-    ]);
-    const totalBulanNew = sumNew[0]?.total || 0;
-    if (docNew) {
-      const idxNew = docNew.data_bulanan.findIndex((d: any) => d.bulan === (bulan || detail.bulan));
-      if (idxNew >= 0) {
-        docNew.data_bulanan[idxNew].nilai = totalBulanNew;
-      } else {
-        docNew.data_bulanan.push({ bulan: bulan || detail.bulan, nilai: totalBulanNew });
+    // const sumNew = await TtFinanceDetail.aggregate([...]);
+    // const totalBulanNew = sumNew[0]?.total || 0;
+    // if (docNew) { ... } else { ... }
+
+    // Buat dokumen baru jika belum ada
+    if (!tahunFiskalNew) {
+      // Safety net: derive from bulan detail jika masih kosong
+      const match = (bulan || detail.bulan)?.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+      if (match) {
+        const bulanStr = match[1].toUpperCase();
+        let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
+        const bulanMap: Record<string, number> = {
+          JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+          JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
+        };
+        const bulanAngka = bulanMap[bulanStr] || 1;
+        tahunFiskalNew = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
       }
-      docNew.total_tahunan = docNew.data_bulanan.reduce((sum: number, d: any) => sum + d.nilai, 0);
-      docNew.updated_at = new Date();
-      await docNew.save();
-    } else {
-      // Buat dokumen baru jika belum ada
-      if (!tahunFiskalNew) {
-        // Safety net: derive from bulan detail jika masih kosong
-        const match = (bulan || detail.bulan)?.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
-        if (match) {
-          const bulanStr = match[1].toUpperCase();
-          let tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2]) : parseInt(match[2]);
-          const bulanMap: Record<string, number> = {
-            JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
-            JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
-          };
-          const bulanAngka = bulanMap[bulanStr] || 1;
-          tahunFiskalNew = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
-        }
-      }
-      if (!tahunFiskalNew) {
-        return res.status(400).json({ message: 'Gagal menentukan tahun_fiskal untuk transaksi baru.' });
-      }
-      const newTransaksi = new Transaksi({
-        kategori: kategori || detail.kategori,
-        sub_kategori: sub_kategori || detail.sub_kategori,
-        akun: akun || detail.akun,
-        data_bulanan: [{ bulan: bulan || detail.bulan, nilai: totalBulanNew }],
-        total_tahunan: totalBulanNew,
-        input_by: input_by || detail.created_by || 'system',
-        tahun_fiskal: tahunFiskalNew,
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
-      await newTransaksi.save();
     }
+
+    if (!tahunFiskalNew) {
+      return res.status(400).json({ message: 'Gagal menentukan tahun_fiskal untuk transaksi baru.' });
+    }
+    // const newTransaksi = new Transaksi({
+    //   kategori: kategori || detail.kategori,
+    //   sub_kategori: sub_kategori || detail.sub_kategori,
+    //   akun: akun || detail.akun,
+    //   data_bulanan: [{ bulan: bulan || detail.bulan, nilai: totalBulanNew }],
+    //   total_tahunan: totalBulanNew,
+    //   input_by: input_by || detail.created_by || 'system',
+    //   tahun_fiskal: tahunFiskalNew,
+    //   created_at: new Date(),
+    //   updated_at: new Date(),
+    // });
+    // await newTransaksi.save();
 
     res.json({ old_detail: detail, new_detail: newDetail });
   } catch (error) {
