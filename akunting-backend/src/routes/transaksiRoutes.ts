@@ -1,9 +1,22 @@
+import fs from 'fs';
+import path from 'path';
+// Pastikan folder uploads/transaksi/ ada
+const uploadDir = path.join(process.cwd(), 'uploads', 'transaksi');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 import { Router } from 'express';
 import multer from 'multer';
-import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment } from '../controllers/transaksiController';
+
+import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment } from '../controllers/transaksiController';
+import { authenticate } from '../middleware/authMiddleware';
 import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
+
 const router = Router();
+
+// Validasi data hasil attachment (hanya superuser/corsec)
+router.post('/validate-attachment', authenticate, validateAttachment);
 
 // Multer config for attachments
 const storage = multer.diskStorage({

@@ -232,11 +232,80 @@ function UploadAttachmentsForm({ transaksiId, onClose, onSuccess }: UploadAttach
           {uploading ? 'Uploading...' : `Upload ${files.length > 0 ? `${files.length} File${files.length > 1 ? 's' : ''}` : 'Files'}`}
         </Button>
       </div>
-    </div>
+  </div>
   );
 }
 
 export default function Transaksi() {
+      // State untuk dialog validasi
+      const [validateDialogOpen, setValidateDialogOpen] = useState(false);
+      const [validateRow, setValidateRow] = useState<any>(null);
+      const [validating, setValidating] = useState(false);
+    // Handler untuk validasi data hasil attachment
+    // Handler untuk buka dialog validasi
+    const handleValidate = (row: any) => {
+      setValidateRow(row);
+      setValidateDialogOpen(true);
+    };
+
+    // Handler submit validasi
+    const handleConfirmValidate = async () => {
+      if (!validateRow) return;
+      setValidating(true);
+      try {
+        await axiosInstance.post(`/transaksi/validate-attachment`, { id: validateRow._id });
+        toast.success('Data berhasil divalidasi!');
+        setValidateDialogOpen(false);
+        setValidateRow(null);
+        if (refetch) refetch();
+      } catch (err: any) {
+        toast.error(err?.response?.data?.message || 'Gagal validasi data');
+      } finally {
+        setValidating(false);
+      }
+    };
+    {/* Dialog konfirmasi validasi */}
+    <Dialog open={validateDialogOpen} onOpenChange={setValidateDialogOpen}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>Konfirmasi Validasi</DialogTitle>
+          <DialogDescription>
+            Apakah Anda yakin ingin memvalidasi transaksi ini? Berikut adalah file attachment yang akan divalidasi:
+          </DialogDescription>
+        </DialogHeader>
+        {validateRow && validateRow.attachments && validateRow.attachments.length > 0 ? (
+          <div className="flex flex-wrap gap-4 mb-4">
+            {validateRow.attachments.map((att: any, idx: number) => {
+              const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`;
+              const fileName = att.path.split('/').pop();
+              const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
+              return (
+                <div key={idx} className="flex flex-col items-center w-32">
+                  {isImage ? (
+                    <a href={url} target="_blank" rel="noopener noreferrer">
+                      <img src={url} alt={fileName} className="w-24 h-24 object-cover rounded border mb-1" />
+                    </a>
+                  ) : (
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="block w-full text-xs text-blue-700 border rounded p-2 bg-blue-50 hover:bg-blue-100 text-center mb-1">
+                      {fileName}
+                    </a>
+                  )}
+                  <span className="text-xs break-all text-gray-700 text-center">{fileName}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-gray-500 text-sm mb-4">Tidak ada attachment pada transaksi ini.</div>
+        )}
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="outline" onClick={() => setValidateDialogOpen(false)} disabled={validating}>Batal</Button>
+          <Button onClick={handleConfirmValidate} disabled={validating} className="bg-blue-600 text-white">
+            {validating ? 'Memvalidasi...' : 'Validasi'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   // Tahun fiskal global dari store
   const { fiscalYear, user } = useAppStore();
 
@@ -1452,7 +1521,7 @@ export default function Transaksi() {
                               </svg>
                               Hapus
                             </DropdownMenuItem>
-                            {(user?.role === 'superuser' || user?.role === 'corsec') && (
+                            {(user?.role === 'superuser' || user?.role === 'corsec' || user?.role === 'finance') && (
                               <DropdownMenuItem
                                 onClick={() => handleUploadAttachments(row)}
                                 className="cursor-pointer text-green-600 focus:text-green-600"
@@ -1463,6 +1532,19 @@ export default function Transaksi() {
                                 Upload
                               </DropdownMenuItem>
                             )}
+                            {/* Button Validasi hanya untuk superuser dan corsec */}
+                            {(user?.role === 'superuser' || user?.role === 'corsec') && (
+                              <DropdownMenuItem
+                                onClick={() => handleValidate(row)}
+                                className="cursor-pointer text-blue-600 focus:text-blue-600"
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Validasi
+                              </DropdownMenuItem>
+                            )}
+
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1952,6 +2034,49 @@ export default function Transaksi() {
           </div>
         </div>
       )}
+
+      {/* Dialog konfirmasi validasi */}
+      <Dialog open={validateDialogOpen} onOpenChange={setValidateDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Validasi</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin memvalidasi transaksi ini? Berikut adalah file attachment yang akan divalidasi:
+            </DialogDescription>
+          </DialogHeader>
+          {validateRow && validateRow.attachments && validateRow.attachments.length > 0 ? (
+            <div className="flex flex-wrap gap-4 mb-4">
+              {validateRow.attachments.map((att: any, idx: number) => {
+                const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`;
+                const fileName = att.path.split('/').pop();
+                const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
+                return (
+                  <div key={idx} className="flex flex-col items-center w-32">
+                    {isImage ? (
+                      <a href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt={fileName} className="w-24 h-24 object-cover rounded border mb-1" />
+                      </a>
+                    ) : (
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="block w-full text-xs text-blue-700 border rounded p-2 bg-blue-50 hover:bg-blue-100 text-center mb-1">
+                        {fileName}
+                      </a>
+                    )}
+                    <span className="text-xs break-all text-gray-700 text-center">{fileName}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-gray-500 text-sm mb-4">Tidak ada attachment pada transaksi ini.</div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setValidateDialogOpen(false)} disabled={validating}>Batal</Button>
+            <Button onClick={handleConfirmValidate} disabled={validating} className="bg-blue-600 text-white">
+              {validating ? 'Memvalidasi...' : 'Validasi'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

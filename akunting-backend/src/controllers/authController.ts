@@ -45,7 +45,7 @@ export const login = async (req: Request, res: Response) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ message: 'Email atau password salah' });
 
-    const token = jwt.sign({ id: user._id, username: user.username, name: user.name }, JWT_SECRET, { expiresIn: '8h' });
+    const token = jwt.sign({ id: user._id, username: user.username, name: user.name, role: user.role }, JWT_SECRET, { expiresIn: '8h' });
     return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.username, role: user.role } });
   } catch (err) {
     return res.status(500).json({ message: 'Server error', err });

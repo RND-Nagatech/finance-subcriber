@@ -1,3 +1,22 @@
+// Validasi data hasil attachment (hanya superuser/corsec)
+export const validateAttachment = async (req: Request, res: Response) => {
+  try {
+    const user = req.user as any; // diasumsikan sudah ada middleware auth, req.user terisi
+    if (!user || (user.role !== 'superuser' && user.role !== 'corsec')) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ message: 'ID is required' });
+    const doc = await TtFinanceDetail.findById(id);
+    if (!doc) return res.status(404).json({ message: 'Transaksi detail not found' });
+    // Jalankan update aggregation
+    await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment');
+    await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
+    res.json({ success: true, message: 'Validasi berhasil' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error });
+  }
+};
 
 import { Request, Response } from 'express';
 import Transaksi from '../models/Transaksi';
@@ -213,13 +232,7 @@ export const uploadAttachments = async (req: Request, res: Response) => {
     doc.updated_at = new Date();
     await doc.save();
 
-    let tahunFiskal = doc.tahun_fiskal || doc.bulan.split('-')[1].padStart(4, '20');
 
-    // Update tt_finance_daily
-    await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment');
-
-    //update tt_finance
-    await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
 
     res.json({ success: true, attachments: doc.attachments });
   } catch (error) {
