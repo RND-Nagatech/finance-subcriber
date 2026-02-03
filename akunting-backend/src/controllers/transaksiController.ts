@@ -12,6 +12,20 @@ export const validateAttachment = async (req: Request, res: Response) => {
     if (doc.is_validated) {
       return res.status(400).json({ message: 'Transaksi sudah divalidasi, tidak bisa divalidasi ulang.' });
     }
+
+    // Update saldo rekening jika ada rekening
+    if (doc.kode_bank && doc.no_rekening) {
+      const rekening = await Rekening.findOne({ kode_bank: doc.kode_bank, no_rekening: doc.no_rekening });
+      if (rekening) {
+        if (doc.kategori === 'PENDAPATAN') {
+          rekening.saldo += doc.nilai;
+        } else {
+          rekening.saldo -= doc.nilai;
+        }
+        await rekening.save();
+      }
+    }
+
     // Jalankan update aggregation
     await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment');
     await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
@@ -29,6 +43,7 @@ import ThFinance from '../models/ThFinance';
 import FiscalConfig from '../models/FiscalConfig';
 import TtFinanceDetail from '../models/TtFinanceDetail';
 import TtFinanceDaily from '../models/TtFinanceDaily';
+import Rekening from '../models/Rekening';
 
 // Helper function to update tt_finance_daily
 async function updateTtFinanceDaily(tanggal: string, bulan: string, kategori: string, sub_kategori: string, akun: string, nilai: number, operation: 'increment' | 'decrement') {

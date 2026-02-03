@@ -11,6 +11,7 @@ import {
   Wallet,
   Users,
   DollarSign,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -108,7 +109,7 @@ export default function AppSidebar() {
                 <h1 className="text-xl font-bold bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
                   FinancePro
                 </h1>
-                <p className="text-xs text-slate-400 font-medium tracking-wide">Accounting System</p>
+                <p className="text-xs text-slate-400 font-medium tracking-wide">Accounting System v{import.meta.env.VITE_APP_VERSION || '1.0.0'}</p>
               </div>
             </div>
 
@@ -389,6 +390,28 @@ export default function AppSidebar() {
             <div className="h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent mb-4" />
             <SidebarFooter>
               <SidebarMenu className="space-y-3">
+                <SidebarMenuItem>
+                  <NavLink to="/update-log">
+                    <SidebarMenuButton
+                      isActive={location.pathname === "/update-log"}
+                      className={cn(
+                        "group rounded-xl px-4 py-4 text-slate-300 hover:text-white transition-all duration-300",
+                        "hover:bg-gradient-to-r hover:from-slate-700/50 hover:to-slate-600/50",
+                        "hover:shadow-lg hover:shadow-slate-500/10",
+                        "data-[active=true]:bg-gradient-to-r data-[active=true]:from-blue-600/30 data-[active=true]:to-indigo-600/30",
+                        "data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-blue-500/20",
+                        "border border-transparent data-[active=true]:border-blue-500/30",
+                        "py-5"
+                      )}
+                    >
+                      <FileText className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                      <span className="font-medium">Update Log</span>
+                      {location.pathname === "/update-log" && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-blue-400 to-indigo-500 rounded-r-full" />
+                      )}
+                    </SidebarMenuButton>
+                  </NavLink>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <NavLink to="/tutupbuku">
                     <SidebarMenuButton

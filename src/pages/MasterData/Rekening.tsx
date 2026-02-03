@@ -30,15 +30,36 @@ interface Rekening {
   kode_bank?: string;
   no_rekening: string;
   nama_rekening: string;
+  saldo: number;
 }
 
 export default function Rekening() {
   const queryClient = useQueryClient();
+  const { user } = useAppStore();
+  const canViewSaldo = user?.role === 'superuser' || user?.role === 'corsec';
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Rekening>({ bank_id: '', no_rekening: '', nama_rekening: '' });
+  const [formData, setFormData] = useState<Rekening>({ bank_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+  const [saldoDisplay, setSaldoDisplay] = useState<string>('0');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  // Helper functions for currency formatting
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat('id-ID', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
+
+  const parseCurrency = (value: string): number => {
+    // Remove all non-numeric characters except comma and dot
+    const cleaned = value.replace(/[^\d.,]/g, '');
+    // Replace comma with dot for decimal
+    const normalized = cleaned.replace(',', '.');
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? 0 : parsed;
+  };
 
   // Get bank list for dropdown
   const { data: bankList = [] } = useQuery<Bank[]>({
@@ -102,10 +123,13 @@ export default function Rekening() {
         kode_bank: rekening.kode_bank,
         no_rekening: rekening.no_rekening,
         nama_rekening: rekening.nama_rekening,
+        saldo: rekening.saldo || 0,
       });
+      setSaldoDisplay(formatCurrency(rekening.saldo || 0));
     } else {
       setEditId(null);
-      setFormData({ bank_id: '', kode_bank: '', no_rekening: '', nama_rekening: '' });
+      setFormData({ bank_id: '', kode_bank: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+      setSaldoDisplay('0');
     }
     setModalOpen(true);
   };
@@ -113,12 +137,25 @@ export default function Rekening() {
   const handleCloseModal = () => {
     setModalOpen(false);
     setEditId(null);
-    setFormData({ bank_id: '', no_rekening: '', nama_rekening: '' });
+    setFormData({ bank_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+    setSaldoDisplay('0');
+  };
+
+  const handleSaldoBlur = () => {
+    // Format the display value when user finishes editing
+    setSaldoDisplay(formatCurrency(formData.saldo));
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: name === 'bank_id' ? value : value.toUpperCase() });
+    if (name === 'saldo') {
+      // Handle currency input
+      const numericValue = parseCurrency(value);
+      setFormData({ ...formData, [name]: numericValue });
+      setSaldoDisplay(value); // Keep the formatted display
+    } else {
+      setFormData({ ...formData, [name]: name === 'bank_id' ? value : value.toUpperCase() });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -173,13 +210,16 @@ export default function Rekening() {
                 <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Kode Bank</TableHead>
                 <TableHead className="w-56 px-6 py-4 font-semibold text-gray-900">No Rekening</TableHead>
                 <TableHead className="w-56 px-6 py-4 font-semibold text-gray-900">Nama Rekening</TableHead>
-                <TableHead className="w-32 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
+                {canViewSaldo && (
+                  <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Saldo</TableHead>
+                )}
+                <TableHead className={`w-32 px-6 py-4 text-right font-semibold text-gray-900 ${canViewSaldo ? '' : 'w-40'}`}>Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12">
+                  <TableCell colSpan={canViewSaldo ? 5 : 4} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data rekening...</p>
@@ -188,7 +228,7 @@ export default function Rekening() {
                 </TableRow>
               ) : rekeningList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12">
+                  <TableCell colSpan={canViewSaldo ? 5 : 4} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -207,7 +247,12 @@ export default function Rekening() {
                     </TableCell>
                     <TableCell className="w-56 px-6 py-4 font-mono text-gray-900">{r.no_rekening}</TableCell>
                     <TableCell className="w-56 px-6 py-4 font-medium text-gray-900">{r.nama_rekening}</TableCell>
-                    <TableCell className="w-32 px-6 py-4 text-right">
+                    {canViewSaldo && (
+                      <TableCell className="w-40 px-6 py-4 font-mono text-gray-900">
+                        Rp {new Intl.NumberFormat('id-ID').format(r.saldo || 0)}
+                      </TableCell>
+                    )}
+                    <TableCell className={`w-32 px-6 py-4 text-right ${canViewSaldo ? '' : 'w-40'}`}>
                       <div className="flex justify-end gap-2">
                         <Button
                           variant="outline"
@@ -280,6 +325,22 @@ export default function Rekening() {
                 placeholder="Masukkan nama rekening"
               />
             </div>
+            {!editId && (
+              <div className="grid gap-2">
+                <Label htmlFor="saldo" className="text-sm font-semibold text-gray-700">Saldo (Rp)</Label>
+                <Input
+                  id="saldo"
+                  name="saldo"
+                  type="text"
+                  value={saldoDisplay}
+                  onChange={handleChange}
+                  onBlur={handleSaldoBlur}
+                  className="font-mono bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2"
+                  autoComplete="off"
+                  placeholder="0"
+                />
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"

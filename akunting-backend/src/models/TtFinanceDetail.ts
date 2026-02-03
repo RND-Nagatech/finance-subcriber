@@ -22,6 +22,10 @@ export interface ITtFinanceDetail extends Document {
   status_deleted?: boolean;
   attachments?: IAttachment[];
   is_validated?: boolean;
+  kode_perusahaan?: string;
+  nama_perusahaan?: string;
+  kode_bank?: string;
+  no_rekening?: string;
 }
 
 const TtFinanceDetailSchema: Schema = new Schema({

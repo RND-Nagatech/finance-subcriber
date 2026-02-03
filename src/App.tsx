@@ -42,6 +42,7 @@ import Budget from "./pages/Budget";
 import BudgetUsage from "./pages/BudgetUsage";
 import VPS from "./pages/VPS";
 import Users from "./pages/Users";
+import UpdateLog from "./pages/UpdateLog";
 
 const queryClient = new QueryClient();
 
@@ -227,6 +228,16 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <TutupBuku />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/update-log"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <UpdateLog />
                 </MainLayout>
               </ProtectedRoute>
             }

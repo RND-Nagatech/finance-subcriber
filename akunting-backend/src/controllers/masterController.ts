@@ -623,15 +623,47 @@ export const deleteProgram = async (req: Request, res: Response) => {
 
 export const listSubscriber = async (req: Request, res: Response) => {
   try {
-    let filter = {};
+    const { page = 1, limit = 10, searchField, searchValue } = req.query;
+    const pageNum = parseInt(page as string, 10) || 1;
+    const limitNum = parseInt(limit as string, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    let filter: any = {};
     if (!req.query.all) {
-      filter = { status_aktv: true };
-    };
-    const list = await Subscriber.aggregate([
+      filter.status_aktv = true;
+    }
+
+    // Add search filter
+    if (searchField && searchValue && typeof searchValue === 'string') {
+      const searchRegex = new RegExp(searchValue, 'i'); // Case-insensitive
+      filter[searchField as string] = searchRegex;
+    }
+
+    const list = await Subscriber.find(filter)
+      .sort({ tanggal: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    // Get total count for pagination info (optional, but useful for frontend)
+    const total = await Subscriber.countDocuments(filter);
+
+    // Calculate total biaya from all matching documents
+    const totalBiayaResult = await Subscriber.aggregate([
       { $match: filter },
-      { $sort: { tanggal: -1 } }
+      { $group: { _id: null, totalBiaya: { $sum: '$biaya' } } }
     ]);
-    res.json(list);
+    const totalBiaya = totalBiayaResult.length > 0 ? totalBiayaResult[0].totalBiaya : 0;
+
+    res.json({
+      data: list,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+        totalBiaya,
+      },
+    });
   } catch (error) {
     console.error('❌ Error in listSubscriber:', error);
     res.status(500).json({ message: 'Server error', error });
@@ -737,7 +769,8 @@ export const updateSubscriber = async (req: Request, res: Response) => {
 
     const userId = resolveUserId(req);
 
-    const old = await Subscriber.findById(id);
+    // Cari berdasarkan kode (karena kode unik), bukan _id
+    const old = await Subscriber.findOne({ kode: id });
     if (!old) return res.status(404).json({ message: 'Subscriber not found' });
 
     // Validate required fields only if they are being updated
@@ -780,7 +813,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       const lastSubscriberForNewProgram = await Subscriber.findOne({
         program: program.nama,
         status_aktv: true,
-        _id: { $ne: id } // Exclude current subscriber
+        kode: { $ne: id } // Exclude current subscriber
       }).sort({ input_date: -1 }).limit(1);
 
       prevSubscriber = lastSubscriberForNewProgram ? lastSubscriberForNewProgram.current_subscriber : 0;
@@ -811,8 +844,33 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     old.update_date = new Date();
     old.update_by = userId;
     old.status_aktv = req.body.status_aktv ?? old.status_aktv;
-    await old.save();
-    res.status(200).json({ success: true, message: 'Data berhasil disimpan.', data: old });
+    // Gunakan findOneAndUpdate untuk menghindari masalah _id
+    const updated = await Subscriber.findOneAndUpdate(
+      { kode: id },
+      {
+        no_ok: old.no_ok,
+        sales: old.sales,
+        toko: old.toko,
+        alamat: old.alamat,
+        daerah: old.daerah,
+        program: old.program,
+        vb_online: old.vb_online,
+        biaya: old.biaya,
+        tanggal: old.tanggal,
+        implementator: old.implementator,
+        via: old.via,
+        internal_kode: old.internal_kode,
+        prev_subscriber: old.prev_subscriber,
+        current_subscriber: old.current_subscriber,
+        prev_biaya: old.prev_biaya,
+        current_biaya: old.current_biaya,
+        update_date: old.update_date,
+        update_by: old.update_by,
+        status_aktv: old.status_aktv,
+      },
+      { new: true }
+    );
+    res.status(200).json({ success: true, message: 'Data berhasil disimpan.', data: updated });
   } catch (error) {
     console.error('❌ Error in updateSubscriber:', error);
     res.status(500).json({ message: 'Server error', error });
@@ -824,7 +882,8 @@ export const deleteSubscriber = async (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = resolveUserId(req);
 
-    const subscriber = await Subscriber.findById(id);
+    // Cari berdasarkan kode (karena kode unik), bukan _id
+    const subscriber = await Subscriber.findOne({ kode: id });
     if (!subscriber) return res.status(404).json({ message: 'Subscriber not found' });
 
     const auditUser = getAuditUserId(req);

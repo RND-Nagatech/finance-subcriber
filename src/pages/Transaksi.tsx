@@ -242,10 +242,51 @@ export default function Transaksi() {
       const [validateDialogOpen, setValidateDialogOpen] = useState(false);
       const [validateRow, setValidateRow] = useState<any>(null);
       const [validating, setValidating] = useState(false);
+
+  // Tahun fiskal global dari store
+  const { fiscalYear, user } = useAppStore();
+
+  // Fetch rekening for dropdown
+  const { data: rekeningList = [] } = useQuery({
+    queryKey: ['rekening-all'],
+    queryFn: async () => {
+      try {
+        const res = await axiosInstance.get('/master/rekening?all=true');
+        return res.data || [];
+      } catch (error: any) {
+        const msg = error?.response?.data?.message || 'Gagal mengambil data rekening.';
+        toast.error(msg);
+        throw error;
+      }
+    },
+  });
+
+  // Fetch rekening for validation dialog
+  const { data: validationRekening } = useQuery({
+    queryKey: ['rekening-validation', validateRow?.rekening_id],
+    queryFn: async () => {
+      if (!validateRow?.rekening_id) return null;
+      try {
+        const res = await axiosInstance.get(`/master/rekening/${validateRow.rekening_id}`);
+        return res.data;
+      } catch (error: any) {
+        console.error('Gagal mengambil data rekening untuk validasi:', error);
+        return null;
+      }
+    },
+    enabled: !!validateRow?.rekening_id && validateDialogOpen,
+  });
+
     // Handler untuk validasi data hasil attachment
     // Handler untuk buka dialog validasi
     const handleValidate = (row: any) => {
-      setValidateRow(row);
+      // Cari rekening_id berdasarkan kode_bank dan no_rekening jika belum ada
+      let rekening_id = row.rekening_id;
+      if (!rekening_id && row.kode_bank && row.no_rekening) {
+        const rekening = rekeningList.find((r) => r.kode_bank === row.kode_bank && r.no_rekening === row.no_rekening);
+        rekening_id = rekening?._id;
+      }
+      setValidateRow({ ...row, rekening_id });
       setValidateDialogOpen(true);
     };
 
@@ -259,57 +300,14 @@ export default function Transaksi() {
         setValidateDialogOpen(false);
         setValidateRow(null);
         if (refetch) refetch();
+        // Invalidate rekening queries to update saldo
+        queryClient.invalidateQueries({ queryKey: ['rekening-all'] });
       } catch (err: any) {
         toast.error(err?.response?.data?.message || 'Gagal validasi data');
       } finally {
         setValidating(false);
       }
     };
-    {/* Dialog konfirmasi validasi */}
-    <Dialog open={validateDialogOpen} onOpenChange={setValidateDialogOpen}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>Konfirmasi Validasi</DialogTitle>
-          <DialogDescription>
-            Apakah Anda yakin ingin memvalidasi transaksi ini? Berikut adalah file attachment yang akan divalidasi:
-          </DialogDescription>
-        </DialogHeader>
-        {validateRow && validateRow.attachments && validateRow.attachments.length > 0 ? (
-          <div className="flex flex-wrap gap-4 mb-4">
-            {validateRow.attachments.map((att: any, idx: number) => {
-              const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`;
-              const fileName = att.path.split('/').pop();
-              const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
-              return (
-                <div key={idx} className="flex flex-col items-center w-32">
-                  {isImage ? (
-                    <a href={url} target="_blank" rel="noopener noreferrer">
-                      <img src={url} alt={fileName} className="w-24 h-24 object-cover rounded border mb-1" />
-                    </a>
-                  ) : (
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="block w-full text-xs text-blue-700 border rounded p-2 bg-blue-50 hover:bg-blue-100 text-center mb-1">
-                      {fileName}
-                    </a>
-                  )}
-                  <span className="text-xs break-all text-gray-700 text-center">{fileName}</span>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-gray-500 text-sm mb-4">Tidak ada attachment pada transaksi ini.</div>
-        )}
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={() => setValidateDialogOpen(false)} disabled={validating}>Batal</Button>
-          <Button onClick={handleConfirmValidate} disabled={validating} className="bg-blue-600 text-white">
-            {validating ? 'Memvalidasi...' : 'Validasi'}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  // Tahun fiskal global dari store
-  const { fiscalYear, user } = useAppStore();
-
   // ...existing state declarations...
 
   // ...existing state declarations...
@@ -580,21 +578,6 @@ export default function Transaksi() {
         return res.data || [];
       } catch (error: any) {
         const msg = error?.response?.data?.message || 'Gagal mengambil data perusahaan.';
-        toast.error(msg);
-        throw error;
-      }
-    },
-  });
-
-  // Fetch rekening for dropdown
-  const { data: rekeningList = [] } = useQuery({
-    queryKey: ['rekening-all'],
-    queryFn: async () => {
-      try {
-        const res = await axiosInstance.get('/master/rekening?all=true');
-        return res.data || [];
-      } catch (error: any) {
-        const msg = error?.response?.data?.message || 'Gagal mengambil data rekening.';
         toast.error(msg);
         throw error;
       }
@@ -2129,6 +2112,82 @@ export default function Transaksi() {
           ) : (
             <div className="text-gray-500 text-sm mb-4">Tidak ada attachment pada transaksi ini.</div>
           )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setValidateDialogOpen(false)} disabled={validating}>Batal</Button>
+            <Button onClick={handleConfirmValidate} disabled={validating} className="bg-blue-600 text-white">
+              {validating ? 'Memvalidasi...' : 'Validasi'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog konfirmasi validasi */}
+      <Dialog open={validateDialogOpen} onOpenChange={setValidateDialogOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Validasi</DialogTitle>
+            <DialogDescription>
+              Apakah Anda yakin ingin memvalidasi transaksi ini? Berikut adalah file attachment yang akan divalidasi:
+            </DialogDescription>
+          </DialogHeader>
+          {validateRow && validateRow.attachments && validateRow.attachments.length > 0 ? (
+            <div className="flex flex-wrap gap-4 mb-4">
+              {validateRow.attachments.map((att: any, idx: number) => {
+                const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`;
+                const fileName = att.path.split('/').pop();
+                const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
+                return (
+                  <div key={idx} className="flex flex-col items-center w-32">
+                    {isImage ? (
+                      <a href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt={fileName} className="w-24 h-24 object-cover rounded border mb-1" />
+                      </a>
+                    ) : (
+                      <a href={url} target="_blank" rel="noopener noreferrer" className="block w-full text-xs text-blue-700 border rounded p-2 bg-blue-50 hover:bg-blue-100 text-center mb-1">
+                        {fileName}
+                      </a>
+                    )}
+                    <span className="text-xs break-all text-gray-700 text-center">{fileName}</span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-gray-500 text-sm mb-4">Tidak ada attachment pada transaksi ini.</div>
+          )}
+
+          {/* Proyeksi Saldo */}
+          {validationRekening && validateRow ? (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <h4 className="text-sm font-semibold text-blue-900 mb-2">Proyeksi Saldo Rekening</h4>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span>Saldo Awal:</span>
+                  <span className="font-medium">{formatCurrency(validationRekening.saldo)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>
+                    {validateRow.kategori === 'PENDAPATAN' ? 'Penambahan' : 'Pengurangan'}:
+                  </span>
+                  <span className={`font-medium ${validateRow.kategori === 'PENDAPATAN' ? 'text-green-600' : 'text-red-600'}`}>
+                    {validateRow.kategori === 'PENDAPATAN' ? '+' : '-'}{formatCurrency(validateRow.nilai)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-blue-300 pt-1">
+                  <span className="font-semibold">Saldo Akhir:</span>
+                  <span className="font-semibold text-blue-900">
+                    {formatCurrency(
+                      validateRow.kategori === 'PENDAPATAN'
+                        ? validationRekening.saldo + validateRow.nilai
+                        : validationRekening.saldo - validateRow.nilai
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : validateRow?.rekening_id ? (
+            <div className="text-gray-500 text-sm mb-4">Memuat data rekening...</div>
+          ) : null}
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setValidateDialogOpen(false)} disabled={validating}>Batal</Button>
             <Button onClick={handleConfirmValidate} disabled={validating} className="bg-blue-600 text-white">

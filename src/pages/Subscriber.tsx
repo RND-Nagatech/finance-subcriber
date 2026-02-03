@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -98,11 +98,31 @@ export default function Subscriber() {
 
   // Formatted input for biaya
   const [formattedBiaya, setFormattedBiaya] = useState('');
+
+  // Pagination and Search states
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10); // Fixed limit per page
+  const [searchField, setSearchField] = useState<string>('toko'); // Default search field
+  const [searchValue, setSearchValue] = useState<string>('');
+  const [debouncedSearchValue, setDebouncedSearchValue] = useState<string>('');
   const [programSearch, setProgramSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [searchTerm, setSearchTerm] = useState('');
   const [filterMonth, setFilterMonth] = useState<string>('ALL');
   const [filterYear, setFilterYear] = useState<string>('ALL');
+
+  // Debounce searchValue
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchValue(searchValue);
+    }, 1000); // 1 second delay
+
+    return () => clearTimeout(timer);
+  }, [searchValue]);
+
+  // Reset page to 1 when debounced search changes
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchValue]);
 
   // Fetch programs for dropdown
   const { data: programs = [] } = useQuery({
@@ -119,14 +139,25 @@ export default function Subscriber() {
     program.kode.toLowerCase().includes(programSearch.toLowerCase())
   );
 
-  // Fetch subscribers
-  const { data = [], isLoading, error } = useQuery({
-    queryKey: ['subscriber'],
+  // Fetch subscribers with pagination and search
+  const { data: response, isLoading, error } = useQuery({
+    queryKey: ['subscriber', page, searchField, debouncedSearchValue],
     queryFn: async () => {
-      const response = await axiosInstance.get('/subscriber');
-      return response.data || [];
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+      });
+      if (debouncedSearchValue.trim()) {
+        params.append('searchField', searchField);
+        params.append('searchValue', debouncedSearchValue);
+      }
+      const response = await axiosInstance.get(`/subscriber?${params.toString()}`);
+      return response.data || { data: [], pagination: { total: 0 } };
     },
   });
+
+  const data = response?.data || [];
+  const pagination = response?.pagination || { total: 0 };
 
   // Distinct years from data (for Tahun filter)
   const availableYears = useMemo(() => {
@@ -255,7 +286,7 @@ export default function Subscriber() {
   };
 
   const handleEdit = (item: Subscriber) => {
-    setEditId(item._id || null);
+    setEditId(item.kode);
     setFormData({
       ...item,
       tanggal: item.tanggal ? new Date(item.tanggal).toISOString().split('T')[0] : '',
@@ -327,7 +358,7 @@ export default function Subscriber() {
     setExpandedRows(newExpandedRows);
   };
 
-  // Filter subscribers based on month/year and search term
+  // Filter subscribers based on month/year (search done on backend)
   const filteredSubscribers = data.filter((subscriber) => {
     // Month/Year filter based on `tanggal`
     let passMonthYear = true;
@@ -340,30 +371,8 @@ export default function Subscriber() {
       const yearOk = filterYear === 'ALL' ? true : y === filterYear;
       passMonthYear = monthOk && yearOk;
     }
-    if (!passMonthYear) return false;
-
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      subscriber.toko?.toLowerCase().includes(searchLower) ||
-      subscriber.program?.toLowerCase().includes(searchLower) ||
-      subscriber.internal_kode?.toLowerCase().includes(searchLower) ||
-      subscriber.daerah?.toLowerCase().includes(searchLower) ||
-      subscriber.kode?.toLowerCase().includes(searchLower) ||
-      subscriber.no_ok?.toLowerCase().includes(searchLower) ||
-      subscriber.sales?.toLowerCase().includes(searchLower) ||
-      subscriber.alamat?.toLowerCase().includes(searchLower) ||
-      subscriber.vb_online?.toLowerCase().includes(searchLower) ||
-      subscriber.implementator?.toLowerCase().includes(searchLower) ||
-      subscriber.input_by?.toLowerCase().includes(searchLower) ||
-      subscriber.via?.toLowerCase().includes(searchLower)
-    );
+    return passMonthYear;
   });
-
-  // Total biaya dari semua data subscriber (bukan hasil filter)
-  const totalBiayaAll = (data || []).reduce((sum: number, s: any) => sum + (Number(s?.biaya) || 0), 0);
-  // Total biaya sesuai filter aktif
-  const totalBiayaFiltered = (filteredSubscribers || []).reduce((sum: number, s: any) => sum + (Number(s?.biaya) || 0), 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -449,30 +458,47 @@ export default function Subscriber() {
               </div>
             </div>
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <Input
-                placeholder="Cari subscriber berdasarkan toko, program, daerah, kode, dll..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-10 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-              />
-              {searchTerm && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 h-6 w-6 hover:bg-gray-100"
-                >
-                  <X className="w-4 h-4 text-gray-400" />
-                </Button>
-              )}
+              <div className="flex gap-2">
+                <Select value={searchField} onValueChange={setSearchField}>
+                  <SelectTrigger className="w-40 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                    <SelectValue placeholder="Field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="toko">Toko</SelectItem>
+                    <SelectItem value="daerah">Daerah</SelectItem>
+                    <SelectItem value="program">Program</SelectItem>
+                    <SelectItem value="internal_kode">Internal Kode</SelectItem>
+                    <SelectItem value="kode">Kode</SelectItem>
+                    <SelectItem value="sales">Sales</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Input
+                    placeholder={`Cari berdasarkan ${searchField}...`}
+                    value={searchValue}
+                    onChange={(e) => setSearchValue(e.target.value)}
+                    className="pl-10 pr-10 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  />
+                  {searchValue && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSearchValue('')}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 h-6 w-6 hover:bg-gray-100"
+                    >
+                      <X className="w-4 h-4 text-gray-400" />
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="flex flex-col self-center leading-tight mt-4">
               <div className="text-sm font-semibold text-gray-700">
-                Total Biaya: {formatCurrency(totalBiayaFiltered)}
+                Total Biaya: {formatCurrency(pagination.totalBiaya || 0)}
               </div>
               <div className="text-sm text-gray-600">
-                {filteredSubscribers.length} dari {data.length} subscriber
+                {pagination.total || 0} subscriber (halaman {page} dari {pagination.totalPages || 1})
               </div>
             </div>
           </div>
@@ -511,9 +537,9 @@ export default function Subscriber() {
                         </svg>
                       </div>
                       <p className="text-gray-600 font-medium">
-                        {searchTerm ? 'Tidak ada subscriber yang cocok dengan pencarian' : 'Belum ada data subscriber'}
+                        {searchValue ? 'Tidak ada subscriber yang cocok dengan pencarian' : 'Belum ada data subscriber'}
                       </p>
-                      {searchTerm && (
+                      {searchValue && (
                         <p className="text-sm text-gray-500">Coba ubah kata kunci pencarian</p>
                       )}
                     </div>
@@ -555,7 +581,7 @@ export default function Subscriber() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => item._id && handleDelete(item._id)}
+                            onClick={() => handleDelete(item.kode)}
                             className="border-red-300 hover:bg-red-50 hover:border-red-400 text-red-600 hover:text-red-700 transition-all duration-200"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -654,6 +680,31 @@ export default function Subscriber() {
               )}
             </TableBody>
           </Table>
+        </div>
+
+        {/* Pagination */}
+        <div className="flex justify-center items-center gap-2 mt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page === 1}
+            className="border-gray-300 hover:bg-gray-50"
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-gray-600 px-3">
+            Page {page} of {pagination.totalPages || 1}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(page + 1)}
+            disabled={page >= (pagination.totalPages || 1)}
+            className="border-gray-300 hover:bg-gray-50"
+          >
+            Next
+          </Button>
         </div>
 
         <ModalForm open={modalOpen} onOpenChange={handleCloseModal} title={editId ? 'Edit Subscriber' : 'Tambah Subscriber'}>
