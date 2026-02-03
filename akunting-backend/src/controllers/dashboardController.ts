@@ -857,6 +857,65 @@ function sortDataGross(arr: any) {
   });
 };
 
+export const pendapatanHarian = async (req: Request, res: Response) => {
+  try {
+    const tahun = String(req.query.tahun || new Date().getFullYear());
+    const bulan = String(req.query.bulan).toUpperCase();
+
+    const TtFinanceDetail = require('../models/TtFinanceDetail').default;
+    console.log(`${bulan}-${String(tahun).slice(-2)}`);
+    
+    // Pipeline untuk aggregate pendapatan harian per sub_kategori
+    const pipeline = [
+      {
+        $match: {
+          // tahun_fiskal: tahun,
+          bulan: `${bulan}-${String(tahun).slice(-2)}`,
+          kategori: 'PENDAPATAN',
+          is_validated: true,
+          status_deleted: { $ne: true }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            hari: { $toInt: { $substr: ['$tanggal', 8, 2] } }, // Extract day as number
+            sub_kategori: '$sub_kategori'
+          },
+          total: { $sum: '$nilai' }
+        }
+      },
+      {
+        $project: {
+          hari: {
+            $concat: [
+              { $cond: { if: { $lt: ['$_id.hari', 10] }, then: '0', else: '' } },
+              { $toString: '$_id.hari' }
+            ]
+          },
+          sub_kategori: '$_id.sub_kategori',
+          total: 1,
+          _id: 0
+        }
+      },
+      {
+        $sort: {
+          hari: 1,
+          sub_kategori: 1
+        }
+      }
+    ];
+
+    const result = await TtFinanceDetail.aggregate(pipeline);
+    console.log(result);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error in pendapatanHarian:', error);
+    res.status(500).json({ message: 'Server error', error });
+  }
+};
+
 export const subscriberGrowth = async (req: Request, res: Response) => {
   try {
     const tahun = String(req.query.tahun || new Date().getFullYear());

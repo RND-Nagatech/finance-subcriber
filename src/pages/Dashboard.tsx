@@ -248,6 +248,16 @@ export default function Dashboard() {
     enabled: !!year,
   });
 
+  // Query untuk pendapatan harian (jika bulan tidak ANNUAL)
+  const { data: pendapatanHarianData } = useQuery({
+    queryKey: ['pendapatan-harian', year, month],
+    queryFn: async () => {
+      const response = await axiosInstance.get(`/dashboard/pendapatan-harian?tahun=${year}&bulan=${month}`);
+      return response.data;
+    },
+    enabled: !!year && month !== 'ANNUAL',
+  });
+
   // Mapping backend response to chartData dan tableData
   const rekapData = data?.data || [];
   const asetDanGajiData = data?.asetDanGaji || [];
@@ -258,6 +268,25 @@ export default function Dashboard() {
   const biayaBiayaTahunanData = data?.biayaBiayaTahunan || [];
   const grossMarginTahunanData = data?.grossMarginTahunan || [];
   const subscriberData = data?.subscriber || [];
+  
+  // Data untuk pendapatan harian chart (jika bulan tidak ANNUAL)
+  const pendapatanHarianChartData = (() => {
+    if (!pendapatanHarianData || month === 'ANNUAL') return [];
+    const hariMap: { [hari: string]: { [key: string]: number } } = {};
+    const subKategories: string[] = [];
+    pendapatanHarianData.forEach((item: any) => {
+      if (!subKategories.includes(item.sub_kategori)) subKategories.push(item.sub_kategori);
+      if (!hariMap[item.hari]) hariMap[item.hari] = {};
+      hariMap[item.hari][item.sub_kategori] = item.total;
+    });
+    return Object.keys(hariMap).map(hari => ({
+      kategori: hari,
+      subs: subKategories.map(sub => ({
+        name: sub,
+        total: hariMap[hari][sub] || 0
+      }))
+    }));
+  })();
   
   // Data untuk line chart kategori PEMBELIAN
   const pembelianData = pertahunData.find((item: any) => item.kategori === 'PEMBELIAN');
@@ -603,6 +632,32 @@ export default function Dashboard() {
                         data={biayaBiayaTahunanChartData}
                         title="Biaya Biaya Monthly Breakdown"
                         description="Monthly breakdown of PPH21, VPS, RND, BPJS, and return sales expenses"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Stacked bar chart untuk Pendapatan per hari (jika bulan tidak ANNUAL) */}
+            {pendapatanHarianChartData.length > 0 && month !== 'ANNUAL' && (
+              <div className="mb-8">
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-green-200 bg-white backdrop-blur-sm hover:border-green-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <StackedBarKategori
+                        data={pendapatanHarianChartData}
+                        title={`Pendapatan Daily Breakdown - ${month} ${year}`}
+                        description="Daily breakdown of income transactions by subcategory"
                       />
                     </CardContent>
                   </Card>

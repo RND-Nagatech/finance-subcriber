@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-03
+
+### Added
+- Stacked bar chart for daily income breakdown in dashboard when a specific month is selected (not ANNUAL)
+- New backend endpoint `/dashboard/pendapatan-harian` to fetch validated income transactions from finance_detail by day and subcategory
+- Day formatting with leading zero (01-09) for consistent display in charts
+
+### Changed
+- Dashboard now shows additional chart for income transactions when month filter is applied
+
 ## [1.1.0] - 2026-02-03
 
 ### Added
