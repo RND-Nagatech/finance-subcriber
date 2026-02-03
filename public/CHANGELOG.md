@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-02-03
+
+### Added
+- Update Log page to display changelog with fetching and rendering of CHANGELOG.md
+- Pagination and search functionality to subscriber list
+- Export Excel functionality on transaksi
+- Validated color feature
+- Button validasi for data validation
+- Internal_kode field to Subscriber and Program models, with updated related components
+- User management functionality with CRUD operations
+- Update log route and sidebar item
+
+### Changed
+- Enhanced subscriber handling by kode
+- Rekening model with saldo enhancements
+- Implemented saldo updates in transaksi validation
+
+### Fixed
+- Updated user role check from 'superadmin' to 'superuser' in Sidebar component
+- Fixed attachment link to use environment variable for API base URL
+- Proteksi validasi data & revisi edit data (data validation protection and edit data revision)
+
 ## [1.0.3] - 2024-02-02
 
 ### Added

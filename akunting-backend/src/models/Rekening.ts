@@ -15,7 +15,7 @@ const RekeningSchema: Schema = new Schema({
   kode_bank: { type: String, required: true, uppercase: true },
   no_rekening: { type: String, required: true, uppercase: true },
   nama_rekening: { type: String, required: true, uppercase: true },
-  saldo: { type: Number, default: 0, min: 0 },
+  saldo: { type: Number, default: 0  },
 }, { timestamps: true, collection: 'tm_rekening' });
 
 export default mongoose.model<IRekening>('Rekening', RekeningSchema);
