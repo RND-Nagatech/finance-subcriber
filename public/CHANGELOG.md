@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-02-03
+
+### Added
+- Pagination with configurable page size (10, 25, 50, 100 items per page) in Subscriber page
+- Backend endpoint `/subscriber/years` to fetch all available years from subscriber data
+- Automatic page reset to 1 when date filters change in Transaksi page
+
+### Changed
+- Month and year filters in Subscriber page now processed on backend instead of frontend for better performance and accuracy
+- Subscriber list now shows real-time data based on filters from entire database, not just current page
+
+### Fixed
+- Subscriber year dropdown now displays all available years from database instead of current page data
+- Date filter aggregation pipeline in backend to handle string date fields properly
+- Page automatically resets when changing date filters in Transaksi page to prevent empty results
+
 ## [1.2.0] - 2026-02-03
 
 ### Added

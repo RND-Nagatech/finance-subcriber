@@ -101,7 +101,7 @@ export default function Subscriber() {
 
   // Pagination and Search states
   const [page, setPage] = useState(1);
-  const [limit] = useState(10); // Fixed limit per page
+  const [limit, setLimit] = useState(10); // Limit per page, can be changed by user
   const [searchField, setSearchField] = useState<string>('toko'); // Default search field
   const [searchValue, setSearchValue] = useState<string>('');
   const [debouncedSearchValue, setDebouncedSearchValue] = useState<string>('');
@@ -124,11 +124,30 @@ export default function Subscriber() {
     setPage(1);
   }, [debouncedSearchValue]);
 
+  // Reset page to 1 when limit changes
+  useEffect(() => {
+    setPage(1);
+  }, [limit]);
+
+  // Reset page to 1 when month/year filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [filterMonth, filterYear]);
+
   // Fetch programs for dropdown
   const { data: programs = [] } = useQuery({
     queryKey: ['program'],
     queryFn: async () => {
       const response = await axiosInstance.get('/master/program');
+      return response.data || [];
+    },
+  });
+
+  // Fetch all available years for filter dropdown
+  const { data: allYears = [] } = useQuery({
+    queryKey: ['subscriber-years'],
+    queryFn: async () => {
+      const response = await axiosInstance.get('/subscriber/years');
       return response.data || [];
     },
   });
@@ -141,7 +160,7 @@ export default function Subscriber() {
 
   // Fetch subscribers with pagination and search
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['subscriber', page, searchField, debouncedSearchValue],
+    queryKey: ['subscriber', page, limit, searchField, debouncedSearchValue, filterMonth, filterYear],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -151,6 +170,12 @@ export default function Subscriber() {
         params.append('searchField', searchField);
         params.append('searchValue', debouncedSearchValue);
       }
+      if (filterMonth !== 'ALL') {
+        params.append('month', filterMonth);
+      }
+      if (filterYear !== 'ALL') {
+        params.append('year', filterYear);
+      }
       const response = await axiosInstance.get(`/subscriber?${params.toString()}`);
       return response.data || { data: [], pagination: { total: 0 } };
     },
@@ -159,17 +184,8 @@ export default function Subscriber() {
   const data = response?.data || [];
   const pagination = response?.pagination || { total: 0 };
 
-  // Distinct years from data (for Tahun filter)
-  const availableYears = useMemo(() => {
-    const years = new Set<string>();
-    (data || []).forEach((item: any) => {
-      if (item?.tanggal) {
-        const d = new Date(item.tanggal);
-        if (!isNaN(d.getTime())) years.add(String(d.getFullYear()));
-      }
-    });
-    return Array.from(years).sort((a, b) => Number(b) - Number(a));
-  }, [data]);
+  // Use all years from database for filter dropdown
+  const availableYears = allYears;
 
   const MONTH_OPTIONS: { value: string; label: string }[] = [
     { value: 'ALL', label: 'All' },
@@ -358,21 +374,21 @@ export default function Subscriber() {
     setExpandedRows(newExpandedRows);
   };
 
-  // Filter subscribers based on month/year (search done on backend)
-  const filteredSubscribers = data.filter((subscriber) => {
-    // Month/Year filter based on `tanggal`
-    let passMonthYear = true;
-    if (filterMonth !== 'ALL' || filterYear !== 'ALL') {
-      const d = subscriber?.tanggal ? new Date(subscriber.tanggal) : null;
-      if (!d || isNaN(d.getTime())) return false;
-      const y = String(d.getFullYear());
-      const m = String(d.getMonth() + 1); // 1..12
-      const monthOk = filterMonth === 'ALL' ? true : m === filterMonth;
-      const yearOk = filterYear === 'ALL' ? true : y === filterYear;
-      passMonthYear = monthOk && yearOk;
-    }
-    return passMonthYear;
-  });
+  // Filter subscribers based on month/year (now done on backend)
+  // const filteredSubscribers = data.filter((subscriber) => {
+  //   // Month/Year filter based on `tanggal`
+  //   let passMonthYear = true;
+  //   if (filterMonth !== 'ALL' || filterYear !== 'ALL') {
+  //     const d = subscriber?.tanggal ? new Date(subscriber.tanggal) : null;
+  //     if (!d || isNaN(d.getTime())) return false;
+  //     const y = String(d.getFullYear());
+  //     const m = String(d.getMonth() + 1); // 1..12
+  //     const monthOk = filterMonth === 'ALL' ? true : m === filterMonth;
+  //     const yearOk = filterYear === 'ALL' ? true : y === filterYear;
+  //     passMonthYear = monthOk && yearOk;
+  //   }
+  //   return passMonthYear;
+  // });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -456,6 +472,20 @@ export default function Subscriber() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex flex-col">
+                <Label className="mb-1 text-sm text-gray-700">Tampilkan</Label>
+                <Select value={limit.toString()} onValueChange={(value) => setLimit(Number(value))}>
+                  <SelectTrigger className="w-32 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                    <SelectValue placeholder="Limit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="flex-1 relative">
               <div className="flex gap-2">
@@ -527,7 +557,7 @@ export default function Subscriber() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : filteredSubscribers.length === 0 ? (
+              ) : data.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={11} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
@@ -546,7 +576,7 @@ export default function Subscriber() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredSubscribers.map((item) => (
+                data.map((item) => (
                   <>
                     <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                       <TableCell className="w-12 px-4 py-4">

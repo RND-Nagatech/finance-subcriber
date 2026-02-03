@@ -623,9 +623,9 @@ export const deleteProgram = async (req: Request, res: Response) => {
 
 export const listSubscriber = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10, searchField, searchValue } = req.query;
+    const { page = 1, limit = 10, searchField, searchValue, month, year } = req.query;
     const pageNum = parseInt(page as string, 10) || 1;
-    const limitNum = parseInt(limit as string, 10) || 10;
+    const limitNum = Math.min(parseInt(limit as string, 10) || 10, 100); // Max 100 per page
     const skip = (pageNum - 1) * limitNum;
 
     let filter: any = {};
@@ -639,17 +639,188 @@ export const listSubscriber = async (req: Request, res: Response) => {
       filter[searchField as string] = searchRegex;
     }
 
-    const list = await Subscriber.find(filter)
-      .sort({ tanggal: -1 })
-      .skip(skip)
-      .limit(limitNum);
+    // Build aggregation pipeline for date filtering
+    let pipeline: any[] = [];
 
-    // Get total count for pagination info (optional, but useful for frontend)
-    const total = await Subscriber.countDocuments(filter);
+    // Add base match conditions (without date filters first)
+    let baseMatchConditions: any = {};
+    if (!req.query.all) {
+      baseMatchConditions.status_aktv = true;
+    }
 
-    // Calculate total biaya from all matching documents
+    // Add search filter
+    if (searchField && searchValue && typeof searchValue === 'string') {
+      const searchRegex = new RegExp(searchValue, 'i'); // Case-insensitive
+      baseMatchConditions[searchField as string] = searchRegex;
+    }
+
+    pipeline.push({ $match: baseMatchConditions });
+
+    // Add date conversion and filtering
+    if (month && month !== 'ALL' && year && year !== 'ALL') {
+      // Both month and year specified
+      const yearNum = parseInt(year as string, 10);
+      const monthNum = parseInt(month as string, 10);
+      pipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      pipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: {
+            $and: [
+              { $eq: [{ $year: '$tanggalDate' }, yearNum] },
+              { $eq: [{ $month: '$tanggalDate' }, monthNum] }
+            ]
+          }
+        }
+      });
+    } else if (month && month !== 'ALL') {
+      // Only month specified
+      const monthNum = parseInt(month as string, 10);
+      pipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      pipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: { $eq: [{ $month: '$tanggalDate' }, monthNum] }
+        }
+      });
+    } else if (year && year !== 'ALL') {
+      // Only year specified
+      const yearNum = parseInt(year as string, 10);
+      pipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      pipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: { $eq: [{ $year: '$tanggalDate' }, yearNum] }
+        }
+      });
+    }
+
+    pipeline.push({ $sort: { tanggal: -1 } });
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: limitNum });
+
+    const list = await Subscriber.aggregate(pipeline);
+
+    // Get total count for pagination using the same pipeline logic
+    let countPipeline: any[] = [{ $match: baseMatchConditions }];
+
+    if (month && month !== 'ALL' && year && year !== 'ALL') {
+      const yearNum = parseInt(year as string, 10);
+      const monthNum = parseInt(month as string, 10);
+      countPipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      countPipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: {
+            $and: [
+              { $eq: [{ $year: '$tanggalDate' }, yearNum] },
+              { $eq: [{ $month: '$tanggalDate' }, monthNum] }
+            ]
+          }
+        }
+      });
+    } else if (month && month !== 'ALL') {
+      const monthNum = parseInt(month as string, 10);
+      countPipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      countPipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: { $eq: [{ $month: '$tanggalDate' }, monthNum] }
+        }
+      });
+    } else if (year && year !== 'ALL') {
+      const yearNum = parseInt(year as string, 10);
+      countPipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      countPipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: { $eq: [{ $year: '$tanggalDate' }, yearNum] }
+        }
+      });
+    }
+
+    const totalResult = await Subscriber.aggregate([
+      ...countPipeline,
+      { $count: "total" }
+    ]);
+    const total = totalResult.length > 0 ? totalResult[0].total : 0;
+
+    // Calculate total biaya from all matching documents using the same pipeline logic
+    let biayaPipeline: any[] = [{ $match: baseMatchConditions }];
+
+    if (month && month !== 'ALL' && year && year !== 'ALL') {
+      const yearNum = parseInt(year as string, 10);
+      const monthNum = parseInt(month as string, 10);
+      biayaPipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      biayaPipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: {
+            $and: [
+              { $eq: [{ $year: '$tanggalDate' }, yearNum] },
+              { $eq: [{ $month: '$tanggalDate' }, monthNum] }
+            ]
+          }
+        }
+      });
+    } else if (month && month !== 'ALL') {
+      const monthNum = parseInt(month as string, 10);
+      biayaPipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      biayaPipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: { $eq: [{ $month: '$tanggalDate' }, monthNum] }
+        }
+      });
+    } else if (year && year !== 'ALL') {
+      const yearNum = parseInt(year as string, 10);
+      biayaPipeline.push({
+        $addFields: {
+          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+        }
+      });
+      biayaPipeline.push({
+        $match: {
+          tanggalDate: { $ne: null },
+          $expr: { $eq: [{ $year: '$tanggalDate' }, yearNum] }
+        }
+      });
+    }
+
     const totalBiayaResult = await Subscriber.aggregate([
-      { $match: filter },
+      ...biayaPipeline,
       { $group: { _id: null, totalBiaya: { $sum: '$biaya' } } }
     ]);
     const totalBiaya = totalBiayaResult.length > 0 ? totalBiayaResult[0].totalBiaya : 0;
@@ -666,6 +837,51 @@ export const listSubscriber = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('❌ Error in listSubscriber:', error);
+    res.status(500).json({ message: 'Server error', error });
+  }
+};
+
+export const getSubscriberYears = async (req: Request, res: Response) => {
+  try {
+    // Get distinct years from subscriber tanggal field
+    const yearsResult = await Subscriber.aggregate([
+      {
+        $match: {
+          tanggal: { $exists: true, $ne: null, },
+          status_aktv: true // Only active subscribers
+        }
+      },
+      {
+        $addFields: {
+          tanggalDate: {
+            $dateFromString: {
+              dateString: '$tanggal',
+              onError: null
+            }
+          }
+        }
+      },
+      {
+        $match: {
+          tanggalDate: { $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $year: '$tanggalDate'
+          }
+        }
+      },
+      {
+        $sort: { '_id': -1 }
+      }
+    ]);
+
+    const years = yearsResult.map(item => item._id.toString());
+    res.json(years);
+  } catch (error) {
+    console.error('❌ Error in getSubscriberYears:', error);
     res.status(500).json({ message: 'Server error', error });
   }
 };

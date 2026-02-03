@@ -925,6 +925,11 @@ export default function Transaksi() {
     setPage(1);
   }, [pageSize]);
 
+  // Reset to first page if date filters change
+  useEffect(() => {
+    setPage(1);
+  }, [filterTanggalDari, filterTanggalSampai]);
+
   // Create transaksi mutation
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
