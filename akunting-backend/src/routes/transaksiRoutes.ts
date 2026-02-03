@@ -1,19 +1,22 @@
+
 import fs from 'fs';
 import path from 'path';
+import { Router } from 'express';
+import multer from 'multer';
+import { exportTransaksiExcel } from '../controllers/exportExcelController';
+import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment } from '../controllers/transaksiController';
+import { authenticate } from '../middleware/authMiddleware';
+import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
+
 // Pastikan folder uploads/transaksi/ ada
 const uploadDir = path.join(process.cwd(), 'uploads', 'transaksi');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-import { Router } from 'express';
-import multer from 'multer';
-
-import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment } from '../controllers/transaksiController';
-import { authenticate } from '../middleware/authMiddleware';
-import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
-
 const router = Router();
+// Export Excel endpoint
+router.get('/export-excel', exportTransaksiExcel);
 
 // Validasi data hasil attachment (hanya superuser/corsec)
 router.post('/validate-attachment', authenticate, validateAttachment);

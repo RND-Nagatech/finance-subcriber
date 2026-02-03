@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+// import * as XLSX from 'xlsx';
 // Helper: extract year from fiscal month string (e.g. 'JAN-25' or 'JAN - 25')
 function getFiscalMonthYear(bulanFiskal: string): number | null {
   if (!bulanFiskal) return null;
@@ -1033,6 +1034,51 @@ export default function Transaksi() {
     return parseFloat(value.replace(/\./g, '')) || 0;
   };
 
+  // Export Excel handler
+  const handleExportExcel = async () => {
+    try {
+      let params = new URLSearchParams();
+      if (typeData === 'Detail') {
+        if (filterTanggalDari) params.append('from', filterTanggalDari);
+        if (filterTanggalSampai) params.append('to', filterTanggalSampai);
+        if (filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
+        if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
+        if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+      } else {
+        if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
+          const tahun2Digit = String(filterTahun).slice(-2);
+          params.append('bulan', `${filterBulan}-${tahun2Digit}`);
+        }
+        if (filterTahun) params.append('tahun', filterTahun);
+        if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
+        if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
+        if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+        params.append('flatten', '1');
+      }
+      // Hilangkan trailing slash jika ada di VITE_API_BASE_URL
+      const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '';
+      const apiUrl = `${baseUrl}/transaksi/export-excel?${params.toString()}`;
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      if (!response.ok) throw new Error('Gagal export data');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'transaksi.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error('Gagal export data.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
       {/* Background decorative elements */}
@@ -1052,13 +1098,21 @@ export default function Transaksi() {
             </h1>
             <p className="text-gray-600 mt-2">Kelola transaksi dengan mudah dan efisien</p>
           </div>
-          <Button
-            className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
-            onClick={() => setAddModalOpen(true)}
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Tambah Data
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              className="bg-gradient-to-r from-green-500 to-green-700 hover:from-green-600 hover:to-green-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+              onClick={handleExportExcel}
+            >
+              Export Excel
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+              onClick={() => setAddModalOpen(true)}
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Tambah Data
+            </Button>
+          </div>
         </div>
         {/* FILTER BAR - moved below title, above table */}
         <div className="flex flex-wrap gap-4 items-end bg-white/80 rounded-lg shadow p-4 mb-6">
