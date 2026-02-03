@@ -65,7 +65,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
         row.akun,
         typeof nilai === 'number' ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(nilai) : nilai,
         row.keterangan,
-        row.input_by || row.created_by || '',
+        row.created_by || '',
         row.nama_perusahaan,
         row.no_rekening,
         row.kode_bank,
@@ -75,12 +75,12 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
 
     // Set kolom Nilai (kolom ke-5) alignment right untuk semua baris data (termasuk header dan total)
     const nilaiColIdx = 5; // ExcelJS 1-based
-    for (let i = 5; i <= worksheet.lastRow.number; i++) {
+    for (let i = 5; i <= worksheet.rowCount; i++) {
       worksheet.getRow(i).getCell(nilaiColIdx).alignment = { horizontal: 'right', vertical: 'middle' };
     }
 
     // Tambahkan baris total di bawah tabel
-    const totalRowIdx = worksheet.lastRow.number + 1;
+    const totalRowIdx = worksheet.rowCount + 1;
     worksheet.addRow([
       'TOTAL', '', '', '', new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(totalNilai), '', '', '', '', '', ''
     ]);
@@ -147,14 +147,15 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
     });
 
     // Auto width fit to value (max content length per kolom, min 5, max 22, padding 1)
-    worksheet.columns.forEach(col => {
+    for (const col of worksheet.columns) {
+      if (!col) continue;
       let maxLength = 5;
-      col.eachCell({ includeEmpty: true }, cell => {
+      (col as any).eachCell({ includeEmpty: true }, (cell: any) => {
         let val = cell.value ? cell.value.toString() : '';
         if (val.length > maxLength) maxLength = val.length;
       });
       col.width = Math.min(Math.max(maxLength + 1, 5), 22);
-    });
+    }
 
     // Set response
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
