@@ -1,5 +1,15 @@
+import { Request, Response, NextFunction } from 'express';
+import Transaksi from '../models/Transaksi';
+import ThFinance from '../models/ThFinance';
+import FiscalConfig from '../models/FiscalConfig';
+import TtFinanceDetail from '../models/TtFinanceDetail';
+import TtFinanceDaily from '../models/TtFinanceDaily';
+import Rekening from '../models/Rekening';
+import RiwayatSaldoRekening from '../models/RiwayatSaldoRekening';
+import Bank from '../models/Bank';
+
 // Validasi data hasil attachment (hanya superuser/corsec)
-export const validateAttachment = async (req: Request, res: Response) => {
+export const validateAttachment = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = req.user as any; // diasumsikan sudah ada middleware auth, req.user terisi
     if (!user || (user.role !== 'superuser' && user.role !== 'corsec')) {
@@ -17,11 +27,36 @@ export const validateAttachment = async (req: Request, res: Response) => {
     if (doc.kode_bank && doc.no_rekening) {
       const rekening = await Rekening.findOne({ kode_bank: doc.kode_bank, no_rekening: doc.no_rekening });
       if (rekening) {
+        const saldoAwal = rekening.saldo;
+        let saldoMasuk = 0;
+        let saldoKeluar = 0;
+        let saldoAkhir = saldoAwal;
+
         if (doc.kategori === 'PENDAPATAN') {
-          rekening.saldo += doc.nilai;
+          saldoMasuk = doc.nilai;
+          saldoAkhir += doc.nilai;
         } else {
-          rekening.saldo -= doc.nilai;
+          saldoKeluar = doc.nilai;
+          saldoAkhir -= doc.nilai;
         }
+
+        // Buat riwayat saldo rekening
+        const riwayat = new RiwayatSaldoRekening({
+          kode_bank: doc.kode_bank,
+          no_rekening: doc.no_rekening,
+          saldo_awal: saldoAwal,
+          saldo_masuk: saldoMasuk,
+          saldo_keluar: saldoKeluar,
+          saldo_akhir: saldoAkhir,
+          transaksi_id: doc._id,
+          tanggal: new Date(doc.tanggal),
+          keterangan: `${doc.kategori}/${doc.sub_kategori}/${doc.akun}`
+        });
+
+        await riwayat.save();
+
+        // Update saldo rekening
+        rekening.saldo = saldoAkhir;
         await rekening.save();
       }
     }
@@ -33,17 +68,10 @@ export const validateAttachment = async (req: Request, res: Response) => {
     await doc.save();
     res.json({ success: true, message: 'Validasi berhasil' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
-import { Request, Response } from 'express';
-import Transaksi from '../models/Transaksi';
-import ThFinance from '../models/ThFinance';
-import FiscalConfig from '../models/FiscalConfig';
-import TtFinanceDetail from '../models/TtFinanceDetail';
-import TtFinanceDaily from '../models/TtFinanceDaily';
-import Rekening from '../models/Rekening';
 
 // Helper function to update tt_finance_daily
 async function updateTtFinanceDaily(tanggal: string, bulan: string, kategori: string, sub_kategori: string, akun: string, nilai: number, operation: 'increment' | 'decrement') {
@@ -177,7 +205,7 @@ async function recalculateTransaksiAggregation(kategori: string, sub_kategori: s
     await doc.save();
 }
 
-export const deleteTransaksi = async (req: Request, res: Response) => {
+export const deleteTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const deleted_by = req.body?.deleted_by || req.query?.deleted_by || 'SYSTEM';
@@ -195,12 +223,11 @@ export const deleteTransaksi = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'Transaksi soft deleted', detail });
   } catch (error) {
-    console.error('❌ Error in deleteTransaksi:', error);
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 // Edit data bulanan pada transaksi
-export const editTransaksiBulanan = async (req: Request, res: Response) => {
+export const editTransaksiBulanan = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id, bulan } = req.params;
     const { nilai } = req.body;
@@ -214,12 +241,12 @@ export const editTransaksiBulanan = async (req: Request, res: Response) => {
     await doc.save();
     res.json(doc);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
 // Hapus data bulanan pada transaksi
-export const deleteTransaksiBulanan = async (req: Request, res: Response) => {
+export const deleteTransaksiBulanan = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id, bulan } = req.params;
     const doc = await Transaksi.findById(id);
@@ -230,12 +257,12 @@ export const deleteTransaksiBulanan = async (req: Request, res: Response) => {
     await doc.save();
     res.json(doc);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
 // Upload attachments for transaksi
-export const uploadAttachments = async (req: Request, res: Response) => {
+export const uploadAttachments = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const files = req.files as Express.Multer.File[];
@@ -255,12 +282,12 @@ export const uploadAttachments = async (req: Request, res: Response) => {
 
     res.json({ success: true, attachments: doc.attachments });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
 // Delete attachment from transaksi
-export const deleteAttachment = async (req: Request, res: Response) => {
+export const deleteAttachment = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id, filename } = req.params;
     const doc = await TtFinanceDetail.findById(id);
@@ -282,12 +309,12 @@ export const deleteAttachment = async (req: Request, res: Response) => {
 
     res.json({ success: true, attachments: doc.attachments });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
 
-export const createTransaksi = async (req: Request, res: Response) => {
+export const createTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening } = req.body;
     if (!kategori || !sub_kategori || !akun || !bulan || nilai === undefined) {
@@ -364,11 +391,11 @@ export const createTransaksi = async (req: Request, res: Response) => {
 
     res.json(detail);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
-export const listTransaksi = async (req: Request, res: Response) => {
+export const listTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { tahun, bulan, kategori, sub_kategori, page = '1', limit = '10', flatten = '0', sortKategori } = req.query;
     const pageNum = parseInt(page as string, 10) || 1;
@@ -463,11 +490,11 @@ export const listTransaksi = async (req: Request, res: Response) => {
       .limit(limitNum);
     res.json({ data: list, total, totalNilai: totalSum, page: pageNum, totalPages });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
-export const updateTransaksi = async (req: Request, res: Response) => {
+export const updateTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening } = req.body;
@@ -735,13 +762,12 @@ export const updateTransaksi = async (req: Request, res: Response) => {
 
     res.json({ old_detail: detail, new_detail: newDetail });
   } catch (error) {
-    console.error('❌ Error in updateTransaksi:', error);
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 
 // Batch insert transaksi - menerima array of transaksi objects
-export const batchCreateTransaksi = async (req: Request, res: Response) => {
+export const batchCreateTransaksi = async (req: Request, res: Response, next: NextFunction) => {
     // Get active year from FiscalConfig (sekali saja)
     const fiscalConfig = await FiscalConfig.findOne({ key: 'fiscal' });
     const activeYear = fiscalConfig?.active_year ? Number(fiscalConfig.active_year) : null;
@@ -862,7 +888,71 @@ export const batchCreateTransaksi = async (req: Request, res: Response) => {
     });
 
   } catch (error) {
-    console.error('❌ Error in batchCreateTransaksi:', error);
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
+  }
+};
+
+// Get riwayat saldo rekening
+export const getRiwayatSaldoRekening = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { kode_bank, no_rekening, start_date, end_date, page = '1', limit = '10' } = req.query;
+    const pageNum = parseInt(page as string, 10) || 1;
+    const limitNum = parseInt(limit as string, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter: any = {};
+    if (kode_bank) filter.kode_bank = kode_bank;
+    if (no_rekening) filter.no_rekening = no_rekening;
+    
+    // Filter by date range
+    if (start_date || end_date) {
+      filter.tanggal = {};
+      if (start_date) {
+        filter.tanggal.$gte = new Date(start_date as string);
+      }
+      if (end_date) {
+        filter.tanggal.$lte = new Date(end_date as string + 'T23:59:59.999Z'); // End of day
+      }
+    }
+
+    const total = await RiwayatSaldoRekening.countDocuments(filter);
+    const riwayat = await RiwayatSaldoRekening.find(filter)
+      .sort({ createdAt: -1 }) // Sort by createdAt descending (paling lama di atas)
+      .skip(skip)
+      .limit(limitNum);
+
+    res.json(riwayat);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get saldo rekening saat ini
+export const getSaldoRekening = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { kode_bank, no_rekening } = req.query;
+
+    if (!kode_bank || !no_rekening) {
+      return res.status(400).json({ message: 'kode_bank dan no_rekening diperlukan' });
+    }
+
+    const rekening = await Rekening.findOne({
+      kode_bank: kode_bank,
+      no_rekening: no_rekening
+    }).populate('bank_id', 'nama_bank');
+
+    if (!rekening) {
+      return res.status(404).json({ message: 'Rekening tidak ditemukan' });
+    }
+
+    res.json({
+      kode_bank: rekening.kode_bank,
+      no_rekening: rekening.no_rekening,
+      saldo: rekening.saldo,
+      nama_rekening: rekening.nama_rekening,
+      nama_bank: rekening.bank_id ? (rekening.bank_id as any).nama_bank : rekening.kode_bank
+    });
+  } catch (error) {
+    next(error);
   }
 };

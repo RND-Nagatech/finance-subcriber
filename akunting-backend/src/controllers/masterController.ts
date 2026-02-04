@@ -1,3 +1,15 @@
+
+import { NextFunction, Request, Response } from 'express';
+import mongoose from 'mongoose';
+import Kategori, { IKategori } from '../models/Kategori';
+import SubKategori, { ISubKategori } from '../models/SubKategori';
+import Akun, { IAkun } from '../models/Akun';
+import Program, { IProgram } from '../models/Program';
+import Subscriber, { ISubscriber } from '../models/Subscriber';
+import CustomDashboard, { ICustomDashboard } from '../models/CustomDashboard';
+import Transaksi from '../models/Transaksi';
+
+
 // Resolve acting user from authenticated request only. Ignore client-supplied audit fields.
 const resolveUserId = (req: Request) => {
   if (req.user && typeof req.user === 'object') {
@@ -79,15 +91,6 @@ export const updateKategori = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Server error', error });
   }
 };
-import { Request, Response } from 'express';
-import mongoose from 'mongoose';
-import Kategori, { IKategori } from '../models/Kategori';
-import SubKategori, { ISubKategori } from '../models/SubKategori';
-import Akun, { IAkun } from '../models/Akun';
-import Program, { IProgram } from '../models/Program';
-import Subscriber, { ISubscriber } from '../models/Subscriber';
-import CustomDashboard, { ICustomDashboard } from '../models/CustomDashboard';
-import Transaksi from '../models/Transaksi';
 
 
 // ==================== KATEGORI ====================
@@ -886,7 +889,7 @@ export const getSubscriberYears = async (req: Request, res: Response) => {
   }
 };
 
-export const createSubscriber = async (req: Request, res: Response) => {
+export const createSubscriber = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const {
       no_ok,
@@ -903,9 +906,10 @@ export const createSubscriber = async (req: Request, res: Response) => {
       internal_kode
     } = req.body;
 
-    // Validate required fields only
-    if (!toko || !daerah || !programName || !tanggal || !via || !internal_kode) {
-      return res.status(400).json({ message: 'Toko, Daerah, Program, Tanggal, Via, dan Internal Kode wajib diisi' });
+    // Validate and parse tanggal
+    const parsedTanggal = new Date(tanggal);
+    if (isNaN(parsedTanggal.getTime())) {
+      return res.status(400).json({ message: 'Format tanggal tidak valid' });
     }
 
     // Get program details
@@ -941,7 +945,7 @@ export const createSubscriber = async (req: Request, res: Response) => {
       program: program.nama,
       vb_online,
       biaya: subscriberBiaya,
-      tanggal: new Date(tanggal),
+      tanggal: parsedTanggal,
       implementator,
       via,
       internal_kode,
@@ -961,7 +965,7 @@ export const createSubscriber = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, message: 'Data berhasil disimpan.', data: subscriber });
   } catch (error) {
     console.error('❌ Error in createSubscriber:', error);
-    res.status(500).json({ message: 'Server error', error });
+    next(error);
   }
 };
 

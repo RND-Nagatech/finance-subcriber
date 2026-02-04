@@ -4,7 +4,7 @@ import path from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import { exportTransaksiExcel } from '../controllers/exportExcelController';
-import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment } from '../controllers/transaksiController';
+import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment, getRiwayatSaldoRekening, getSaldoRekening } from '../controllers/transaksiController';
 import { authenticate } from '../middleware/authMiddleware';
 import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
 
@@ -49,5 +49,9 @@ router.delete('/:id/bulan/:bulan', deleteTransaksiBulanan);
 // Attachments
 router.post('/:id/attachments', upload.array('attachments'), uploadAttachments);
 router.delete('/:id/attachments/:filename', deleteAttachment);
+
+// Riwayat Saldo Rekening
+router.get('/riwayat-saldo-rekening', getRiwayatSaldoRekening);
+router.get('/saldo-rekening', getSaldoRekening);
 
 export default router;

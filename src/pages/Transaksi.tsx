@@ -2164,8 +2164,16 @@ export default function Transaksi() {
           {/* Proyeksi Saldo */}
           {validationRekening && validateRow ? (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <h4 className="text-sm font-semibold text-blue-900 mb-2">Proyeksi Saldo Rekening</h4>
+              <h3 className="text-m font-semibold text-blue-900 mb-2">Proyeksi Saldo Rekening</h3>
               <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span>Nomor Rekening:</span>
+                  <span className="font-medium">{validationRekening.no_rekening}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Nama Rekening:</span>
+                  <span className="font-medium">{validationRekening.nama_rekening}</span>
+                </div>
                 <div className="flex justify-between">
                   <span>Saldo Awal:</span>
                   <span className="font-medium">{formatCurrency(validationRekening.saldo)}</span>

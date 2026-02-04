@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-04
+
+### Added
+- **Riwayat Saldo Rekening Page**: New comprehensive page for viewing account balance history
+  - Modern UI with gradient backgrounds and responsive design
+  - Account selection with bank code and account number dropdowns
+  - Real-time balance information display with current account details
+  - Detailed transaction history table showing balance changes over time
+  - Date range filtering (start date and end date) for specific period analysis
+  - Automatic sorting by creation date (descending - newest first)
+  - Balance change visualization with color-coded income (+) and expenses (-)
+  - Loading states and error handling with toast notifications
+  - Empty state handling with helpful messages
+
+- **Backend API Enhancements**:
+  - New endpoint `/transaksi/riwayat-saldo-rekening` for fetching balance history
+  - Date range filtering support with `start_date` and `end_date` parameters
+  - Optimized MongoDB queries with proper indexing considerations
+  - RiwayatSaldoRekening model for storing balance change history
+  - Integration with transaction validation for automatic balance updates
+
+- **UI/UX Improvements**:
+  - Two-column layout for filter section and balance info (50% each)
+  - Compact design with consistent spacing and modern styling
+  - Responsive grid layouts for mobile and desktop
+  - Enhanced sidebar navigation with new Riwayat Saldo menu item
+  - Consistent color scheme with green theme for balance-related features
+
+### Changed
+- **Layout Optimization**: Filter and balance info sections now use equal-width two-column layout
+- **Sorting Logic**: Changed from transaction date to creation timestamp for more accurate history ordering
+- **Date Filtering**: Improved backend date range queries using MongoDB $gte and $lte operators
+
+### Fixed
+- **Dropdown Loading States**: Fixed clickable dropdown issues during initial load with proper loading states
+- **Error Handling**: Enhanced error handling for API failures with user-friendly toast messages
+- **Responsive Design**: Improved mobile responsiveness for filter inputs and balance display
+
 ## [1.0.4] - 2026-02-03
 
 ### Added

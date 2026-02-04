@@ -43,6 +43,7 @@ import BudgetUsage from "./pages/BudgetUsage";
 import VPS from "./pages/VPS";
 import Users from "./pages/Users";
 import UpdateLog from "./pages/UpdateLog";
+import RiwayatSaldoRekening from "./pages/RiwayatSaldoRekening";
 
 const queryClient = new QueryClient();
 
@@ -232,6 +233,18 @@ const App = () => (
               </ProtectedRoute>
             }
           />
+          
+          <Route
+            path="/riwayat-saldo-rekening"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <RiwayatSaldoRekening />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          
           <Route
             path="/update-log"
             element={

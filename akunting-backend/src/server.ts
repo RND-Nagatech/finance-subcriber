@@ -15,9 +15,14 @@ import budgetRoutes from './routes/budgetRoutes';
 import vpsRoutes from './routes/vpsRoutes';
 import vpsTTRoutes from './routes/vpsTTRoutes';
 import userRoutes from './routes/userRoutes';
+import { errorLoggerMiddleware } from './middleware/errorLoggerMiddleware';
+
+// Import models to ensure they are registered with Mongoose
+import './models/TtFinanceDetail';
+import './models/RiwayatSaldoRekening';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5003;
 
 // CORS configuration
 app.use(cors({
@@ -57,6 +62,9 @@ app.use('/api/budget', budgetRoutes);
 app.use('/api/vps', vpsRoutes);
 app.use('/api/tt-vps', vpsTTRoutes);
 app.use('/api/users', userRoutes);
+
+// Error logging middleware
+app.use(errorLoggerMiddleware);
 
 // 404 handler
 app.use((req, res) => {
