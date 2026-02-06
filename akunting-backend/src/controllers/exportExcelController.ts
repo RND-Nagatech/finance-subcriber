@@ -77,7 +77,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       ];
       rows = await Model.aggregate(pipeline).allowDiskUse(true).exec();
       // Rekap tidak perlu kolom Input By
-      header = ['Kategori', 'Sub Kategori', 'Akun', 'Bulan Fiskal', 'Nilai', 'Tahun Fiskal'];
+      header = ['No', 'Kategori', 'Sub Kategori', 'Akun', 'Bulan Fiskal', 'Nilai', 'Tahun Fiskal'];
     } else {
       const filter: any = { status_deleted: { $ne: true } };
       if (from) filter.tanggal = { ...filter.tanggal, $gte: from };
@@ -91,7 +91,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       if (sortKategori === 'desc') sort.kategori = -1;
       if (!sortKategori) sort.tanggal = 1;
       rows = await TtFinanceDetail.find(filter).sort(sort).limit(limit).lean();
-      header = ['Tanggal', 'Kategori', 'Sub Kategori', 'Akun', 'Nilai', 'Keterangan', 'Input By', 'Perusahaan', 'No Rekening', 'Kode Bank', 'Bulan Fiskal'];
+      header = ['No', 'Tanggal', 'Kategori', 'Sub Kategori', 'Akun', 'Nilai', 'Keterangan', 'Input By', 'Perusahaan', 'No Rekening', 'Kode Bank', 'Bulan Fiskal'];
     }
 
     const workbook = new ExcelJS.Workbook();
@@ -121,6 +121,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
 
     let totalNilai = 0;
     const dataStartRow = 6;
+    let idx = 1;
     for (const row of rows) {
       const raw = row.nilai;
       let nilaiNum: number | null = null;
@@ -133,6 +134,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
 
       const values = doFlatten
         ? [
+            idx,
             row.kategori,
             row.sub_kategori,
             row.akun,
@@ -141,6 +143,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
             row.tahun_fiskal || ''
           ]
         : [
+            idx,
             row.tanggal,
             row.kategori,
             row.sub_kategori,
@@ -154,12 +157,19 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
             row.bulan
           ];
       const added = worksheet.addRow(values);
-      const nilaiCell = added.getCell(5);
+      const nilaiColIndex = header.findIndex(h => h === 'Nilai') + 1;
+      const nilaiCell = added.getCell(nilaiColIndex);
       if (typeof nilaiNum === 'number') nilaiCell.numFmt = '"Rp" \\ #,##0';
+      idx++;
     }
 
     for (let r = 5; r <= worksheet.rowCount; r++) {
-      worksheet.getRow(r).getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
+      const nilaiColIndex = header.findIndex(h => h === 'Nilai') + 1;
+      const noColIndex = header.findIndex(h => h === 'No') + 1;
+      worksheet.getRow(r).getCell(nilaiColIndex).alignment = { horizontal: 'right', vertical: 'middle' };
+      if (noColIndex > 0) {
+        worksheet.getRow(r).getCell(noColIndex).alignment = { horizontal: 'center', vertical: 'middle' };
+      }
     }
 
     const dataEndRow = worksheet.rowCount;
@@ -167,18 +177,20 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
     // Total row cells must match header length
     const totalRowValues = Array(header.length).fill('');
     totalRowValues[0] = 'TOTAL';
-    // Column 5 is 'Nilai' in both modes
-    totalRowValues[4] = null;
+    // Set placeholder for 'Nilai' column
+    const nilaiColIndex = header.findIndex(h => h === 'Nilai') + 1;
+    totalRowValues[nilaiColIndex - 1] = null;
     worksheet.addRow(totalRowValues);
     worksheet.mergeCells(`A${totalRowIdx}:D${totalRowIdx}`);
     const totalRow = worksheet.getRow(totalRowIdx);
-    const totalCell = totalRow.getCell(5);
-    totalCell.value = { formula: `SUM(E${dataStartRow}:E${dataEndRow})`, result: totalNilai };
+    const totalCell = totalRow.getCell(nilaiColIndex);
+    const nilaiColLetter = columnLetter(nilaiColIndex);
+    totalCell.value = { formula: `SUM(${nilaiColLetter}${dataStartRow}:${nilaiColLetter}${dataEndRow})`, result: totalNilai };
     totalCell.numFmt = '"Rp" \\ #,##0';
     totalRow.eachCell((cell, colNumber) => {
       cell.font = { name: 'Calibri', size: 12, bold: true };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'E0E0E0' } };
-      if (colNumber === 5 || colNumber === 1) cell.alignment = { horizontal: 'right', vertical: 'middle' };
+      if (colNumber === nilaiColIndex || colNumber === 1) cell.alignment = { horizontal: 'right', vertical: 'middle' };
       else cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     });
@@ -209,6 +221,14 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
         if (val.length > maxLength) maxLength = val.length;
       });
       col.width = Math.min(Math.max(maxLength + 1, 5), 22);
+    }
+
+    // Make 'No' column narrower and centered
+    const noColIndex = header.findIndex(h => h === 'No') + 1;
+    if (noColIndex > 0) {
+      const maxNoDigits = String(rows.length).length;
+      worksheet.getColumn(noColIndex).width = Math.max(maxNoDigits + 1, 3);
+      worksheet.getColumn(noColIndex).alignment = { horizontal: 'center', vertical: 'middle' };
     }
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
