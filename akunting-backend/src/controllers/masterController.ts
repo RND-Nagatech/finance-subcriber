@@ -626,223 +626,91 @@ export const deleteProgram = async (req: Request, res: Response) => {
 
 export const listSubscriber = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10, searchField, searchValue, month, year } = req.query;
-    const pageNum = parseInt(page as string, 10) || 1;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 10, 100); // Max 100 per page
+    const {
+      page = 1,
+      limit = 10,
+      searchField,
+      searchValue,
+      month,
+      year,
+      all
+    } = req.query;
+
+    const pageNum = Number(page) || 1;
+    const limitNum = Math.min(Number(limit) || 10, 100);
     const skip = (pageNum - 1) * limitNum;
 
-    let filter: any = {};
-    if (!req.query.all) {
-      filter.status_aktv = true;
+    // ===============================
+    // BASE MATCH
+    // ===============================
+    const baseMatch: any = {};
+    if (!all) baseMatch.status_aktv = true;
+
+    if (searchField && searchValue && typeof searchValue === "string") {
+      baseMatch[searchField as string] = new RegExp(searchValue, "i");
     }
 
-    // Add search filter
-    if (searchField && searchValue && typeof searchValue === 'string') {
-      const searchRegex = new RegExp(searchValue, 'i'); // Case-insensitive
-      filter[searchField as string] = searchRegex;
-    }
+    // ===============================
+    // PIPELINE LIST
+    // ===============================
+    const listPipeline = [
+      { $match: baseMatch },
+      ...buildTanggalPipeline(month as string, year as string),
+      { $sort: { tanggalDate: -1, tanggal: -1 } },
+      { $skip: skip },
+      { $limit: limitNum }
+    ];
 
-    // Build aggregation pipeline for date filtering
-    let pipeline: any[] = [];
+    const data = await Subscriber.aggregate(listPipeline);
 
-    // Add base match conditions (without date filters first)
-    let baseMatchConditions: any = {};
-    if (!req.query.all) {
-      baseMatchConditions.status_aktv = true;
-    }
-
-    // Add search filter
-    if (searchField && searchValue && typeof searchValue === 'string') {
-      const searchRegex = new RegExp(searchValue, 'i'); // Case-insensitive
-      baseMatchConditions[searchField as string] = searchRegex;
-    }
-
-    pipeline.push({ $match: baseMatchConditions });
-
-    // Add date conversion and filtering
-    if (month && month !== 'ALL' && year && year !== 'ALL') {
-      // Both month and year specified
-      const yearNum = parseInt(year as string, 10);
-      const monthNum = parseInt(month as string, 10);
-      pipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      pipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: {
-            $and: [
-              { $eq: [{ $year: '$tanggalDate' }, yearNum] },
-              { $eq: [{ $month: '$tanggalDate' }, monthNum] }
-            ]
-          }
-        }
-      });
-    } else if (month && month !== 'ALL') {
-      // Only month specified
-      const monthNum = parseInt(month as string, 10);
-      pipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      pipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: { $eq: [{ $month: '$tanggalDate' }, monthNum] }
-        }
-      });
-    } else if (year && year !== 'ALL') {
-      // Only year specified
-      const yearNum = parseInt(year as string, 10);
-      pipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      pipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: { $eq: [{ $year: '$tanggalDate' }, yearNum] }
-        }
-      });
-    }
-
-    pipeline.push({ $sort: { tanggal: -1 } });
-    pipeline.push({ $skip: skip });
-    pipeline.push({ $limit: limitNum });
-
-    const list = await Subscriber.aggregate(pipeline);
-
-    // Get total count for pagination using the same pipeline logic
-    let countPipeline: any[] = [{ $match: baseMatchConditions }];
-
-    if (month && month !== 'ALL' && year && year !== 'ALL') {
-      const yearNum = parseInt(year as string, 10);
-      const monthNum = parseInt(month as string, 10);
-      countPipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      countPipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: {
-            $and: [
-              { $eq: [{ $year: '$tanggalDate' }, yearNum] },
-              { $eq: [{ $month: '$tanggalDate' }, monthNum] }
-            ]
-          }
-        }
-      });
-    } else if (month && month !== 'ALL') {
-      const monthNum = parseInt(month as string, 10);
-      countPipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      countPipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: { $eq: [{ $month: '$tanggalDate' }, monthNum] }
-        }
-      });
-    } else if (year && year !== 'ALL') {
-      const yearNum = parseInt(year as string, 10);
-      countPipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      countPipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: { $eq: [{ $year: '$tanggalDate' }, yearNum] }
-        }
-      });
-    }
-
-    const totalResult = await Subscriber.aggregate([
-      ...countPipeline,
+    // ===============================
+    // PIPELINE COUNT
+    // ===============================
+    const countPipeline = [
+      { $match: baseMatch },
+      ...buildTanggalPipeline(month as string, year as string),
       { $count: "total" }
-    ]);
-    const total = totalResult.length > 0 ? totalResult[0].total : 0;
+    ];
 
-    // Calculate total biaya from all matching documents using the same pipeline logic
-    let biayaPipeline: any[] = [{ $match: baseMatchConditions }];
+    const countResult = await Subscriber.aggregate(countPipeline);
+    const total = countResult[0]?.total || 0;
 
-    if (month && month !== 'ALL' && year && year !== 'ALL') {
-      const yearNum = parseInt(year as string, 10);
-      const monthNum = parseInt(month as string, 10);
-      biayaPipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
+    // ===============================
+    // PIPELINE TOTAL BIAYA
+    // ===============================
+    const biayaPipeline = [
+      { $match: baseMatch },
+      ...buildTanggalPipeline(month as string, year as string),
+      {
+        $group: {
+          _id: null,
+          totalBiaya: { $sum: "$biaya" }
         }
-      });
-      biayaPipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: {
-            $and: [
-              { $eq: [{ $year: '$tanggalDate' }, yearNum] },
-              { $eq: [{ $month: '$tanggalDate' }, monthNum] }
-            ]
-          }
-        }
-      });
-    } else if (month && month !== 'ALL') {
-      const monthNum = parseInt(month as string, 10);
-      biayaPipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      biayaPipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: { $eq: [{ $month: '$tanggalDate' }, monthNum] }
-        }
-      });
-    } else if (year && year !== 'ALL') {
-      const yearNum = parseInt(year as string, 10);
-      biayaPipeline.push({
-        $addFields: {
-          tanggalDate: { $dateFromString: { dateString: '$tanggal', onError: null } }
-        }
-      });
-      biayaPipeline.push({
-        $match: {
-          tanggalDate: { $ne: null },
-          $expr: { $eq: [{ $year: '$tanggalDate' }, yearNum] }
-        }
-      });
-    }
+      }
+    ];
 
-    const totalBiayaResult = await Subscriber.aggregate([
-      ...biayaPipeline,
-      { $group: { _id: null, totalBiaya: { $sum: '$biaya' } } }
-    ]);
-    const totalBiaya = totalBiayaResult.length > 0 ? totalBiayaResult[0].totalBiaya : 0;
+    const biayaResult = await Subscriber.aggregate(biayaPipeline);
+    const totalBiaya = biayaResult[0]?.totalBiaya || 0;
 
+    // ===============================
+    // RESPONSE
+    // ===============================
     res.json({
-      data: list,
+      data,
       pagination: {
         page: pageNum,
         limit: limitNum,
         total,
         totalPages: Math.ceil(total / limitNum),
-        totalBiaya,
-      },
+        totalBiaya
+      }
     });
   } catch (error) {
-    console.error('❌ Error in listSubscriber:', error);
-    res.status(500).json({ message: 'Server error', error });
+    console.error("❌ Error in listSubscriber:", error);
+    res.status(500).json({ message: "Server error", error });
   }
 };
+
 
 export const getSubscriberYears = async (req: Request, res: Response) => {
   try {
@@ -893,6 +761,52 @@ export const getSubscriberYears = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Server error', error });
   }
 };
+
+const buildTanggalPipeline = (month?: string, year?: string) => {
+  const pipeline: any[] = [];
+
+  if (
+    (month && month !== 'ALL') ||
+    (year && year !== 'ALL')
+  ) {
+    pipeline.push({
+      $addFields: {
+        tanggalDate: {
+          $cond: [
+            { $eq: [{ $type: "$tanggal" }, "string"] },
+            {
+              $dateFromString: {
+                dateString: "$tanggal",
+                onError: null
+              }
+            },
+            "$tanggal"
+          ]
+        }
+      }
+    });
+
+    const expr: any[] = [];
+
+    if (year && year !== 'ALL') {
+      expr.push({ $eq: [{ $year: "$tanggalDate" }, parseInt(year, 10)] });
+    }
+
+    if (month && month !== 'ALL') {
+      expr.push({ $eq: [{ $month: "$tanggalDate" }, parseInt(month, 10)] });
+    }
+
+    pipeline.push({
+      $match: {
+        tanggalDate: { $type: "date" },
+        ...(expr.length ? { $expr: { $and: expr } } : {})
+      }
+    });
+  }
+
+  return pipeline;
+};
+
 
 export const createSubscriber = async (req: Request, res: Response, next: NextFunction) => {
   try {
