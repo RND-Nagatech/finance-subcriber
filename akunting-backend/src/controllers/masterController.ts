@@ -848,38 +848,43 @@ export const getSubscriberYears = async (req: Request, res: Response) => {
   try {
     // Get distinct years from subscriber tanggal field
     const yearsResult = await Subscriber.aggregate([
-      {
-        $match: {
-          tanggal: { $exists: true, $ne: null, },
-          status_aktv: true // Only active subscribers
-        }
-      },
-      {
-        $addFields: {
-          tanggalDate: {
+  {
+    $match: {
+      tanggal: { $exists: true, $ne: null },
+      status_aktv: true
+    }
+  },
+  {
+    $addFields: {
+      tanggalDate: {
+        $cond: [
+          { $eq: [{ $type: "$tanggal" }, "string"] },
+          {
             $dateFromString: {
-              dateString: '$tanggal',
+              dateString: "$tanggal",
               onError: null
             }
-          }
-        }
-      },
-      {
-        $match: {
-          tanggalDate: { $ne: null }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            $year: '$tanggalDate'
-          }
-        }
-      },
-      {
-        $sort: { '_id': -1 }
+          },
+          "$tanggal"
+        ]
       }
-    ]);
+    }
+  },
+  {
+    $match: {
+      tanggalDate: { $type: "date" }
+    }
+  },
+  {
+    $group: {
+      _id: { $year: "$tanggalDate" }
+    }
+  },
+  {
+    $sort: { _id: -1 }
+  }
+]
+);
 
     const years = yearsResult.map(item => item._id.toString());
     res.json(years);
