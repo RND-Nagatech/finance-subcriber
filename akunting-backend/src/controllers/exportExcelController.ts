@@ -113,7 +113,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
     worksheet.getCell('A3').value = doFlatten
       ? ''
       : `Tanggal : ${from || ''}${from && to ? ' s/d ' : ''}${to || ''}`;
-    worksheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' };
+    worksheet.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
     worksheet.getCell('A3').font = { name: 'Calibri', size: 12, bold: true };
 
     worksheet.addRow([]);
