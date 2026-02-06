@@ -310,7 +310,8 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
 
                 {/* RIWAYAT SALDO REKENING */}
-                <SidebarMenuItem>
+                {user.role === 'superuser' && (
+                  <SidebarMenuItem>
                   <NavLink to="/riwayat-saldo-rekening">
                     <SidebarMenuButton
                       isActive={location.pathname === "/riwayat-saldo-rekening"}
@@ -332,6 +333,7 @@ export default function AppSidebar() {
                     </SidebarMenuButton>
                   </NavLink>
                 </SidebarMenuItem>
+                )}
 
                 {/* SUBSCRIBER */}
                 <SidebarMenuItem>
