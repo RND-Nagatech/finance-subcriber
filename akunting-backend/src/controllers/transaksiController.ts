@@ -397,7 +397,7 @@ export const createTransaksi = async (req: Request, res: Response, next: NextFun
 
 export const listTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { tahun, bulan, kategori, sub_kategori, page = '1', limit = '10', flatten = '0', sortKategori } = req.query;
+    const { tahun, bulan, kategori, sub_kategori, akun, page = '1', limit = '10', flatten = '0', sortKategori, q } = req.query as any;
     const pageNum = parseInt(page as string, 10) || 1;
     const limitNum = parseInt(limit as string, 10) || 10;
     const doFlatten = String(flatten) === '1' || String(flatten).toLowerCase() === 'true';
@@ -405,6 +405,7 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
     if (tahun) filter.tahun_fiskal = tahun;
     if (kategori && kategori !== 'ALL') filter.kategori = kategori;
     if (sub_kategori && sub_kategori !== 'ALL') filter.sub_kategori = sub_kategori;
+    if (akun && akun !== 'ALL') filter.akun = akun;
 
     // Determine which collection to use (Transaksi or ThFinance)
     let Model: any = Transaksi;
@@ -433,6 +434,12 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
           { 'data_bulanan.bulan': bulanStr },
           { 'data_bulanan.bulan': bulanStr.replace(/\s*-\s*/, '-') },
           { 'data_bulanan.bulan': bulanStr.replace(/\s*-\s*/, ' - ') }
+        ] } }] : []),
+        ...(q && String(q).trim() !== '' ? [{ $match: { $or: [
+          { kategori: { $regex: String(q).trim(), $options: 'i' } },
+          { sub_kategori: { $regex: String(q).trim(), $options: 'i' } },
+          { akun: { $regex: String(q).trim(), $options: 'i' } },
+          { 'data_bulanan.bulan': { $regex: String(q).trim(), $options: 'i' } },
         ] } }] : []),
         {
           $project: {
@@ -472,19 +479,37 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
     }
 
     // Default: return paginated documents (grouped per transaksi)
-    const total = await Model.countDocuments(filter);
+    // Apply free-text search (q) on top-level fields for grouped results
+    const searchFilter = (() => {
+      if (q && String(q).trim() !== '') {
+        const rx = new RegExp(String(q).trim(), 'i');
+        return { $or: [
+          { kategori: rx },
+          { sub_kategori: rx },
+          { akun: rx },
+        ] };
+      }
+      return {};
+    })();
+    const finalFilter = Object.keys(searchFilter).length ? { $and: [filter, searchFilter] } : filter;
+
+    // Counts and sums should respect finalFilter
+    const total = await Model.countDocuments(finalFilter);
     const totalPages = Math.ceil(total / limitNum) || 1;
     const sumAgg = await Model.aggregate([
-      { $match: filter },
+      { $match: finalFilter },
       { $group: { _id: null, sum: { $sum: '$total_tahunan' } } }
     ]).exec();
     const totalSum = sumAgg[0]?.sum || 0;
+
     const sortObj: any = {};
     if (sortKategori === 'asc') sortObj.kategori = 1;
     else if (sortKategori === 'desc') sortObj.kategori = -1;
     sortObj.akun = 1;
     sortObj.sub_kategori = 1;
-    const list = await Model.find(filter)
+    sortObj._id = 1; // Stable tiebreaker
+
+    const list = await Model.find(finalFilter)
       .sort(sortObj)
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);

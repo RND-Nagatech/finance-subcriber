@@ -346,6 +346,14 @@ export default function Transaksi() {
         };
       // Filter states
   const [typeData, setTypeData] = useState<'Detail' | 'Rekap'>('Detail');
+        // Reset pagination and cached data when switching between Detail/Rekap
+        useEffect(() => {
+          setPage(1);
+          setExpandedRows({});
+          // Clear previous query caches to avoid stale rows persisting
+          queryClient.removeQueries({ queryKey: ['transaksi'] });
+          queryClient.removeQueries({ queryKey: ['transaksi-aggregate'] });
+        }, [typeData]);
   const [filterTanggalDari, setFilterTanggalDari] = useState('');
   const [filterTanggalSampai, setFilterTanggalSampai] = useState('');
 
@@ -378,6 +386,8 @@ export default function Transaksi() {
   const [filterPerusahaan, setFilterPerusahaan] = useState('');
   const [filterKategori, setFilterKategori] = useState('');
   const [filterSubKategori, setFilterSubKategori] = useState('');
+  const [filterAkun, setFilterAkun] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
     // Helper untuk menentukan bulan fiskal dari tanggal (calendar month)
     function getFiscalMonthFromDate(dateStr: string): string {
       if (!dateStr) return '';
@@ -415,6 +425,18 @@ export default function Transaksi() {
   useEffect(() => {
     setFormData(prev => ({ ...prev, bulan_fiskal: '' }));
   }, [fiscalYear]);
+  // Reset akun filter ketika kategori/sub kategori berubah
+  useEffect(() => {
+    setFilterAkun('');
+  }, [filterKategori, filterSubKategori]);
+  // Reset halaman saat query pencarian berubah
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery]);
+  // Reset halaman saat filter akun berubah
+  useEffect(() => {
+    setPage(1);
+  }, [filterAkun]);
       const [editModalOpen, setEditModalOpen] = useState(false);
       const [editData, setEditData] = useState<any>(null);
       const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -792,42 +814,60 @@ export default function Transaksi() {
       filterTahun,
       filterKategori,
       filterSubKategori,
+      filterAkun,
+      searchQuery,
       fiscalYear,
       kategoriSort,
     ],
     queryFn: async () => {
       try {
+        const searching = (searchQuery || '').trim().length > 0;
         if (typeData === 'Detail') {
           // Query tt_finance_detail
           const params = new URLSearchParams();
+          if (searching) params.append('q', searchQuery);
           if (filterTanggalDari) params.append('from', filterTanggalDari);
           if (filterTanggalSampai) params.append('to', filterTanggalSampai);
-          if (filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
+          if (!searching && filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
           if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
           if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
-          params.append('page', String(page));
-          params.append('limit', String(pageSize));
+          if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
+          // When searching, fetch a large page to include all matches
+          if (searching) {
+            params.append('page', '1');
+            params.append('limit', '10000');
+          } else {
+            params.append('page', String(page));
+            params.append('limit', String(pageSize));
+          }
           if (kategoriSort) params.append('sortKategori', kategoriSort);
           const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
-          return { data: response.data.data, totalPages: response.data.totalPages || 1 };
+          return { data: response.data.data, totalPages: searching ? 1 : (response.data.totalPages || 1) };
         } else {
           // Query tt_finance (rekap)
           const params = new URLSearchParams();
+          if (searching) params.append('q', searchQuery);
           if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
             const tahun2Digit = String(filterTahun).slice(-2);
             // Kirim satu format; backend sudah handle variasi spasi
             params.append('bulan', `${filterBulan}-${tahun2Digit}`);
           }
           if (filterTahun) params.append('tahun', filterTahun);
-          if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
+          if (!searching && filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
           if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
           if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+          if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
           params.append('flatten', '1');
-          params.append('page', String(page));
-          params.append('limit', String(pageSize));
+          if (searching) {
+            params.append('page', '1');
+            params.append('limit', '10000');
+          } else {
+            params.append('page', String(page));
+            params.append('limit', String(pageSize));
+          }
           if (kategoriSort) params.append('sortKategori', kategoriSort);
           const response = await axiosInstance.get(`/transaksi?${params.toString()}`);
-          return { data: response.data.data, totalPages: response.data.totalPages, total: response.data.total, totalNilai: response.data.totalNilai };
+          return { data: response.data.data, totalPages: searching ? 1 : response.data.totalPages, total: response.data.total, totalNilai: response.data.totalNilai };
         }
       } catch (error: any) {
         const msg = error?.response?.data?.message || 'Gagal mengambil data transaksi.';
@@ -835,6 +875,8 @@ export default function Transaksi() {
         throw error;
       }
     },
+    // Always refetch on mount/key change and don't keep previous data
+    refetchOnMount: 'always',
   });
 
   const transaksiList = (transaksiResp as any)?.data || [];
@@ -842,30 +884,19 @@ export default function Transaksi() {
   const perusahaanFilteredList = (() => {
     const arr = Array.isArray(transaksiList) ? transaksiList : [];
     // Hanya filter perusahaan pada Detail; Rekap tidak memiliki field perusahaan
-    if (typeData === 'Detail' && filterPerusahaan) {
+    if (typeData === 'Detail' && filterPerusahaan && !searchQuery) {
       return arr.filter((row: any) => (row?.nama_perusahaan || '').trim() === filterPerusahaan);
     }
     return arr;
   })();
-  // Sort ascending: Detail by tanggal, Rekap by bulan (fiscal order DEC..NOV)
-  const sortedTransaksiList = (() => {
+  // In search mode, rely on backend `q` filtering to avoid double-filtering.
+  const searchFilteredList = (() => {
     const arr = [...perusahaanFilteredList];
-    if (typeData === 'Detail') {
-      return arr.sort((a: any, b: any) => {
-        const da = new Date(a.tanggal || '1970-01-01').getTime();
-        const db = new Date(b.tanggal || '1970-01-01').getTime();
-        return da - db;
-      });
-    } else {
-      const order = ["DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV"];
-      const idx = (m: string) => {
-        const key = (m || '').toUpperCase().replace(/\s+/g, '').substring(0,3);
-        const i = order.indexOf(key);
-        return i === -1 ? 999 : i;
-      };
-      return arr.sort((a: any, b: any) => idx(a.bulan) - idx(b.bulan));
-    }
+    if (searchQuery && searchQuery.trim().length > 0) return arr;
+    return arr;
   })();
+  // Use backend-provided sorting; do not resort on client to keep pagination stable
+  const sortedTransaksiList = searchFilteredList;
   // Use backend-provided total pages for both modes
   const totalPages = (transaksiResp as any)?.totalPages || 1;
   // Rows to display: backend already paginates Detail and Rekap
@@ -888,17 +919,22 @@ export default function Transaksi() {
       filterPerusahaan,
       filterKategori,
       filterSubKategori,
+      filterAkun,
+      searchQuery,
       fiscalYear,
     ],
     queryFn: async () => {
       try {
         if (typeData === 'Detail') {
           const params = new URLSearchParams();
+          const searching = (searchQuery || '').trim().length > 0;
+          if (searching) params.append('q', searchQuery);
           if (filterTanggalDari) params.append('from', filterTanggalDari);
           if (filterTanggalSampai) params.append('to', filterTanggalSampai);
-          if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
+          if (!searching && filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
           if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
           if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+          if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
           params.append('aggregate', '1');
           const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
           return response.data || { totalNilai: 0, totalCount: 0 };
@@ -916,6 +952,7 @@ export default function Transaksi() {
       }
     },
     enabled: !!transaksiResp,
+    refetchOnMount: 'always',
   });
 
   const totalDataAllPages = (aggregateTotals as any)?.totalCount || 0;
@@ -1032,6 +1069,7 @@ export default function Transaksi() {
         if (filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+        if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
       } else {
         if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
           const tahun2Digit = String(filterTahun).slice(-2);
@@ -1041,6 +1079,7 @@ export default function Transaksi() {
         if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
+        if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
         params.append('flatten', '1');
       }
       // Hilangkan trailing slash jika ada di VITE_API_BASE_URL
@@ -1199,6 +1238,35 @@ export default function Transaksi() {
               </SelectContent>
             </Select>
           </div>
+          {/* Filter Akun */}
+          <div className="flex flex-col">
+            <Label htmlFor="filterAkun" className="text-sm font-semibold text-gray-700 mb-1">Akun</Label>
+            <Select value={filterAkun || 'ALL'} onValueChange={v => setFilterAkun(v === 'ALL' ? '' : v)}>
+              <SelectTrigger className="w-40 border-2 border-gray-200">
+                <SelectValue placeholder="Semua" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Semua</SelectItem>
+                {accounts
+                  .filter((acc) => (!filterKategori || acc.kategori === filterKategori) && (!filterSubKategori || acc.sub_kategori === filterSubKategori))
+                  .map((acc) => (
+                    <SelectItem key={acc._id} value={acc.akun}>{acc.akun}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+            {/* Search */}
+            <div className="flex flex-col">
+              <Label htmlFor="searchQuery" className="text-sm font-semibold text-gray-700 mb-1">Cari</Label>
+              <Input
+                id="searchQuery"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari data di tabel"
+                className="border-2 border-gray-200 w-64"
+              />
+            </div>
           {/* Totals Summary */}
           <div className="flex flex-col self-center leading-tight mt-4">
             <div className="text-sm font-semibold text-gray-700">
