@@ -4,7 +4,7 @@ import path from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import { exportTransaksiExcel } from '../controllers/exportExcelController';
-import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment, getRiwayatSaldoRekening, getSaldoRekening } from '../controllers/transaksiController';
+import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment, updateValidatorNotes, getRiwayatSaldoRekening, getSaldoRekening } from '../controllers/transaksiController';
 import { authenticate } from '../middleware/authMiddleware';
 import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
 
@@ -20,6 +20,9 @@ router.get('/export-excel', exportTransaksiExcel);
 
 // Validasi data hasil attachment (hanya superuser/corsec)
 router.post('/validate-attachment', authenticate, validateAttachment);
+
+// Update validator notes
+router.put('/validator-notes', authenticate, updateValidatorNotes);
 
 // Multer config for attachments
 const storage = multer.diskStorage({

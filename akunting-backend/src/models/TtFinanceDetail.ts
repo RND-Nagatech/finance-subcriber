@@ -22,6 +22,7 @@ export interface ITtFinanceDetail extends Document {
   status_deleted?: boolean;
   attachments?: IAttachment[];
   is_validated?: boolean;
+  validator_notes?: string;
   kode_perusahaan?: string;
   nama_perusahaan?: string;
   kode_bank?: string;
@@ -30,6 +31,7 @@ export interface ITtFinanceDetail extends Document {
 
 const TtFinanceDetailSchema: Schema = new Schema({
   is_validated: { type: Boolean, default: false },
+  validator_notes: { type: String },
   tanggal: { type: String, required: true },
   bulan: { type: String, required: true },
   tahun_fiskal: { type: String },

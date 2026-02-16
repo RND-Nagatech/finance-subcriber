@@ -73,6 +73,8 @@ interface Transaksi {
   created_at?: string;
   tanggal?: string; // tambahkan tanggal untuk date picker
   attachments?: IAttachment[];
+  is_validated?: boolean;
+  validator_notes?: string;
 }
 
 
@@ -242,6 +244,13 @@ export default function Transaksi() {
       const [validateDialogOpen, setValidateDialogOpen] = useState(false);
       const [validateRow, setValidateRow] = useState<any>(null);
       const [validating, setValidating] = useState(false);
+      const [validatorNotes, setValidatorNotes] = useState('');
+      
+      // State untuk dialog validator notes terpisah
+      const [validatorNotesDialogOpen, setValidatorNotesDialogOpen] = useState(false);
+      const [validatorNotesRow, setValidatorNotesRow] = useState<any>(null);
+      const [validatorNotesInput, setValidatorNotesInput] = useState('');
+      const [savingValidatorNotes, setSavingValidatorNotes] = useState(false);
 
   // Tahun fiskal global dari store
   const { fiscalYear, user } = useAppStore();
@@ -287,7 +296,15 @@ export default function Transaksi() {
         rekening_id = rekening?._id;
       }
       setValidateRow({ ...row, rekening_id });
+      setValidatorNotes('');
       setValidateDialogOpen(true);
+    };
+
+    // Handler untuk buka dialog validator notes
+    const handleOpenValidatorNotes = (row: any) => {
+      setValidatorNotesRow(row);
+      setValidatorNotesInput(row.validator_notes || '');
+      setValidatorNotesDialogOpen(true);
     };
 
     // Handler submit validasi
@@ -295,10 +312,11 @@ export default function Transaksi() {
       if (!validateRow) return;
       setValidating(true);
       try {
-        await axiosInstance.post(`/transaksi/validate-attachment`, { id: validateRow._id });
+        await axiosInstance.post(`/transaksi/validate-attachment`, { id: validateRow._id, validator_notes: validatorNotes });
         toast.success('Data berhasil divalidasi!');
         setValidateDialogOpen(false);
         setValidateRow(null);
+        setValidatorNotes('');
         if (refetch) refetch();
         // Invalidate rekening queries to update saldo
         queryClient.invalidateQueries({ queryKey: ['rekening-all'] });
@@ -308,7 +326,27 @@ export default function Transaksi() {
         setValidating(false);
       }
     };
-  // ...existing state declarations...
+
+    // Handler untuk menyimpan validator notes
+    const handleSaveValidatorNotes = async () => {
+      if (!validatorNotesRow) return;
+      setSavingValidatorNotes(true);
+      try {
+        await axiosInstance.put(`/transaksi/validator-notes`, { 
+          id: validatorNotesRow._id, 
+          validator_notes: validatorNotesInput 
+        });
+        toast.success('Validator notes berhasil disimpan!');
+        setValidatorNotesDialogOpen(false);
+        setValidatorNotesRow(null);
+        setValidatorNotesInput('');
+        if (refetch) refetch();
+      } catch (err: any) {
+        toast.error(err?.response?.data?.message || 'Gagal menyimpan validator notes');
+      } finally {
+        setSavingValidatorNotes(false);
+      }
+    };
 
   // ...existing state declarations...
 
@@ -1504,7 +1542,6 @@ export default function Transaksi() {
                 {typeData === 'Detail' && (
                   <TableHead className="w-10 px-2 py-4"></TableHead>
                 )}
-                <TableHead className="w-12 px-4 py-4 font-semibold text-gray-900 text-center">No</TableHead>
                 {typeData === 'Detail' ? (
                   <>
                     <TableHead className="w-28 px-6 py-4 font-semibold text-gray-900">Tanggal</TableHead>
@@ -1533,9 +1570,12 @@ export default function Transaksi() {
                     </span>
                   </div>
                 </TableHead>
-                <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Sub Kategori</TableHead>
-                <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Akun</TableHead>
-                <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900 text-right">Nilai</TableHead>
+                <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Sub Kategori</TableHead>
+                <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Akun</TableHead>
+                <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900 text-right">Nilai</TableHead>
+                {typeData === 'Detail' && (
+                  <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Validator Notes</TableHead>
+                )}
                 {/* <TableHead className="w-24 px-6 py-4 font-semibold text-gray-900">Input By</TableHead> */}
                 {typeData === 'Detail' && (
                   <TableHead className="w-32 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
@@ -1545,7 +1585,7 @@ export default function Transaksi() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12">
+                  <TableCell colSpan={typeData === 'Detail' ? 10 : 7} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data transaksi...</p>
@@ -1554,7 +1594,7 @@ export default function Transaksi() {
                 </TableRow>
               ) : transaksiList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12">
+                  <TableCell colSpan={typeData === 'Detail' ? 10 : 7} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1583,7 +1623,6 @@ export default function Transaksi() {
                         </Button>
                       </TableCell>
                     )}
-                    <TableCell className="w-12 px-4 py-4 text-center font-semibold text-gray-900">{(page - 1) * pageSize + idx + 1}</TableCell>
                     {typeData === 'Detail' ? (
                       <>
                         <TableCell className="w-28 px-6 py-4 font-semibold text-gray-900">{row.tanggal}</TableCell>
@@ -1598,6 +1637,11 @@ export default function Transaksi() {
                     <TableCell className="w-32 px-6 py-4 text-gray-700 text-right font-medium">
                       <span className="break-words whitespace-normal block">{formatCurrency(row.nilai)}</span>
                     </TableCell>
+                    {typeData === 'Detail' && (
+                      <TableCell className="w-48 px-6 py-4 text-gray-700">
+                        <span className="break-words whitespace-normal block">{row.validator_notes || '-'}</span>
+                      </TableCell>
+                    )}
                     {/* <TableCell className="w-24 px-6 py-4 text-gray-700">{row.input_by || row.created_by}</TableCell> */}
                     {typeData === 'Detail' && (
                       <TableCell className="w-32 px-6 py-4 text-right">
@@ -1643,6 +1687,17 @@ export default function Transaksi() {
                                 Upload
                               </DropdownMenuItem>
                             )}
+                            {(user?.role === 'superuser' || user?.role === 'corsec') && (
+                              <DropdownMenuItem
+                                onClick={() => handleOpenValidatorNotes(row)}
+                                className="cursor-pointer text-purple-600 focus:text-purple-600"
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                Validator Notes
+                              </DropdownMenuItem>
+                            )}
                             {/* Button Validasi hanya untuk superuser dan corsec, dan hanya jika belum divalidasi */}
                             {(user?.role === 'superuser' || user?.role === 'corsec') && !row.is_validated && (
                               <DropdownMenuItem
@@ -1668,7 +1723,7 @@ export default function Transaksi() {
                   </TableRow>
                   {typeData === 'Detail' && expandedRows[row._id || String(idx)] && (
                     <TableRow className="bg-transparent">
-                      <TableCell colSpan={9} className="">
+                      <TableCell colSpan={typeData === 'Detail' ? 9 : 8} className="">
                         <div className="bg-white rounded-lg border border-slate-200 my-0 p-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
                           <div className="flex flex-col min-w-[120px]">
                             <span className="text-[11px] text-slate-500 leading-tight">Keterangan</span>
@@ -1694,27 +1749,38 @@ export default function Transaksi() {
                             <div className="flex flex-col min-w-[200px]">
                               <span className="text-[11px] text-slate-500 leading-tight">Attachments</span>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {row.attachments.map((att, idx) => (
-                                  <div key={idx} className="flex items-center gap-1 bg-blue-50 rounded px-2 py-1">
-                                    <a
-                                      href={`${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 underline text-xs"
-                                    >
-                                      {att.path.split('/').pop()}
-                                    </a>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleDeleteAttachment(row._id, att.path.split('/').pop() || '', att.path)}
-                                      className="h-3 w-3 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                      title="Delete attachment"
-                                    >
-                                      ×
-                                    </Button>
-                                  </div>
-                                ))}
+                                {row.attachments.map((att, idx) => {
+                                  const fileName = att.path.split('/').pop() || '';
+                                  const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
+                                  return (
+                                    <div key={idx} className="flex items-center gap-1 bg-blue-50 rounded px-2 py-1">
+                                      <span className="text-blue-600 text-xs truncate max-w-[80px]" title={fileName}>
+                                        {fileName}
+                                      </span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => window.open(`${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`, '_blank')}
+                                        className="h-4 w-4 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-100"
+                                        title="Preview attachment"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeleteAttachment(row._id, fileName, att.path)}
+                                        className="h-4 w-4 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                        title="Delete attachment"
+                                      >
+                                        ×
+                                      </Button>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -2162,50 +2228,6 @@ export default function Transaksi() {
           {validateRow && validateRow.attachments && validateRow.attachments.length > 0 ? (
             <div className="flex flex-wrap gap-4 mb-4">
               {validateRow.attachments.map((att: any, idx: number) => {
-                const cleanPath = att.path.replace(/^\/?uploads\//, '');
-                const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${cleanPath}`;
-                const fileName = cleanPath.split('/').pop();
-                const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
-                return (
-                  <div key={idx} className="flex flex-col items-center w-32">
-                    {isImage ? (
-                      <a href={url} target="_blank" rel="noopener noreferrer">
-                        <img src={url} alt={fileName} className="w-24 h-24 object-cover rounded border mb-1" />
-                      </a>
-                    ) : (
-                      <a href={url} target="_blank" rel="noopener noreferrer" className="block w-full text-xs text-blue-700 border rounded p-2 bg-blue-50 hover:bg-blue-100 text-center mb-1">
-                        {fileName}
-                      </a>
-                    )}
-                    <span className="text-xs break-all text-gray-700 text-center">{fileName}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-gray-500 text-sm mb-4">Tidak ada attachment pada transaksi ini.</div>
-          )}
-          <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setValidateDialogOpen(false)} disabled={validating}>Batal</Button>
-            <Button onClick={handleConfirmValidate} disabled={validating} className="bg-blue-600 text-white">
-              {validating ? 'Memvalidasi...' : 'Validasi'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog konfirmasi validasi */}
-      <Dialog open={validateDialogOpen} onOpenChange={setValidateDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Konfirmasi Validasi</DialogTitle>
-            <DialogDescription>
-              Apakah Anda yakin ingin memvalidasi transaksi ini? Berikut adalah file attachment yang akan divalidasi:
-            </DialogDescription>
-          </DialogHeader>
-          {validateRow && validateRow.attachments && validateRow.attachments.length > 0 ? (
-            <div className="flex flex-wrap gap-4 mb-4">
-              {validateRow.attachments.map((att: any, idx: number) => {
                 const url = `${import.meta.env.VITE_API_BASE_URL_ATTACHMENT}${att.path}`;
                 const fileName = att.path.split('/').pop();
                 const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(fileName);
@@ -2273,6 +2295,48 @@ export default function Transaksi() {
             <Button variant="outline" onClick={() => setValidateDialogOpen(false)} disabled={validating}>Batal</Button>
             <Button onClick={handleConfirmValidate} disabled={validating} className="bg-blue-600 text-white">
               {validating ? 'Memvalidasi...' : 'Validasi'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog untuk input validator notes */}
+      <Dialog open={validatorNotesDialogOpen} onOpenChange={setValidatorNotesDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Tambah/Edit Validator Notes</DialogTitle>
+            <DialogDescription>
+              Masukkan catatan validator untuk transaksi ini.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mb-4">
+            <Label htmlFor="validator-notes-input">Validator Notes</Label>
+            <textarea
+              id="validator-notes-input"
+              value={validatorNotesInput}
+              onChange={(e) => setValidatorNotesInput(e.target.value)}
+              placeholder="Masukkan catatan validator..."
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              rows={4}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setValidatorNotesDialogOpen(false);
+                setValidatorNotesInput('');
+              }} 
+              disabled={savingValidatorNotes}
+            >
+              Batal
+            </Button>
+            <Button 
+              onClick={handleSaveValidatorNotes} 
+              disabled={savingValidatorNotes} 
+              className="bg-purple-600 text-white hover:bg-purple-700"
+            >
+              {savingValidatorNotes ? 'Menyimpan...' : 'Simpan'}
             </Button>
           </div>
         </DialogContent>

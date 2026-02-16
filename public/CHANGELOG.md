@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-16
+
+### Added
+- **Validator Notes Feature**: Comprehensive validator notes functionality for transaction validation
+  - Input field for validator notes during transaction validation process
+  - Separate dialog for adding/editing validator notes anytime (accessible via dropdown menu)
+  - Validator notes column in transaction table showing notes or "-" if empty
+  - Backend support with new `validator_notes` field in TtFinanceDetail model
+  - New API endpoint `PUT /transaksi/validator-notes` for updating validator notes
+  - Authorization restricted to superuser and corsec roles only
+
+- **Attachment Preview Enhancement**: Improved attachment display and preview functionality
+  - Mini preview button with eye icon for each attachment
+  - Truncated filename display (max 80px width) with full name in tooltip
+  - Consistent button sizing (4x4) for preview and delete actions
+  - Direct preview opening in new tab for better user experience
+  - Cleaner layout for multiple attachments in expanded transaction rows
+
+### Changed
+- **Transaction Validation Process**: Enhanced validation dialog to include optional validator notes input
+- **Attachment Display**: Replaced direct links with truncated text and dedicated preview buttons
+- **Table Layout**: Added Validator Notes column in Detail view with proper colspan adjustments
+
+### Fixed
+- **Attachment UI**: Resolved layout issues with long filenames by implementing truncation and tooltips
+- **Button Consistency**: Standardized button sizes across attachment management interface
+
+### Security
+- **Role-based Access**: Validator notes functionality properly restricted to authorized personnel only
+
 ## [1.3.0] - 2026-02-04
 
 ### Added

@@ -15,7 +15,7 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
     if (!user || (user.role !== 'superuser' && user.role !== 'corsec')) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
-    const { id } = req.body;
+    const { id, validator_notes } = req.body;
     if (!id) return res.status(400).json({ message: 'ID is required' });
     const doc = await TtFinanceDetail.findById(id);
     if (!doc) return res.status(404).json({ message: 'Transaksi detail not found' });
@@ -65,6 +65,7 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
     await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment');
     await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
     doc.is_validated = true;
+    doc.validator_notes = validator_notes || '';
     await doc.save();
     res.json({ success: true, message: 'Validasi berhasil' });
   } catch (error) {
@@ -977,6 +978,26 @@ export const getSaldoRekening = async (req: Request, res: Response, next: NextFu
       nama_rekening: rekening.nama_rekening,
       nama_bank: rekening.bank_id ? (rekening.bank_id as any).nama_bank : rekening.kode_bank
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update validator notes (hanya superuser/corsec)
+export const updateValidatorNotes = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user as any; // diasumsikan sudah ada middleware auth, req.user terisi
+    if (!user || (user.role !== 'superuser' && user.role !== 'corsec')) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+    const { id, validator_notes } = req.body;
+    if (!id) return res.status(400).json({ message: 'ID is required' });
+    const doc = await TtFinanceDetail.findById(id);
+    if (!doc) return res.status(404).json({ message: 'Transaksi detail not found' });
+
+    doc.validator_notes = validator_notes || '';
+    await doc.save();
+    res.json({ success: true, message: 'Validator notes berhasil diperbarui' });
   } catch (error) {
     next(error);
   }
