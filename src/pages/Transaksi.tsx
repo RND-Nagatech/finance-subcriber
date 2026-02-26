@@ -510,18 +510,21 @@ export default function Transaksi() {
   useEffect(() => {
     setFilterAkun('');
   }, [filterKategori, filterSubKategori]);
-  // Reset halaman saat query pencarian berubah
+  // Reset halaman saat filter/opsi tabel berubah
   useEffect(() => {
     setPage(1);
-  }, [searchQuery]);
-  // Reset halaman saat filter akun berubah
-  useEffect(() => {
-    setPage(1);
-  }, [filterAkun]);
-  // Reset halaman saat filter input by berubah
-  useEffect(() => {
-    setPage(1);
-  }, [filterInputBy]);
+  }, [
+    searchQuery,
+    filterAkun,
+    filterInputBy,
+    filterTanggalDari,
+    filterTanggalSampai,
+    filterPerusahaan,
+    filterBulan,
+    filterTahun,
+    filterKategori,
+    filterSubKategori,
+  ]);
       const [editModalOpen, setEditModalOpen] = useState(false);
       const [editData, setEditData] = useState<any>(null);
       const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
