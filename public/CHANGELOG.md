@@ -75,6 +75,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Buat Header Perjalanan` action moved into `Daftar Perjalanan` card header (dialog trigger)
   - Removed separate header-create card so `Daftar Perjalanan` uses full available width
   - `Tambah Transaksi Perjalanan` action moved into `Daftar Item` card header (dialog trigger)
+  - Redesigned `Buat Header Perjalanan` dialog with modern hero section, workflow summary, and grouped form layout
+
+- **Perjalanan Dinas Workspace UI Redesign**
+  - Redesigned `Pilih Perjalanan` card using shadcn `Select`, status badges, and selected-trip detail panel
+  - Redesigned `Daftar Perjalanan` table with mini summary cards, richer row information, and improved action layout
+  - Redesigned `Ledger Dana` table with mutation summary cards, styled `INJECT/RETURN` badges, and clearer nominal/rekening presentation
+  - Redesigned `Audit Item Perjalanan` table with audit summary cards, improved attachment/bukti presentation, and compact actions
+  - Redesigned `Finalisasi Audit & Posting` section into checklist + posting panels with shadcn `Select` fields
+
+- **Perjalanan Dinas Web Navigation**
+  - `Transaksi Perjalanan` menu entry is hidden from sidebar/internal web navigation because transaction input is now handled via mobile app
 
 - **Transaksi Validation & Aggregation Behavior (Existing Module)**
   - `validateAttachment` now records validator identity and timestamp (`validator_notes_by`, `validator_notes_at`)

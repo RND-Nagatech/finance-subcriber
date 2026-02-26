@@ -387,7 +387,6 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
   const navLinks = useMemo(
     () => [
       { key: 'header', to: '/perjalanan-dinas', label: 'Header Perjalanan' },
-      { key: 'transaksi', to: '/perjalanan-dinas/transaksi', label: 'Transaksi Perjalanan' },
       { key: 'dana', to: '/perjalanan-dinas/dana', label: 'Dana Perjalanan' },
       { key: 'audit', to: '/perjalanan-dinas/audit', label: 'Audit Perjalanan' },
     ],
@@ -420,39 +419,92 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
         </div>
       </div>
 
-      <Card className="bg-white/80 backdrop-blur-sm border-blue-100 shadow-sm">
+      <Card className="bg-white/85 backdrop-blur-md border-blue-100 shadow-sm overflow-hidden">
+        <div className="h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500" />
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Pilih Perjalanan</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <select
-            className="w-full border rounded-md px-3 py-2"
-            value={selectedTripId}
-            onChange={(e) => setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              if (e.target.value) next.set('tripId', e.target.value); else next.delete('tripId');
-              return next;
-            })}
-          >
-            <option value="">-- Pilih Perjalanan --</option>
-            {headers.map((h) => (
-              <option key={h._id} value={h._id}>
-                {h.kode_perjalanan} | {h.user_name} | {h.tujuan} | {h.status}
-              </option>
-            ))}
-          </select>
-          {selectedHeaderFull && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <StatusBadge value={selectedHeaderFull.status} />
-              <span className="font-medium">{selectedHeaderFull.kode_perjalanan}</span>
-              <span className="text-gray-500">{selectedHeaderFull.user_name}</span>
-              <span className="text-gray-500">{selectedHeaderFull.tujuan}</span>
-              <span className="text-gray-400">
-                {selectedHeaderFull.tanggal_berangkat} s/d {selectedHeaderFull.tanggal_pulang}
-              </span>
-              {(selectedHeaderFull as any).posted_to_tt_finance && <StatusBadge value="POSTED" />}
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="text-base">Pilih Perjalanan</CardTitle>
+              <p className="text-xs text-gray-500 mt-1">
+                Pilih header perjalanan untuk melihat transaksi, dana, audit, dan status posting
+              </p>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              <div className="px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">
+                {headers.length} Perjalanan
+              </div>
+              {selectedHeaderFull && (
+                <div className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-100">
+                  Aktif: {selectedHeaderFull.kode_perjalanan}
+                </div>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4">
+            <div className="space-y-2">
+              <Label>Pilih Header Perjalanan</Label>
+              <Select
+                value={selectedTripId || undefined}
+                onValueChange={(value) => setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (value) next.set('tripId', value); else next.delete('tripId');
+                  return next;
+                })}
+              >
+                <SelectTrigger className="h-12 bg-white border-blue-100">
+                  <SelectValue placeholder="-- Pilih Perjalanan --" />
+                </SelectTrigger>
+                <SelectContent className="max-h-80">
+                  {headers.map((h) => (
+                    <SelectItem key={h._id} value={h._id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{h.kode_perjalanan}</span>
+                        <span className="text-xs text-gray-500">{h.user_name} • {h.tujuan} • {h.status}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
+              {!selectedHeaderFull ? (
+                <div className="h-full min-h-[84px] flex items-center justify-center text-sm text-gray-500">
+                  Belum ada perjalanan yang dipilih
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusBadge value={selectedHeaderFull.status} />
+                    {(selectedHeaderFull as any).posted_to_tt_finance && <StatusBadge value="POSTED" />}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-xs text-gray-500">Kode</div>
+                      <div className="font-semibold text-gray-900">{selectedHeaderFull.kode_perjalanan}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Pelaksana</div>
+                      <div className="font-semibold text-gray-900">{selectedHeaderFull.user_name}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Tujuan</div>
+                      <div className="font-medium text-gray-800">{selectedHeaderFull.tujuan}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Periode</div>
+                      <div className="font-medium text-gray-800">
+                        {selectedHeaderFull.tanggal_berangkat} s/d {selectedHeaderFull.tanggal_pulang}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           {selectedTripId && <SummaryCards summary={activeSummary || {}} />}
         </CardContent>
       </Card>
@@ -470,82 +522,278 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                       Buat Header Perjalanan
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-[620px] bg-white/95 backdrop-blur-sm">
-                    <DialogHeader>
-                      <DialogTitle>Buat Header Perjalanan</DialogTitle>
-                      <DialogDescription>
-                        Isi data penugasan perjalanan untuk user pelaksana.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                      <select
-                        className="w-full border rounded-md px-3 py-2"
-                        value={headerForm.user_id}
-                        onChange={(e) => {
-                          const u = (usersQuery.data || []).find((x: any) => x._id === e.target.value);
-                          setHeaderForm((prev) => ({
-                            ...prev,
-                            user_id: e.target.value,
-                            user_name: u?.name || u?.username || '',
-                            user_username: u?.username || '',
-                          }));
-                        }}
-                      >
-                        <option value="">-- Pilih User Pelaksana --</option>
-                        {(usersQuery.data || []).map((u: any) => (
-                          <option key={u._id} value={u._id}>{u.name || u.username} ({u.role})</option>
-                        ))}
-                      </select>
-                      <Input placeholder="Tujuan / Kota" value={headerForm.tujuan} onChange={(e) => setHeaderForm({ ...headerForm, tujuan: e.target.value })} />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input type="date" value={headerForm.tanggal_berangkat} onChange={(e) => setHeaderForm({ ...headerForm, tanggal_berangkat: e.target.value })} />
-                        <Input type="date" value={headerForm.tanggal_pulang} onChange={(e) => setHeaderForm({ ...headerForm, tanggal_pulang: e.target.value })} />
+                  <DialogContent className="sm:max-w-[820px] bg-white/95 backdrop-blur-sm border-blue-100 p-0 overflow-hidden">
+                    <div className="h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500" />
+                    <DialogHeader className="px-6 pt-6 pb-0">
+                      <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-indigo-50/70 to-cyan-50/60 p-5">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div className="space-y-2">
+                            <div className="inline-flex items-center rounded-full border border-blue-200 bg-white/80 px-3 py-1 text-xs font-semibold text-blue-700">
+                              Header Penugasan Perjalanan
+                            </div>
+                            <DialogTitle className="text-xl md:text-2xl font-semibold text-slate-900">
+                              Buat Header Perjalanan
+                            </DialogTitle>
+                            <DialogDescription className="max-w-2xl text-sm text-slate-600">
+                              Tentukan pelaksana, tujuan, dan periode perjalanan. Header ini akan menjadi sumber untuk transaksi perjalanan, inject dana, audit, dan posting.
+                            </DialogDescription>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:min-w-[360px]">
+                            <div className="rounded-xl border border-blue-100 bg-white/80 px-3 py-2">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-blue-700">Status Awal</div>
+                              <div className="mt-1 text-sm font-semibold text-blue-900">BERJALAN</div>
+                            </div>
+                            <div className="rounded-xl border border-indigo-100 bg-white/80 px-3 py-2">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-indigo-700">Workflow</div>
+                              <div className="mt-1 text-xs font-semibold text-indigo-900">Berjalan • Audit • Selesai</div>
+                            </div>
+                            <div className="rounded-xl border border-cyan-100 bg-white/80 px-3 py-2">
+                              <div className="text-[11px] font-medium uppercase tracking-wide text-cyan-700">Setelah Create</div>
+                              <div className="mt-1 text-xs font-semibold text-cyan-900">Inject dana & transaksi</div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <Input placeholder="Catatan" value={headerForm.catatan} onChange={(e) => setHeaderForm({ ...headerForm, catatan: e.target.value })} />
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setHeaderDialogOpen(false)}>Batal</Button>
-                        <Button onClick={() => createHeaderMut.mutate(headerForm)} disabled={createHeaderMut.isPending}>
-                          {createHeaderMut.isPending ? 'Menyimpan...' : 'Simpan Header'}
-                        </Button>
+                    </DialogHeader>
+
+                    <div className="px-6 py-5 space-y-5">
+                      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">Informasi Penugasan</div>
+                            <div className="text-xs text-slate-500">Field bertanda wajib harus diisi sebelum menyimpan.</div>
+                          </div>
+                          <div className="hidden sm:flex items-center gap-2 text-xs">
+                            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">Draft form aktif</span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2 md:col-span-2">
+                            <Label className="text-slate-700">User Pelaksana</Label>
+                            <Select
+                              value={headerForm.user_id || undefined}
+                              onValueChange={(value) => {
+                                const u = (usersQuery.data || []).find((x: any) => x._id === value);
+                                setHeaderForm((prev) => ({
+                                  ...prev,
+                                  user_id: value,
+                                  user_name: u?.name || u?.username || '',
+                                  user_username: u?.username || '',
+                                }));
+                              }}
+                            >
+                              <SelectTrigger className="h-11 bg-white border-slate-200 focus:ring-blue-500">
+                                <SelectValue placeholder="Pilih user pelaksana" />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-80">
+                                {(usersQuery.data || []).map((u: any) => (
+                                  <SelectItem key={u._id} value={u._id}>
+                                    {(u.name || u.username)} ({u.role})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {headerForm.user_name && (
+                              <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-blue-800">
+                                Pelaksana terpilih: <span className="font-semibold">{headerForm.user_name}</span>
+                                {headerForm.user_username ? ` (@${headerForm.user_username})` : ''}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2">
+                            <Label className="text-slate-700">Tujuan / Kota</Label>
+                            <Input
+                              className="h-11 bg-white border-slate-200 focus-visible:ring-blue-500"
+                              placeholder="Contoh: Bandung / Surabaya / Jakarta"
+                              value={headerForm.tujuan}
+                              onChange={(e) => setHeaderForm({ ...headerForm, tujuan: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                            <Label className="text-slate-700">Tanggal Berangkat</Label>
+                            <Input
+                              className="h-11 bg-white border-slate-200"
+                              type="date"
+                              value={headerForm.tanggal_berangkat}
+                              onChange={(e) => setHeaderForm({ ...headerForm, tanggal_berangkat: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                            <Label className="text-slate-700">Tanggal Pulang</Label>
+                            <Input
+                              className="h-11 bg-white border-slate-200"
+                              type="date"
+                              value={headerForm.tanggal_pulang}
+                              onChange={(e) => setHeaderForm({ ...headerForm, tanggal_pulang: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2">
+                            <Label className="text-slate-700">Catatan</Label>
+                            <Input
+                              className="h-11 bg-white border-slate-200 focus-visible:ring-blue-500"
+                              placeholder="Catatan tambahan penugasan (opsional)"
+                              value={headerForm.catatan}
+                              onChange={(e) => setHeaderForm({ ...headerForm, catatan: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div className="rounded-xl border border-white bg-white/80 p-3">
+                            <div className="text-xs text-slate-500">Validasi Praktis</div>
+                            <div className="mt-1 font-medium text-slate-800">Cek periode dan pelaksana agar tidak tertukar.</div>
+                          </div>
+                          <div className="rounded-xl border border-white bg-white/80 p-3">
+                            <div className="text-xs text-slate-500">Dampak Setelah Simpan</div>
+                            <div className="mt-1 font-medium text-slate-800">Trip bisa dipilih untuk inject dana dan transaksi.</div>
+                          </div>
+                          <div className="rounded-xl border border-white bg-white/80 p-3">
+                            <div className="text-xs text-slate-500">Catatan Audit</div>
+                            <div className="mt-1 font-medium text-slate-800">Header akan diaudit saat user submit selesai perjalanan.</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3 pt-1">
+                        <div className="text-xs text-gray-500">
+                          Pastikan user, tujuan, dan periode perjalanan sudah benar sebelum menyimpan.
+                        </div>
+                        <div className="flex w-full sm:w-auto gap-2">
+                          <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => setHeaderDialogOpen(false)}>
+                            Batal
+                          </Button>
+                          <Button
+                            className="flex-1 sm:flex-none bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800"
+                            onClick={() => createHeaderMut.mutate(headerForm)}
+                            disabled={createHeaderMut.isPending}
+                          >
+                            {createHeaderMut.isPending ? 'Menyimpan...' : 'Simpan Header'}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </DialogContent>
                 </Dialog>
               )}
             </CardHeader>
-            <CardContent className="overflow-auto">
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                  <div className="text-xs text-blue-700 font-medium">Total Perjalanan</div>
+                  <div className="text-lg font-bold text-blue-900">{headers.length}</div>
+                </div>
+                <div className="rounded-xl border border-yellow-100 bg-yellow-50/60 p-3">
+                  <div className="text-xs text-yellow-700 font-medium">Sedang Diaudit</div>
+                  <div className="text-lg font-bold text-yellow-900">{headers.filter((h) => h.status === 'SEDANG_DIAUDIT').length}</div>
+                </div>
+                <div className="rounded-xl border border-green-100 bg-green-50/60 p-3">
+                  <div className="text-xs text-green-700 font-medium">Selesai</div>
+                  <div className="text-lg font-bold text-green-900">{headers.filter((h) => h.status === 'SELESAI').length}</div>
+                </div>
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                  <div className="text-xs text-indigo-700 font-medium">Belum Diposting</div>
+                  <div className="text-lg font-bold text-indigo-900">
+                    {headers.filter((h: any) => !h.posted_to_tt_finance).length}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Kode</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Tujuan</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Aksi</TableHead>
+                  <TableRow className="bg-gradient-to-r from-slate-50 to-blue-50/60 hover:bg-gradient-to-r hover:from-slate-50 hover:to-blue-50/60">
+                    <TableHead className="font-semibold text-slate-700">Perjalanan</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Pelaksana</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Status</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Ringkasan Dana</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {headers.map((h) => (
-                    <TableRow key={h._id}>
-                      <TableCell>{h.kode_perjalanan}</TableCell>
-                      <TableCell>{h.user_name}</TableCell>
-                      <TableCell>{h.tujuan}</TableCell>
-                      <TableCell><StatusBadge value={h.status} /></TableCell>
-                      <TableCell className="space-x-2">
-                        <Button size="sm" variant="outline" onClick={() => setSearchParams({ tripId: h._id })}>Pilih</Button>
-                        {selectedTripId === h._id && h.status === 'BERJALAN' && (
-                          <Button size="sm" onClick={() => {
-                            if (window.confirm('Kirim perjalanan ke audit?')) submitAuditMut.mutate();
-                          }} disabled={submitAuditMut.isPending}>Selesai Perjalanan</Button>
-                        )}
+                    <TableRow
+                      key={h._id}
+                      className={
+                        "transition-colors " +
+                        (selectedTripId === h._id
+                          ? "bg-blue-50/70 hover:bg-blue-100/60 border-l-4 border-l-blue-500"
+                          : "hover:bg-slate-50/80")
+                      }
+                    >
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          <div className="font-semibold text-slate-900">{h.kode_perjalanan}</div>
+                          <div className="text-sm text-slate-700">{h.tujuan}</div>
+                          <div className="text-xs text-slate-500">
+                            {h.tanggal_berangkat} s/d {h.tanggal_pulang}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          <div className="font-medium text-slate-900">{h.user_name}</div>
+                          <div className="text-xs text-slate-500">{h.user_username || h.user_id}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="flex flex-col gap-2">
+                          <StatusBadge value={h.status} />
+                          {(h as any).posted_to_tt_finance ? (
+                            <span className="inline-flex w-fit items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium">
+                              Posted
+                            </span>
+                          ) : (
+                            <span className="inline-flex w-fit items-center rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-xs font-medium">
+                              Belum Posted
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="grid grid-cols-2 gap-2 text-xs min-w-[240px]">
+                          <div className="rounded-lg bg-blue-50 px-2 py-1.5">
+                            <div className="text-blue-700">Inject</div>
+                            <div className="font-semibold text-blue-900">
+                              {Number((h as any).summary?.total_inject || 0).toLocaleString('id-ID')}
+                            </div>
+                          </div>
+                          <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+                            <div className="text-emerald-700">Sisa</div>
+                            <div className="font-semibold text-emerald-900">
+                              {Number((h as any).summary?.sisa_dana || 0).toLocaleString('id-ID')}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button size="sm" variant={selectedTripId === h._id ? 'default' : 'outline'} onClick={() => setSearchParams({ tripId: h._id })}>
+                            {selectedTripId === h._id ? 'Terpilih' : 'Pilih'}
+                          </Button>
+                          {selectedTripId === h._id && h.status === 'BERJALAN' && (
+                            <Button size="sm" onClick={() => {
+                              if (window.confirm('Kirim perjalanan ke audit?')) submitAuditMut.mutate();
+                            }} disabled={submitAuditMut.isPending}>
+                              Selesai Perjalanan
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                   {headers.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-gray-500">Belum ada data</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-gray-500 py-10">Belum ada data perjalanan</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -862,34 +1110,94 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
               </div>
             </CardContent>
           </Card>
-          <Card className="xl:col-span-2 bg-white/80 backdrop-blur-sm border-blue-100 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Ledger Dana</CardTitle></CardHeader>
-            <CardContent className="overflow-auto">
+          <Card className="xl:col-span-2 bg-white/85 backdrop-blur-md border-blue-100 shadow-sm overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-slate-500 via-blue-500 to-emerald-500" />
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle className="text-base">Ledger Dana</CardTitle>
+                  <p className="text-xs text-gray-500 mt-1">Riwayat mutasi dana perjalanan (inject dan return)</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700">
+                  {danaRows.length} Mutasi
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                  <div className="text-xs text-blue-700 font-medium">Total Inject</div>
+                  <div className="text-lg font-bold text-blue-900">
+                    Rp {danaRows.filter((d) => d.jenis === 'INJECT').reduce((sum, d) => sum + Number(d.nominal || 0), 0).toLocaleString('id-ID')}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                  <div className="text-xs text-emerald-700 font-medium">Total Return</div>
+                  <div className="text-lg font-bold text-emerald-900">
+                    Rp {danaRows.filter((d) => d.jenis === 'RETURN').reduce((sum, d) => sum + Number(d.nominal || 0), 0).toLocaleString('id-ID')}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                  <div className="text-xs text-indigo-700 font-medium">Mutasi Terakhir</div>
+                  <div className="text-sm font-semibold text-indigo-900">
+                    {danaRows[0] ? new Date(danaRows[0].created_at).toLocaleString('id-ID') : '-'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Waktu</TableHead>
-                    <TableHead>Jenis</TableHead>
-                    <TableHead>Nominal</TableHead>
-                    <TableHead>Rekening</TableHead>
-                    <TableHead>Keterangan</TableHead>
+                  <TableRow className="bg-gradient-to-r from-slate-50 to-blue-50/40 hover:bg-gradient-to-r hover:from-slate-50 hover:to-blue-50/40">
+                    <TableHead className="font-semibold text-slate-700">Waktu Mutasi</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Jenis</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Nominal</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Rekening</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Keterangan</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {danaRows.map((d) => (
-                    <TableRow key={d._id}>
-                      <TableCell>{new Date(d.created_at).toLocaleString('id-ID')}</TableCell>
-                      <TableCell><StatusBadge value={d.jenis} /></TableCell>
-                      <TableCell>{Number(d.nominal).toLocaleString('id-ID')}</TableCell>
-                      <TableCell>{d.kode_bank}/{d.no_rekening}</TableCell>
-                      <TableCell>{d.keterangan || '-'}</TableCell>
+                    <TableRow key={d._id} className="hover:bg-slate-50/80 transition-colors">
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          <div className="font-medium text-slate-900">{new Date(d.created_at).toLocaleString('id-ID')}</div>
+                          <div className="text-xs text-slate-500">{new Date(d.created_at).toLocaleDateString('id-ID', { weekday: 'long' })}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border ${
+                          d.jenis === 'INJECT'
+                            ? 'bg-blue-100 text-blue-700 border-blue-200'
+                            : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                        }`}>
+                          {d.jenis}
+                        </span>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className={`font-semibold ${d.jenis === 'INJECT' ? 'text-blue-700' : 'text-emerald-700'}`}>
+                          {d.jenis === 'INJECT' ? '-' : '+'} Rp {Number(d.nominal).toLocaleString('id-ID')}
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="space-y-1">
+                          <div className="font-medium text-slate-900">{d.kode_bank}</div>
+                          <div className="text-xs text-slate-500">{d.no_rekening}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="text-sm text-slate-700 max-w-[360px] whitespace-normal break-words">
+                          {d.keterangan || '-'}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                   {danaRows.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-gray-500">Belum ada ledger dana</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-gray-500 py-10">Belum ada ledger dana</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -897,25 +1205,63 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
 
       {view === 'audit' && (
         <div className="space-y-6">
-          <Card className="bg-white/80 backdrop-blur-sm border-blue-100 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Audit Item Perjalanan</CardTitle></CardHeader>
-            <CardContent className="overflow-auto">
+          <Card className="bg-white/85 backdrop-blur-md border-blue-100 shadow-sm overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-amber-500 via-blue-500 to-emerald-500" />
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle className="text-base">Audit Item Perjalanan</CardTitle>
+                  <p className="text-xs text-gray-500 mt-1">Auditor dapat melakukan adjustment nominal/keterangan lalu approve item langsung</p>
+                </div>
+                <div className="px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700">
+                  {items.length} Item
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-600 font-medium">Total Item</div>
+                  <div className="text-lg font-bold text-slate-900">{items.length}</div>
+                </div>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                  <div className="text-xs text-blue-700 font-medium">Pending</div>
+                  <div className="text-lg font-bold text-blue-900">{items.filter((i) => i.audit_status === 'PENDING').length}</div>
+                </div>
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                  <div className="text-xs text-emerald-700 font-medium">Approved</div>
+                  <div className="text-lg font-bold text-emerald-900">{items.filter((i) => i.audit_status === 'APPROVED').length}</div>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3">
+                  <div className="text-xs text-amber-700 font-medium">Total Nominal</div>
+                  <div className="text-sm md:text-lg font-bold text-amber-900">
+                    Rp {items.reduce((sum, i) => sum + Number(i.nominal || 0), 0).toLocaleString('id-ID')}
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-auto rounded-xl border border-slate-200 bg-white">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Tanggal</TableHead>
-                    <TableHead>Nominal</TableHead>
-                    <TableHead>Keterangan</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Bukti</TableHead>
-                    <TableHead>Catatan Audit</TableHead>
-                    <TableHead>Aksi</TableHead>
+                  <TableRow className="bg-gradient-to-r from-slate-50 to-blue-50/40 hover:bg-gradient-to-r hover:from-slate-50 hover:to-blue-50/40">
+                    <TableHead className="font-semibold text-slate-700">Transaksi</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Nominal Audit</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Keterangan Audit</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Status</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Bukti</TableHead>
+                    <TableHead className="font-semibold text-slate-700">Catatan Auditor</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((it) => (
-                    <TableRow key={it._id}>
-                      <TableCell>{it.tanggal_transaksi}</TableCell>
+                    <TableRow key={it._id} className="hover:bg-slate-50/80 transition-colors">
+                      <TableCell className="align-top min-w-[180px]">
+                        <div className="space-y-1">
+                          <div className="font-medium text-slate-900">{it.tanggal_transaksi}</div>
+                          <div className="text-xs text-slate-500">ID: {it._id.slice(-6)}</div>
+                        </div>
+                      </TableCell>
                       <TableCell className="min-w-[180px]">
                         <Input
                           type="text"
@@ -934,13 +1280,14 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                           disabled={!isAudit}
                         />
                       </TableCell>
-                      <TableCell><StatusBadge value={it.audit_status} /></TableCell>
-                      <TableCell>
+                      <TableCell className="align-top"><StatusBadge value={it.audit_status} /></TableCell>
+                      <TableCell className="align-top">
                         {(it.attachments?.length || 0) > 0 ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col items-start gap-2">
                             <Button
                               size="sm"
                               variant="outline"
+                              className="h-8"
                               onClick={() => {
                                 const files = (it.attachments || []).map((a) => ({ path: a.path, original_name: a.original_name }));
                                 if (!files.length) return;
@@ -957,19 +1304,20 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                           <span className="text-xs text-gray-400">Tidak ada</span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-[220px] align-top">
                         <Input
                           value={auditNotesByItem[it._id] ?? it.audit_catatan_item ?? ''}
                           onChange={(e) => setAuditNotesByItem((prev) => ({ ...prev, [it._id]: e.target.value }))}
                           placeholder="Catatan audit item"
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               size="sm"
                               variant="outline"
+                              className="h-8"
                               disabled={!isAudit || auditAdjustMut.isPending || auditItemMut.isPending}
                             >
                               <MoreHorizontal className="w-4 h-4" />
@@ -1012,56 +1360,154 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                     </TableRow>
                   ))}
                   {items.length === 0 && (
-                    <TableRow><TableCell colSpan={7} className="text-center text-gray-500">Belum ada item</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center text-gray-500 py-10">Belum ada item untuk diaudit</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-white/80 backdrop-blur-sm border-blue-100 shadow-sm">
-            <CardHeader><CardTitle className="text-base">Finalisasi Audit & Posting</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <Button disabled={!selectedTripId || !isAudit || finalizeAuditMut.isPending} onClick={() => finalizeAuditMut.mutate()}>
-                  Finalize Audit (SELESAI)
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <select className="w-full border rounded-md px-3 py-2" value={postingForm.kategori} onChange={(e) => setPostingForm({ ...postingForm, kategori: e.target.value })}>
-                  <option value="">-- Pilih Kategori --</option>
-                  {(kategoriQuery.data || []).map((k: any, idx: number) => (
-                    <option key={k._id || idx} value={k.kategori || k.nama || ''}>{k.kategori || k.nama}</option>
-                  ))}
-                </select>
-                <select className="w-full border rounded-md px-3 py-2" value={postingForm.sub_kategori} onChange={(e) => setPostingForm({ ...postingForm, sub_kategori: e.target.value })}>
-                  <option value="">-- Pilih Sub Kategori --</option>
-                  {(subKategoriQuery.data || []).map((s: any, idx: number) => (
-                    <option key={s._id || idx} value={s.sub_kategori || s.nama || ''}>{s.sub_kategori || s.nama}</option>
-                  ))}
-                </select>
-                <select className="w-full border rounded-md px-3 py-2" value={postingForm.akun} onChange={(e) => setPostingForm({ ...postingForm, akun: e.target.value })}>
-                  <option value="">-- Pilih Akun --</option>
-                  {(akunQuery.data || []).map((a: any, idx: number) => (
-                    <option key={a._id || idx} value={a.akun || a.nama || ''}>{a.akun || a.nama}</option>
-                  ))}
-                </select>
-                <Input type="date" value={postingForm.tanggal_posting} onChange={(e) => setPostingForm({ ...postingForm, tanggal_posting: e.target.value })} />
-                <Input placeholder="Bulan fiskal (contoh: JAN-26)" value={postingForm.bulan} onChange={(e) => setPostingForm({ ...postingForm, bulan: e.target.value.toUpperCase() })} />
-                <Input placeholder="Tahun fiskal (opsional)" value={postingForm.tahun_fiskal} onChange={(e) => setPostingForm({ ...postingForm, tahun_fiskal: e.target.value })} />
-              </div>
-              <Button
-                disabled={!selectedTripId || !canPost || postingMut.isPending || !!(selectedHeaderFull as any)?.posted_to_tt_finance}
-                onClick={() => postingMut.mutate()}
-              >
-                Posting ke tt_finance
-              </Button>
-              {(selectedHeaderFull as any)?.posting_meta && (
-                <div className="text-sm text-gray-600">
-                  Sudah diposting oleh {(selectedHeaderFull as any).posting_meta?.posted_by} pada{' '}
-                  {new Date((selectedHeaderFull as any).posting_meta?.posted_at).toLocaleString('id-ID')}
+          <Card className="bg-white/85 backdrop-blur-md border-blue-100 shadow-sm overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-indigo-500 via-blue-500 to-emerald-500" />
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle className="text-base">Finalisasi Audit & Posting</CardTitle>
+                  <p className="text-xs text-gray-500 mt-1">Finalisasi audit perjalanan dan posting total approved ke `tt_finance`</p>
                 </div>
-              )}
+                <div className="flex items-center gap-2">
+                  <StatusBadge value={(selectedHeaderFull as any)?.status || '-'} />
+                  {(selectedHeaderFull as any)?.posted_to_tt_finance ? (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2.5 py-1 text-xs font-medium border border-emerald-200">Posted</span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 px-2.5 py-1 text-xs font-medium border border-slate-200">Belum Posted</span>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-4">
+                <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 space-y-4">
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-slate-600">Checklist Finalisasi</div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between rounded-lg bg-white border px-3 py-2">
+                        <span className="text-slate-600">Total Item</span>
+                        <span className="font-semibold text-slate-900">{items.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg bg-white border px-3 py-2">
+                        <span className="text-slate-600">Pending</span>
+                        <span className="font-semibold text-blue-700">{items.filter((i) => i.audit_status === 'PENDING').length}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg bg-white border px-3 py-2">
+                        <span className="text-slate-600">Approved</span>
+                        <span className="font-semibold text-emerald-700">{items.filter((i) => i.audit_status === 'APPROVED').length}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-lg bg-white border px-3 py-2">
+                        <span className="text-slate-600">Nilai Approved</span>
+                        <span className="font-semibold text-slate-900">
+                          Rp {Number(activeSummary?.total_approved || 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    className="w-full h-11 bg-gradient-to-r from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800"
+                    disabled={!selectedTripId || !isAudit || finalizeAuditMut.isPending}
+                    onClick={() => finalizeAuditMut.mutate()}
+                  >
+                    {finalizeAuditMut.isPending ? 'Memfinalisasi Audit...' : 'Finalize Audit (SELESAI)'}
+                  </Button>
+                </div>
+
+                <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-4 space-y-4">
+                  <div className="text-sm font-semibold text-slate-800">Posting ke tt_finance</div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label>Kategori</Label>
+                      <Select value={postingForm.kategori} onValueChange={(value) => setPostingForm({ ...postingForm, kategori: value })}>
+                        <SelectTrigger className="h-11 bg-white">
+                          <SelectValue placeholder="Pilih Kategori" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(kategoriQuery.data || []).map((k: any, idx: number) => (
+                            <SelectItem key={k._id || idx} value={k.kategori || k.nama || `kat-${idx}`}>
+                              {k.kategori || k.nama}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sub Kategori</Label>
+                      <Select value={postingForm.sub_kategori} onValueChange={(value) => setPostingForm({ ...postingForm, sub_kategori: value })}>
+                        <SelectTrigger className="h-11 bg-white">
+                          <SelectValue placeholder="Pilih Sub Kategori" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(subKategoriQuery.data || []).map((s: any, idx: number) => (
+                            <SelectItem key={s._id || idx} value={s.sub_kategori || s.nama || `sub-${idx}`}>
+                              {s.sub_kategori || s.nama}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Akun</Label>
+                      <Select value={postingForm.akun} onValueChange={(value) => setPostingForm({ ...postingForm, akun: value })}>
+                        <SelectTrigger className="h-11 bg-white">
+                          <SelectValue placeholder="Pilih Akun" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(akunQuery.data || []).map((a: any, idx: number) => (
+                            <SelectItem key={a._id || idx} value={a.akun || a.nama || `akun-${idx}`}>
+                              {a.akun || a.nama}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tanggal Posting</Label>
+                      <Input className="h-11 bg-white" type="date" value={postingForm.tanggal_posting} onChange={(e) => setPostingForm({ ...postingForm, tanggal_posting: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Bulan Fiskal</Label>
+                      <Input className="h-11 bg-white" placeholder="Contoh: JAN-26" value={postingForm.bulan} onChange={(e) => setPostingForm({ ...postingForm, bulan: e.target.value.toUpperCase() })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tahun Fiskal (Opsional)</Label>
+                      <Input className="h-11 bg-white" placeholder="Contoh: 2026" value={postingForm.tahun_fiskal} onChange={(e) => setPostingForm({ ...postingForm, tahun_fiskal: e.target.value })} />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-blue-100 bg-white p-3">
+                    <div>
+                      <div className="text-xs text-slate-500">Nilai yang akan diposting</div>
+                      <div className="text-lg font-bold text-blue-900">
+                        Rp {Number(activeSummary?.total_approved || 0).toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                    <Button
+                      className="h-11 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800"
+                      disabled={!selectedTripId || !canPost || postingMut.isPending || !!(selectedHeaderFull as any)?.posted_to_tt_finance}
+                      onClick={() => postingMut.mutate()}
+                    >
+                      {postingMut.isPending ? 'Posting...' : 'Posting ke tt_finance'}
+                    </Button>
+                  </div>
+
+                  {(selectedHeaderFull as any)?.posting_meta && (
+                    <div className="text-sm text-gray-600 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+                      Sudah diposting oleh {(selectedHeaderFull as any).posting_meta?.posted_by} pada{' '}
+                      {new Date((selectedHeaderFull as any).posting_meta?.posted_at).toLocaleString('id-ID')}
+                    </div>
+                  )}
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

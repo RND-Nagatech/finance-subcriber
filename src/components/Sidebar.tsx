@@ -361,25 +361,7 @@ export default function AppSidebar() {
                         </NavLink>
                       </SidebarMenuSubItem>
 
-                      <SidebarMenuSubItem>
-                        <NavLink to="/perjalanan-dinas/transaksi">
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={location.pathname === "/perjalanan-dinas/transaksi"}
-                            className={cn(
-                              "group relative rounded-lg px-3 py-2 text-slate-400 hover:text-white transition-all duration-300",
-                              "hover:bg-gradient-to-r hover:from-emerald-600/30 hover:to-teal-500/30 hover:translate-x-1",
-                              "data-[active=true]:bg-gradient-to-r data-[active=true]:from-emerald-600/30 data-[active=true]:to-teal-600/30",
-                              "data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-emerald-500/20"
-                            )}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full bg-current opacity-60 group-hover:opacity-100 transition-opacity" />
-                              <span className="font-medium text-sm">Transaksi Perjalanan</span>
-                            </div>
-                          </SidebarMenuSubButton>
-                        </NavLink>
-                      </SidebarMenuSubItem>
+                      {/* Transaksi Perjalanan disembunyikan dari menu web (sudah via aplikasi mobile) */}
 
                       {user && ['admin', 'finance', 'corsec', 'superuser'].includes(user.role) && (
                         <SidebarMenuSubItem>
