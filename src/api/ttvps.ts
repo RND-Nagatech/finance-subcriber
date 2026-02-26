@@ -34,8 +34,14 @@ export async function fetchDetailsByToko(toko: string): Promise<TTVpsDetailItemD
 
 export interface SubscriberDTO { _id: string; toko: string; program: string; daerah: string; biaya: number; }
 export async function fetchSubscribers(all = true): Promise<SubscriberDTO[]> {
-  const { data } = await axiosInstance.get('/subscriber', { params: all ? { all: 1 } : {} });
-  return Array.isArray(data) ? data : [];
+  const params = all ? { all: 1, limit: 10000 } : {};
+  const resp = await axiosInstance.get('/subscriber', { params });
+  const payload = resp?.data;
+  // Backend returns { data: [...], pagination: {...} }
+  if (payload && Array.isArray(payload.data)) return payload.data as SubscriberDTO[];
+  // Fallback: if API returned array directly
+  if (Array.isArray(payload)) return payload as SubscriberDTO[];
+  return [];
 }
 
 export async function fetchAggregatesByPeriode(periode: string) {
