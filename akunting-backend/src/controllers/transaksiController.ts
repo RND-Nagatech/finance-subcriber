@@ -397,7 +397,7 @@ export const createTransaksi = async (req: Request, res: Response, next: NextFun
 
 export const listTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { tahun, bulan, kategori, sub_kategori, akun, page = '1', limit = '10', flatten = '0', sortKategori, q } = req.query as any;
+    const { tahun, bulan, kategori, sub_kategori, akun, input_by, page = '1', limit = '10', flatten = '0', sortKategori, q } = req.query as any;
     const pageNum = parseInt(page as string, 10) || 1;
     const limitNum = parseInt(limit as string, 10) || 10;
     const doFlatten = String(flatten) === '1' || String(flatten).toLowerCase() === 'true';
@@ -406,6 +406,7 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
     if (kategori && kategori !== 'ALL') filter.kategori = kategori;
     if (sub_kategori && sub_kategori !== 'ALL') filter.sub_kategori = sub_kategori;
     if (akun && akun !== 'ALL') filter.akun = akun;
+    if (input_by && input_by !== 'ALL') filter.input_by = input_by;
 
     // Determine which collection to use (Transaksi or ThFinance)
     let Model: any = Transaksi;

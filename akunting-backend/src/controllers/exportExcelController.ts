@@ -17,7 +17,7 @@ function columnLetter(n: number): string {
 
 export const exportTransaksiExcel = async (req: Request, res: Response) => {
   try {
-    const { from, to, nama_perusahaan, kategori, sub_kategori, akun, sortKategori, flatten, tahun, bulan } = req.query as any;
+    const { from, to, nama_perusahaan, kategori, sub_kategori, akun, input_by, sortKategori, flatten, tahun, bulan } = req.query as any;
 
     const limit = Number(req.query.limit) || 10000;
     const doFlatten = String(flatten) === '1' || String(flatten).toLowerCase() === 'true';
@@ -31,6 +31,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       if (kategori) filterAgg.kategori = kategori;
       if (sub_kategori) filterAgg.sub_kategori = sub_kategori;
       if (akun) filterAgg.akun = akun;
+      if (input_by) filterAgg.input_by = input_by;
 
       let Model: any = Transaksi;
       if (tahun) {
@@ -86,6 +87,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       if (kategori) filter.kategori = kategori;
       if (sub_kategori) filter.sub_kategori = sub_kategori;
       if (akun) filter.akun = akun;
+      if (input_by) filter.created_by = input_by;
       let sort: any = {};
       if (sortKategori === 'asc') sort.kategori = 1;
       if (sortKategori === 'desc') sort.kategori = -1;

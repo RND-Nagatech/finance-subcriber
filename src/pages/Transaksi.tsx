@@ -12,6 +12,7 @@ function getFiscalMonthYear(bulanFiskal: string): number | null {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
+import { fetchUsers } from '@/api/users';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import {
@@ -387,6 +388,7 @@ export default function Transaksi() {
   const [filterKategori, setFilterKategori] = useState('');
   const [filterSubKategori, setFilterSubKategori] = useState('');
   const [filterAkun, setFilterAkun] = useState('');
+  const [filterInputBy, setFilterInputBy] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
     // Helper untuk menentukan bulan fiskal dari tanggal (calendar month)
     function getFiscalMonthFromDate(dateStr: string): string {
@@ -437,6 +439,10 @@ export default function Transaksi() {
   useEffect(() => {
     setPage(1);
   }, [filterAkun]);
+  // Reset halaman saat filter input by berubah
+  useEffect(() => {
+    setPage(1);
+  }, [filterInputBy]);
       const [editModalOpen, setEditModalOpen] = useState(false);
       const [editData, setEditData] = useState<any>(null);
       const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -604,6 +610,11 @@ export default function Transaksi() {
         throw error;
       }
     },
+  });
+
+  const { data: usersList = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: fetchUsers,
   });
 
   const [formData, setFormData] = useState({
@@ -815,6 +826,7 @@ export default function Transaksi() {
       filterKategori,
       filterSubKategori,
       filterAkun,
+      filterInputBy,
       searchQuery,
       fiscalYear,
       kategoriSort,
@@ -832,6 +844,7 @@ export default function Transaksi() {
           if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
           if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
           if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
+          if (filterInputBy && filterInputBy !== 'ALL') params.append('input_by', filterInputBy);
           // When searching, fetch a large page to include all matches
           if (searching) {
             params.append('page', '1');
@@ -857,6 +870,7 @@ export default function Transaksi() {
           if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
           if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
           if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
+          if (filterInputBy && filterInputBy !== 'ALL') params.append('input_by', filterInputBy);
           params.append('flatten', '1');
           if (searching) {
             params.append('page', '1');
@@ -920,6 +934,7 @@ export default function Transaksi() {
       filterKategori,
       filterSubKategori,
       filterAkun,
+      filterInputBy,
       searchQuery,
       fiscalYear,
     ],
@@ -935,6 +950,7 @@ export default function Transaksi() {
           if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
           if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
           if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
+          if (filterInputBy && filterInputBy !== 'ALL') params.append('input_by', filterInputBy);
           params.append('aggregate', '1');
           const response = await axiosInstance.get(`/transaksi/tt-finance-detail?${params.toString()}`);
           return response.data || { totalNilai: 0, totalCount: 0 };
@@ -1070,6 +1086,7 @@ export default function Transaksi() {
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
         if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
+        if (filterInputBy && filterInputBy !== 'ALL') params.append('input_by', filterInputBy);
       } else {
         if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
           const tahun2Digit = String(filterTahun).slice(-2);
@@ -1080,6 +1097,7 @@ export default function Transaksi() {
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
         if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
+        if (filterInputBy && filterInputBy !== 'ALL') params.append('input_by', filterInputBy);
         params.append('flatten', '1');
       }
       // Hilangkan trailing slash jika ada di VITE_API_BASE_URL
@@ -1252,6 +1270,21 @@ export default function Transaksi() {
                   .map((acc) => (
                     <SelectItem key={acc._id} value={acc.akun}>{acc.akun}</SelectItem>
                   ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* Filter Input By */}
+          <div className="flex flex-col">
+            <Label htmlFor="filterInputBy" className="text-sm font-semibold text-gray-700 mb-1">Input By</Label>
+            <Select value={filterInputBy || 'ALL'} onValueChange={v => setFilterInputBy(v === 'ALL' ? '' : v)}>
+              <SelectTrigger className="w-44 border-2 border-gray-200">
+                <SelectValue placeholder="Semua" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Semua</SelectItem>
+                {Array.from(new Set((usersList || []).map((u: any) => (u?.name || u?.username || '').trim()).filter(Boolean))).map((userName) => (
+                  <SelectItem key={userName} value={userName}>{userName}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
