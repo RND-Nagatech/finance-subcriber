@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Delete attachment support
   - Attachment preview in audit table via in-page dialog (image/PDF)
   - Multi-attachment preview switching inside dialog
+  - Dana ledger (`INJECT` / `RETURN`) attachment upload/delete support
+  - Inject dana attachments auto-synced to linked transaksi draft (`tt_finance_detail`)
 
 - **Perjalanan Dinas UI/UX Enhancements**
   - Dialog-based `Buat Header Perjalanan` form
@@ -47,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Currency formatting for nominal inputs (transaksi/inject/return)
   - Modernized `Inject Dana` and `Return Sisa Dana (Final)` cards
   - shadcn `Select` for rekening picker (replacing native browser dropdown)
+  - Added `Tanggal Inject` and `Tanggal Return` inputs in Dana Perjalanan
+  - Added `Master Perusahaan` selector in Inject Dana form
 
 - **Riwayat Saldo Rekening Compatibility Enhancement**
   - Extended `RiwayatSaldoRekening` schema with `ref_type` and `ref_id`
@@ -56,6 +60,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `history` field to `tt_finance` aggregate model (`Transaksi`)
   - Added `history` field to `tt_finance_daily` for increment/decrement trace
   - Added `validator_notes_by` and `validator_notes_at` fields to `tt_finance_detail`
+  - Added `perjalanan_dinas_id` reference field on `tt_finance_detail` for trip-origin traceability
+
+- **Transaksi Validation Cross-check Tools (Existing Module)**
+  - New action menu item `Cek Perjalanan Dinas` for transaksi rows linked to Perjalanan Dinas
+  - New validator dialog to review trip header, summary, item details, and dana ledger before validation
+  - In-dialog preview for Perjalanan Dinas item attachments (image/PDF) without opening new tab
 
 ### Changed
 - **Audit Business Process (Perjalanan Dinas)**
@@ -66,6 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Trip Fund Summary Calculation**
   - `sisa_dana` now decreases immediately when trip transactions are created (based on total active trip transactions), not only after approval
   - Added `total_transaksi` display in summary cards for clarity
+
+- **Inject / Return Dana Integration with Existing Transaksi Flow**
+  - Inject Dana now creates draft transaksi (`tt_finance_detail`, unvalidated) and stores linked transaksi ID in dana ledger
+  - Inject Dana now requires transaksi classification (`kategori`, `sub_kategori`, `akun`) plus company selection (`master perusahaan`)
+  - Draft transaksi from inject now uses inject form `keterangan`, inject date, selected company, and source rekening (`kode_bank` / `no_rekening`)
+  - Return Sisa Dana now supports custom date and can be executed during `SEDANG_DIAUDIT` or `SELESAI`
+
+- **Perjalanan Dinas Final Posting Behavior**
+  - Final posting now updates existing linked transaksi draft from the latest inject (no new transaksi created)
+  - Final posting merges attachments from item perjalanan + inject + return into transaksi attachments (`tt_finance_detail`)
+  - `Nilai yang akan diposting` formula changed to `Inject terakhir - Total Return`
+  - Posting panel in Audit Perjalanan changed to read-only target inject summary + attachment merge preview
 
 - **Sidebar Navigation Layout**
   - Sidebar footer changed from absolute positioning to normal flow (`mt-auto`) to avoid overlap with long menus
@@ -96,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Transaksi UI Action Rules (Existing Module)**
   - `Edit`, `Hapus`, `Upload`, and `Validasi` actions in transaction detail dropdown are hidden once item is validated
   - Validated rows now have stronger green hover/highlight styling for clearer visual distinction
+  - Added contextual review action for Perjalanan Dinas-linked transactions to support validator re-check workflow
 
 ### Fixed
 - **Sidebar Menu Overlap**
@@ -104,10 +127,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Attachment Preview UX in Audit**
   - Replaced new-tab proof preview with in-page dialog preview to avoid back-and-forth navigation
 
+- **Role-based Login Feedback**
+  - Changed website login rejection for role `user` from toast notification to dialog for clearer messaging
+
 ### Security
 - **Role-based Access Enforcement for Perjalanan Dinas**
   - Backend role restrictions applied for create/inject/return/audit/finalize/posting actions
   - User scope restricted to assigned trips and edit access restricted after submit-to-audit
+
+- **Website Access Restriction**
+  - Role `user` is blocked from website login and directed to mobile app only
 
 ## [1.4.0] - 2026-02-16
 

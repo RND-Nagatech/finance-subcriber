@@ -6,6 +6,7 @@ import { authenticate } from '../middleware/authMiddleware';
 import {
   createPerjalananDinas,
   createPerjalananItem,
+  deletePerjalananDanaAttachment,
   deletePerjalananItem,
   deletePerjalananItemAttachment,
   finalizePerjalananAudit,
@@ -21,6 +22,7 @@ import {
   updatePerjalananDinas,
   updatePerjalananItem,
   updatePerjalananItemAuditStatus,
+  uploadPerjalananDanaAttachments,
   uploadPerjalananItemAttachments,
 } from '../controllers/perjalananDinasController';
 
@@ -70,5 +72,7 @@ router.post('/:id/items/:itemId/audit-status', updatePerjalananItemAuditStatus);
 router.get('/:id/dana', listPerjalananDana);
 router.post('/:id/dana/inject', injectPerjalananDana);
 router.post('/:id/dana/return', returnPerjalananDana);
+router.post('/:id/dana/:ledgerId/attachments', upload.array('attachments'), uploadPerjalananDanaAttachments);
+router.delete('/:id/dana/:ledgerId/attachments/:filename', deletePerjalananDanaAttachment);
 
 export default router;

@@ -11,6 +11,21 @@ export interface IPerjalananDinasDana extends Document {
   no_rekening: string;
   nama_rekening_snapshot: string;
   keterangan?: string;
+  attachments?: Array<{
+    path: string;
+    original_name?: string;
+    mime_type?: string;
+    size?: number;
+  }>;
+  tt_finance_detail_id?: mongoose.Types.ObjectId;
+  transaksi_snapshot?: {
+    kategori?: string;
+    sub_kategori?: string;
+    akun?: string;
+    tanggal?: string;
+    bulan?: string;
+    tahun_fiskal?: string;
+  };
   created_by: string;
   created_at: Date;
   voided: boolean;
@@ -28,6 +43,24 @@ const PerjalananDinasDanaSchema = new Schema<IPerjalananDinasDana>(
     no_rekening: { type: String, required: true },
     nama_rekening_snapshot: { type: String, required: true },
     keterangan: { type: String, default: '' },
+    attachments: {
+      type: [{
+        path: { type: String, required: true },
+        original_name: { type: String },
+        mime_type: { type: String },
+        size: { type: Number },
+      }],
+      default: [],
+    },
+    tt_finance_detail_id: { type: Schema.Types.ObjectId, ref: 'tt_finance_detail' },
+    transaksi_snapshot: {
+      kategori: { type: String },
+      sub_kategori: { type: String },
+      akun: { type: String },
+      tanggal: { type: String },
+      bulan: { type: String },
+      tahun_fiskal: { type: String },
+    },
     created_by: { type: String, required: true },
     created_at: { type: Date, default: Date.now },
     voided: { type: Boolean, default: false },

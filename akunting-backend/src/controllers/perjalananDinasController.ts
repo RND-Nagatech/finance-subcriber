@@ -5,9 +5,11 @@ import mongoose from 'mongoose';
 import PerjalananDinas from '../models/PerjalananDinas';
 import PerjalananDinasDetail from '../models/PerjalananDinasDetail';
 import PerjalananDinasDana from '../models/PerjalananDinasDana';
+import Perusahaan from '../models/Perusahaan';
 import Rekening from '../models/Rekening';
+import TtFinanceDetail from '../models/TtFinanceDetail';
 import { mutateRekeningForPerjalananLedger } from '../services/rekeningMutationService';
-import { postPerjalananSummaryToTtFinance } from '../services/financeAggregationService';
+import { deriveTahunFiskalFromBulan } from '../services/financeAggregationService';
 
 type ReqUser = {
   id?: string;
@@ -92,6 +94,128 @@ function generateKodePerjalanan() {
   const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   const rand = Math.floor(Math.random() * 9000) + 1000;
   return `PD-${stamp}-${rand}`;
+}
+
+function toYmd(date: Date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function deriveBulanLabelFromDate(dateInput: Date | string) {
+  const d = typeof dateInput === 'string' ? new Date(`${dateInput}T00:00:00`) : dateInput;
+  if (Number.isNaN(d.getTime())) throw httpError('Tanggal tidak valid', 400);
+  const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  return `${monthNames[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
+}
+
+async function createInjectFinanceDetailDraft(params: {
+  header: any;
+  nominal: number;
+  kategori: string;
+  sub_kategori: string;
+  akun: string;
+  tanggal?: string;
+  keterangan?: string;
+  kode_perusahaan?: string;
+  nama_perusahaan?: string;
+  kode_bank?: string;
+  no_rekening?: string;
+  actor: string;
+  now?: Date;
+}) {
+  const now = params.now || new Date();
+  const tanggal = params.tanggal ? String(params.tanggal) : toYmd(now);
+  const bulan = deriveBulanLabelFromDate(tanggal);
+  const tahun_fiskal = deriveTahunFiskalFromBulan(bulan);
+  if (!tahun_fiskal) throw httpError('Gagal menentukan tahun fiskal inject', 400);
+
+  const detail = await TtFinanceDetail.create({
+    tanggal,
+    bulan,
+    tahun_fiskal,
+    kategori: params.kategori,
+    sub_kategori: params.sub_kategori,
+    akun: params.akun,
+    nilai: Number(params.nominal),
+    keterangan: (params.keterangan && String(params.keterangan).trim() !== ''
+      ? String(params.keterangan)
+      : `INJECT DANA PERJALANAN ${params.header.kode_perjalanan} - ${params.header.tujuan} - ${params.header.user_name}`
+    ).toUpperCase(),
+    created_by: params.actor,
+    created_at: now,
+    is_validated: false,
+    kode_perusahaan: params.kode_perusahaan || '',
+    nama_perusahaan: params.nama_perusahaan || '',
+    kode_bank: params.kode_bank || '-',
+    no_rekening: params.no_rekening || '-',
+    perjalanan_dinas_id: params.header?._id,
+    attachments: [],
+  } as any);
+
+  return { detail, tanggal, bulan, tahun_fiskal };
+}
+
+function ensureTransaksiUploadDir() {
+  const dir = path.join(process.cwd(), 'uploads', 'transaksi');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function resolveUploadPathToDisk(uploadPath: string) {
+  const normalized = String(uploadPath || '').replace(/\\/g, '/');
+  if (!normalized.startsWith('/uploads/')) return null;
+  const rel = normalized.replace(/^\/+/, '');
+  return path.join(process.cwd(), rel);
+}
+
+function uniqueTransaksiAttachmentFilename(sourcePath: string) {
+  const ext = path.extname(sourcePath) || '.bin';
+  const base = path.basename(sourcePath, ext).replace(/[^a-zA-Z0-9-_]/g, '').slice(0, 30) || 'lampiran';
+  return `${base}-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+}
+
+async function mergePerjalananAttachmentsIntoTransaksi(perjalananId: string) {
+  const [items, danaRows] = await Promise.all([
+    PerjalananDinasDetail.find({ perjalanan_id: perjalananId, status_deleted: { $ne: true } }).lean(),
+    PerjalananDinasDana.find({ perjalanan_id: perjalananId, voided: { $ne: true } }).lean(),
+  ]);
+
+  const itemAttachments = items.flatMap((it: any) => (it.attachments || []).map((a: any) => ({ ...a, source: 'item' as const })));
+  const danaAttachments = danaRows.flatMap((d: any) => (d.attachments || []).map((a: any) => ({ ...a, source: (d.jenis || 'DANA').toLowerCase() as any })));
+  const all = [...itemAttachments, ...danaAttachments];
+
+  const transaksiDir = ensureTransaksiUploadDir();
+  const seenSource = new Set<string>();
+  const attachmentsForTransaksi: Array<{ path: string }> = [];
+  let skippedMissing = 0;
+
+  for (const att of all) {
+    const srcPath = String(att?.path || '');
+    if (!srcPath || seenSource.has(srcPath)) continue;
+    seenSource.add(srcPath);
+    const diskSrc = resolveUploadPathToDisk(srcPath);
+    if (!diskSrc || !fs.existsSync(diskSrc)) {
+      skippedMissing += 1;
+      continue;
+    }
+    const destFilename = uniqueTransaksiAttachmentFilename(srcPath);
+    const diskDest = path.join(transaksiDir, destFilename);
+    fs.copyFileSync(diskSrc, diskDest);
+    attachmentsForTransaksi.push({ path: `/uploads/transaksi/${destFilename}` });
+  }
+
+  return {
+    attachments: attachmentsForTransaksi,
+    counts: {
+      item: itemAttachments.length,
+      inject: danaRows.filter((d: any) => d.jenis === 'INJECT').reduce((sum: number, d: any) => sum + ((d.attachments || []).length || 0), 0),
+      return: danaRows.filter((d: any) => d.jenis === 'RETURN').reduce((sum: number, d: any) => sum + ((d.attachments || []).length || 0), 0),
+      merged: attachmentsForTransaksi.length,
+      skipped_missing: skippedMissing,
+    },
+  };
 }
 
 async function computePerjalananSummary(perjalananId: string) {
@@ -561,17 +685,36 @@ async function createDanaLedger(req: Request, res: Response, jenis: 'INJECT' | '
   if (jenis === 'INJECT' && String(header.status) !== 'BERJALAN') {
     return res.status(400).json({ message: 'Inject hanya bisa saat status BERJALAN' });
   }
-  if (jenis === 'RETURN' && String(header.status) !== 'SELESAI') {
-    return res.status(400).json({ message: 'Return hanya bisa saat status SELESAI' });
+  if (jenis === 'RETURN' && !['SEDANG_DIAUDIT', 'SELESAI'].includes(String(header.status))) {
+    return res.status(400).json({ message: 'Return hanya bisa saat status SEDANG_DIAUDIT atau SELESAI' });
   }
 
-  const { nominal, rekening_id, keterangan } = req.body || {};
+  const { nominal, rekening_id, keterangan, kategori, sub_kategori, akun, tanggal, perusahaan_id } = req.body || {};
   if (!nominal || !rekening_id) {
     return res.status(400).json({ message: 'nominal dan rekening_id wajib diisi' });
+  }
+  if (!tanggal) {
+    return res.status(400).json({ message: 'tanggal wajib diisi' });
+  }
+  if (jenis === 'INJECT' && (!kategori || !sub_kategori || !akun)) {
+    return res.status(400).json({ message: 'kategori, sub_kategori, akun wajib diisi untuk inject dana' });
+  }
+  if (jenis === 'INJECT' && !perusahaan_id) {
+    return res.status(400).json({ message: 'perusahaan wajib dipilih untuk inject dana' });
+  }
+  const actionDate = new Date(`${String(tanggal)}T00:00:00`);
+  if (Number.isNaN(actionDate.getTime())) {
+    return res.status(400).json({ message: 'tanggal tidak valid' });
   }
   ensureObjectId(String(rekening_id), 'rekening_id');
   const rekening = await Rekening.findById(rekening_id);
   if (!rekening) return res.status(404).json({ message: 'Rekening tidak ditemukan' });
+  let perusahaan: any = null;
+  if (jenis === 'INJECT') {
+    ensureObjectId(String(perusahaan_id), 'perusahaan_id');
+    perusahaan = await Perusahaan.findById(String(perusahaan_id));
+    if (!perusahaan) return res.status(404).json({ message: 'Perusahaan tidak ditemukan' });
+  }
 
   const summaryBefore = await syncHeaderSummary(String(header._id));
   if (jenis === 'RETURN') {
@@ -583,6 +726,7 @@ async function createDanaLedger(req: Request, res: Response, jenis: 'INJECT' | '
     }
   }
 
+  const now = actionDate;
   const ledger = await PerjalananDinasDana.create({
     perjalanan_id: header._id,
     jenis,
@@ -592,21 +736,58 @@ async function createDanaLedger(req: Request, res: Response, jenis: 'INJECT' | '
     no_rekening: rekening.no_rekening,
     nama_rekening_snapshot: rekening.nama_rekening,
     keterangan: keterangan ? String(keterangan) : '',
+    attachments: [],
     created_by: getActorName(req),
-    created_at: new Date(),
+    created_at: now,
     voided: false,
   });
+
+  let injectDetail: any = null;
+  if (jenis === 'INJECT') {
+    try {
+      const created = await createInjectFinanceDetailDraft({
+        header,
+        nominal: Number(nominal),
+        kategori: String(kategori),
+        sub_kategori: String(sub_kategori),
+        akun: String(akun),
+        tanggal: String(tanggal),
+        keterangan: keterangan ? String(keterangan) : '',
+        kode_perusahaan: perusahaan?.kode_perusahaan || '',
+        nama_perusahaan: perusahaan?.nama_perusahaan || '',
+        kode_bank: rekening.kode_bank || '-',
+        no_rekening: rekening.no_rekening || '-',
+        actor: getActorName(req),
+        now,
+      });
+      injectDetail = created.detail;
+      (ledger as any).tt_finance_detail_id = injectDetail._id;
+      (ledger as any).transaksi_snapshot = {
+        kategori: String(kategori),
+        sub_kategori: String(sub_kategori),
+        akun: String(akun),
+        tanggal: created.tanggal,
+        bulan: created.bulan,
+        tahun_fiskal: created.tahun_fiskal,
+      };
+      await ledger.save();
+    } catch (err) {
+      await PerjalananDinasDana.findByIdAndDelete(ledger._id);
+      throw err;
+    }
+  }
 
   try {
     await mutateRekeningForPerjalananLedger({
       rekening_id: String(rekening._id),
       nominal: Number(nominal),
       jenis,
-      tanggal: new Date(),
+      tanggal: actionDate,
       keterangan: `[PERJALANAN ${jenis}] ${header.kode_perjalanan} - ${header.tujuan} - ${header.user_name}`,
       refId: ledger._id as mongoose.Types.ObjectId,
     });
   } catch (err) {
+    if (injectDetail?._id) await TtFinanceDetail.findByIdAndDelete(injectDetail._id);
     await PerjalananDinasDana.findByIdAndDelete(ledger._id);
     throw err;
   }
@@ -616,7 +797,7 @@ async function createDanaLedger(req: Request, res: Response, jenis: 'INJECT' | '
     header.return_meta = {
       ledger_dana_id: ledger._id as mongoose.Types.ObjectId,
       return_amount: Number(nominal),
-      return_at: new Date(),
+      return_at: actionDate,
       return_by: getActorName(req),
     };
     header.updated_by = getActorName(req);
@@ -625,7 +806,7 @@ async function createDanaLedger(req: Request, res: Response, jenis: 'INJECT' | '
   }
 
   const summary = await syncHeaderSummary(String(header._id));
-  res.status(201).json({ ledger, summary });
+  res.status(201).json({ ledger: await PerjalananDinasDana.findById(ledger._id), summary, tt_finance_detail_id: injectDetail?._id });
 }
 
 export const injectPerjalananDana = async (req: Request, res: Response, next: NextFunction) => {
@@ -644,6 +825,79 @@ export const returnPerjalananDana = async (req: Request, res: Response, next: Ne
   }
 };
 
+export const uploadPerjalananDanaAttachments = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!isOfficeRole(req)) return res.status(403).json({ message: 'Unauthorized' });
+    ensureObjectId(req.params.ledgerId, 'ledgerId');
+    const header = await getHeaderOrThrow(req.params.id);
+    const ledger = await PerjalananDinasDana.findOne({ _id: req.params.ledgerId, perjalanan_id: header._id, voided: { $ne: true } });
+    if (!ledger) return res.status(404).json({ message: 'Ledger dana tidak ditemukan' });
+
+    if (ledger.jenis === 'INJECT' && String(header.status) !== 'BERJALAN') {
+      return res.status(400).json({ message: 'Attachment inject hanya dapat diupload saat status BERJALAN' });
+    }
+    if (ledger.jenis === 'RETURN' && !['SEDANG_DIAUDIT', 'SELESAI'].includes(String(header.status))) {
+      return res.status(400).json({ message: 'Attachment return hanya dapat diupload saat status SEDANG_DIAUDIT atau SELESAI' });
+    }
+
+    const files = (req.files || []) as Express.Multer.File[];
+    if (!files.length) return res.status(400).json({ message: 'No files uploaded' });
+
+    const attachments = files.map((file) => ({
+      path: `/uploads/perjalanan-dinas/${file.filename}`,
+      original_name: file.originalname,
+      mime_type: file.mimetype,
+      size: file.size,
+    }));
+    (ledger as any).attachments = [...((ledger as any).attachments || []), ...attachments];
+    await ledger.save();
+
+    // Sinkronkan attachment inject langsung ke transaksi draft yang dibuat saat inject.
+    if (String(ledger.jenis) === 'INJECT' && (ledger as any).tt_finance_detail_id) {
+      const transaksi = await TtFinanceDetail.findById((ledger as any).tt_finance_detail_id);
+      if (transaksi) {
+        const transaksiDir = ensureTransaksiUploadDir();
+        const copiedAttachments: Array<{ path: string }> = [];
+        for (const att of attachments) {
+          const src = resolveUploadPathToDisk(att.path);
+          if (!src || !fs.existsSync(src)) continue;
+          const filename = uniqueTransaksiAttachmentFilename(att.path);
+          const dest = path.join(transaksiDir, filename);
+          fs.copyFileSync(src, dest);
+          copiedAttachments.push({ path: `/uploads/transaksi/${filename}` });
+        }
+        transaksi.attachments = [...(transaksi.attachments || []), ...copiedAttachments];
+        transaksi.updated_by = getActorName(req);
+        transaksi.updated_at = new Date();
+        await transaksi.save();
+      }
+    }
+
+    res.json({ success: true, attachments: (ledger as any).attachments, ledger });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deletePerjalananDanaAttachment = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!isOfficeRole(req)) return res.status(403).json({ message: 'Unauthorized' });
+    ensureObjectId(req.params.ledgerId, 'ledgerId');
+    const { filename } = req.params;
+    const header = await getHeaderOrThrow(req.params.id);
+    const ledger = await PerjalananDinasDana.findOne({ _id: req.params.ledgerId, perjalanan_id: header._id, voided: { $ne: true } });
+    if (!ledger) return res.status(404).json({ message: 'Ledger dana tidak ditemukan' });
+    (ledger as any).attachments = ((ledger as any).attachments || []).filter((att: any) => !String(att.path || '').includes(filename));
+    await ledger.save();
+
+    const diskPath = path.join(process.cwd(), 'uploads', 'perjalanan-dinas', filename);
+    if (fs.existsSync(diskPath)) fs.unlinkSync(diskPath);
+    res.json({ success: true, attachments: (ledger as any).attachments, ledger });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const postPerjalananToTtFinance = async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!isPostingRole(req)) return res.status(403).json({ message: 'Unauthorized' });
@@ -654,47 +908,78 @@ export const postPerjalananToTtFinance = async (req: Request, res: Response, nex
     if (header.posted_to_tt_finance) {
       return res.status(400).json({ message: 'Perjalanan sudah diposting ke tt_finance' });
     }
-    const { kategori, sub_kategori, akun, tanggal_posting, bulan, tahun_fiskal } = req.body || {};
-    if (!kategori || !sub_kategori || !akun || !tanggal_posting || !bulan) {
-      return res.status(400).json({ message: 'kategori, sub_kategori, akun, tanggal_posting, bulan wajib diisi' });
-    }
 
     const summary = await syncHeaderSummary(String(header._id));
-    if (summary.total_approved <= 0) {
-      return res.status(400).json({ message: 'Tidak ada nilai APPROVED untuk diposting' });
+    const latestInject = await PerjalananDinasDana.findOne({
+      perjalanan_id: header._id,
+      jenis: 'INJECT',
+      voided: { $ne: true },
+    }).sort({ created_at: -1, _id: -1 });
+    if (!latestInject) {
+      return res.status(400).json({ message: 'Tidak ada inject dana untuk dijadikan target posting transaksi' });
+    }
+    const nilaiPosting = Number(latestInject.nominal || 0) - Number(summary.total_return || 0);
+    if (nilaiPosting <= 0) {
+      return res.status(400).json({ message: 'Nilai posting hasil (inject terakhir - total return) harus lebih dari 0' });
     }
 
-    const keterangan = `PERJALANAN DINAS ${header.kode_perjalanan} - ${header.tujuan} - ${header.user_name}`.toUpperCase();
-    const detail = await postPerjalananSummaryToTtFinance({
-      tanggal: String(tanggal_posting),
-      bulan: String(bulan),
-      tahun_fiskal: tahun_fiskal ? String(tahun_fiskal) : undefined,
-      kategori: String(kategori),
-      sub_kategori: String(sub_kategori),
-      akun: String(akun),
-      nilai: summary.total_approved,
-      created_by: getActorName(req),
-      keterangan,
-    });
+    let detail: any = null;
+    if ((latestInject as any).tt_finance_detail_id) {
+      detail = await TtFinanceDetail.findById((latestInject as any).tt_finance_detail_id);
+    }
+
+    // Compatibility untuk data lama sebelum inject membuat transaksi detail.
+    if (!detail) {
+      const snap = (latestInject as any).transaksi_snapshot || {};
+      if (!snap.kategori || !snap.sub_kategori || !snap.akun) {
+        return res.status(400).json({ message: 'Inject terakhir belum punya transaksi terkait dan snapshot kategori tidak tersedia' });
+      }
+      const created = await createInjectFinanceDetailDraft({
+        header,
+        nominal: Number(latestInject.nominal || 0),
+        kategori: String(snap.kategori),
+        sub_kategori: String(snap.sub_kategori),
+        akun: String(snap.akun),
+        actor: getActorName(req),
+      });
+      detail = created.detail;
+      (latestInject as any).tt_finance_detail_id = detail._id;
+      (latestInject as any).transaksi_snapshot = {
+        ...snap,
+        tanggal: snap.tanggal || created.tanggal,
+        bulan: snap.bulan || created.bulan,
+        tahun_fiskal: snap.tahun_fiskal || created.tahun_fiskal,
+      };
+      await latestInject.save();
+    }
+
+    const merged = await mergePerjalananAttachmentsIntoTransaksi(String(header._id));
+    detail.nilai = nilaiPosting;
+    detail.attachments = merged.attachments;
+    detail.updated_by = getActorName(req);
+    detail.updated_at = new Date();
+    await detail.save();
 
     header.posted_to_tt_finance = true;
     header.posting_meta = {
       posted_at: new Date(),
       posted_by: getActorName(req),
       tt_finance_detail_id: detail._id as mongoose.Types.ObjectId,
-      kategori: String(kategori),
-      sub_kategori: String(sub_kategori),
-      akun: String(akun),
-      bulan: String(bulan),
-      tanggal_posting: String(tanggal_posting),
-      tahun_fiskal: tahun_fiskal ? String(tahun_fiskal) : (detail as any).tahun_fiskal,
-      nilai_posting: summary.total_approved,
+      kategori: (detail as any).kategori,
+      sub_kategori: (detail as any).sub_kategori,
+      akun: (detail as any).akun,
+      bulan: (detail as any).bulan,
+      tanggal_posting: (detail as any).tanggal,
+      tahun_fiskal: (detail as any).tahun_fiskal,
+      nilai_posting: nilaiPosting,
+      attachment_merge_count: merged.counts.merged,
+      attachment_sources: merged.counts,
     };
     header.updated_by = getActorName(req);
     header.updated_at = new Date();
     await header.save();
 
-    res.json({ success: true, header, tt_finance_detail: detail });
+    res.json({ success: true, header, tt_finance_detail: detail, attachment_merge: merged.counts, nilai_posting: nilaiPosting });
   } catch (error) {
     next(error);
   }

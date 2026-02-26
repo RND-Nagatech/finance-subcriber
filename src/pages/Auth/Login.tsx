@@ -14,6 +14,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { LogIn } from "lucide-react";
 import { base64URLToBuffer, bufferToBase64URL } from "@/utils/webauthn";
 import { useAppStore } from "@/store/useAppStore";
@@ -22,9 +30,22 @@ import { secureStorage } from "@/utils/secureStorage";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [roleBlockedDialogOpen, setRoleBlockedDialogOpen] = useState(false);
   const navigate = useNavigate();
   const [yubiLoading, setYubiLoading] = useState(false);
   const setUser = useAppStore((s) => s.setUser);
+
+  const handleWebsiteRoleRestriction = (role?: string) => {
+    if (role !== "user") return false;
+
+    // Role "user" khusus aplikasi mobile, blokir akses ke web sejak proses login.
+    secureStorage.removeItem("auth_token");
+    secureStorage.removeItem("user_name");
+    secureStorage.removeItem("user_role");
+    setUser(null);
+    setRoleBlockedDialogOpen(true);
+    return true;
+  };
 
   // -------------------------
   // Normal Login (password)
@@ -36,6 +57,7 @@ export default function Login() {
     },
     onSuccess: (data) => {
       const { token, user } = data;
+      if (handleWebsiteRoleRestriction(user?.role)) return;
       // Simpan token & user
       secureStorage.setItem("auth_token", token);
       secureStorage.setItem("user_name", user.name);
@@ -117,9 +139,10 @@ export default function Login() {
 
       if (verifyRes.data.success) {
         // Simpan token & user (gunakan nama dari backend jika ada)
-        secureStorage.setItem("auth_token", "webauthn_dummy_token");
         const userName = verifyRes.data.user?.name || email;
         const userRole = verifyRes.data.user?.role || 'user';
+        if (handleWebsiteRoleRestriction(userRole)) return;
+        secureStorage.setItem("auth_token", "webauthn_dummy_token");
         secureStorage.setItem("user_name", userName);
         secureStorage.setItem("user_role", userRole);
         setUser({ name: userName, email, role: userRole });
@@ -137,6 +160,22 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-100 p-4 relative overflow-hidden">
+      <Dialog open={roleBlockedDialogOpen} onOpenChange={setRoleBlockedDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Akses Web Tidak Diizinkan</DialogTitle>
+            <DialogDescription>
+              Akun dengan role <span className="font-semibold">user</span> hanya dapat login melalui aplikasi mobile.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setRoleBlockedDialogOpen(false)} className="w-full sm:w-auto">
+              Mengerti
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Background decorative elements */}
       <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
       <div className="absolute top-0 right-0 -z-10">

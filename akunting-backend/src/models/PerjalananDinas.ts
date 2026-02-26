@@ -13,6 +13,14 @@ export interface IPostingMeta {
   tanggal_posting?: string;
   tahun_fiskal?: string;
   nilai_posting?: number;
+  attachment_merge_count?: number;
+  attachment_sources?: {
+    item?: number;
+    inject?: number;
+    return?: number;
+    merged?: number;
+    skipped_missing?: number;
+  };
 }
 
 export interface IReturnMeta {
@@ -87,6 +95,14 @@ const PerjalananDinasSchema = new Schema<IPerjalananDinas>(
       tanggal_posting: { type: String },
       tahun_fiskal: { type: String },
       nilai_posting: { type: Number },
+      attachment_merge_count: { type: Number },
+      attachment_sources: {
+        item: { type: Number },
+        inject: { type: Number },
+        return: { type: Number },
+        merged: { type: Number },
+        skipped_missing: { type: Number },
+      },
     },
     return_done: { type: Boolean, default: false },
     return_meta: {

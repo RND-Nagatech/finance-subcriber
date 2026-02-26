@@ -154,32 +154,13 @@ export async function postPerjalananSummaryToTtFinance(params: {
     keterangan: params.keterangan,
     created_by: params.created_by,
     created_at: new Date(),
-    is_validated: true,
+    // Ikuti flow menu Transaksi: masuk ke tt_finance_detail dulu, agregasi dibuat saat validasi.
+    is_validated: false,
     kode_bank: '-',
     no_rekening: '-',
     attachments: [],
   } as any);
 
   await detail.save();
-  await updateTtFinanceDailyAggregation(
-    params.tanggal,
-    params.bulan,
-    params.kategori,
-    params.sub_kategori,
-    params.akun,
-    params.nilai,
-    'increment',
-    params.created_by,
-    new Date()
-  );
-  await recalculateTransaksiAggregation(
-    params.kategori,
-    params.sub_kategori,
-    params.akun,
-    params.bulan,
-    params.nilai,
-    params.created_by,
-    'increment'
-  );
   return detail;
 }

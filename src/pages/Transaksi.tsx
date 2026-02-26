@@ -75,6 +75,7 @@ interface Transaksi {
   attachments?: IAttachment[];
   is_validated?: boolean;
   validator_notes?: string;
+  perjalanan_dinas_id?: string;
 }
 
 
@@ -251,9 +252,35 @@ export default function Transaksi() {
       const [validatorNotesRow, setValidatorNotesRow] = useState<any>(null);
       const [validatorNotesInput, setValidatorNotesInput] = useState('');
       const [savingValidatorNotes, setSavingValidatorNotes] = useState(false);
+      const [perjalananAuditDialogOpen, setPerjalananAuditDialogOpen] = useState(false);
+      const [perjalananAuditRow, setPerjalananAuditRow] = useState<any>(null);
+      const [attachmentPreviewDialogOpen, setAttachmentPreviewDialogOpen] = useState(false);
+      const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState('');
+      const [attachmentPreviewName, setAttachmentPreviewName] = useState('');
 
   // Tahun fiskal global dari store
   const { fiscalYear, user } = useAppStore();
+
+  const { data: perjalananAuditData, isLoading: perjalananAuditLoading } = useQuery({
+    queryKey: ['transaksi-perjalanan-audit', perjalananAuditRow?.perjalanan_dinas_id],
+    queryFn: async () => {
+      const tripId = perjalananAuditRow?.perjalanan_dinas_id;
+      if (!tripId) return null;
+      const [detailRes, summaryRes, itemsRes, danaRes] = await Promise.all([
+        axiosInstance.get(`/perjalanan-dinas/${tripId}`),
+        axiosInstance.get(`/perjalanan-dinas/${tripId}/summary`),
+        axiosInstance.get(`/perjalanan-dinas/${tripId}/items`),
+        axiosInstance.get(`/perjalanan-dinas/${tripId}/dana`),
+      ]);
+      return {
+        detail: detailRes.data,
+        summary: summaryRes.data,
+        items: itemsRes.data || [],
+        dana: danaRes.data || [],
+      };
+    },
+    enabled: !!perjalananAuditDialogOpen && !!perjalananAuditRow?.perjalanan_dinas_id,
+  });
 
   // Fetch rekening for dropdown
   const { data: rekeningList = [] } = useQuery({
@@ -305,6 +332,20 @@ export default function Transaksi() {
       setValidatorNotesRow(row);
       setValidatorNotesInput(row.validator_notes || '');
       setValidatorNotesDialogOpen(true);
+    };
+
+    const handleOpenPerjalananAuditCheck = (row: any) => {
+      if (!row?.perjalanan_dinas_id) return;
+      setPerjalananAuditRow(row);
+      setPerjalananAuditDialogOpen(true);
+    };
+
+    const handleOpenAttachmentPreviewDialog = (path: string, fileName?: string) => {
+      if (!path) return;
+      const base = import.meta.env.VITE_API_BASE_URL_ATTACHMENT || 'http://localhost:5001';
+      setAttachmentPreviewUrl(`${base}${path}`);
+      setAttachmentPreviewName(fileName || path.split('/').pop() || 'Preview Attachment');
+      setAttachmentPreviewDialogOpen(true);
     };
 
     // Handler submit validasi
@@ -1713,6 +1754,17 @@ export default function Transaksi() {
                                 Validator Notes
                               </DropdownMenuItem>
                             )}
+                            {!!row.perjalanan_dinas_id && (user?.role === 'superuser' || user?.role === 'corsec') && (
+                              <DropdownMenuItem
+                                onClick={() => handleOpenPerjalananAuditCheck(row)}
+                                className="cursor-pointer text-amber-700 focus:text-amber-700"
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                                </svg>
+                                Cek Perjalanan Dinas
+                              </DropdownMenuItem>
+                            )}
                               {/* Badge status validasi */}
                               {row.is_validated && (
                                 <span className="inline-block ml-2 px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">Sudah divalidasi</span>
@@ -2341,6 +2393,184 @@ export default function Transaksi() {
             >
               {savingValidatorNotes ? 'Menyimpan...' : 'Simpan'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={perjalananAuditDialogOpen} onOpenChange={setPerjalananAuditDialogOpen}>
+        <DialogContent className="sm:max-w-[1000px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Cek Perjalanan Dinas (Validasi Ulang)</DialogTitle>
+            <DialogDescription>
+              Gunakan dialog ini untuk cross-check nominal dan attachment transaksi posting dari Perjalanan Dinas sebelum validasi.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!perjalananAuditRow?.perjalanan_dinas_id ? (
+            <div className="text-sm text-gray-500">Transaksi ini tidak memiliki referensi perjalanan dinas.</div>
+          ) : perjalananAuditLoading ? (
+            <div className="text-sm text-gray-500">Memuat data perjalanan dinas...</div>
+          ) : !perjalananAuditData ? (
+            <div className="text-sm text-red-500">Data perjalanan dinas tidak ditemukan.</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-lg border p-3 bg-slate-50">
+                  <div className="text-xs text-slate-500">Transaksi Saat Ini (tt_finance_detail)</div>
+                  <div className="mt-2 space-y-1 text-sm">
+                    <div><span className="text-slate-500">ID:</span> <span className="font-medium">{perjalananAuditRow._id}</span></div>
+                    <div><span className="text-slate-500">Perjalanan ID:</span> <span className="font-medium">{perjalananAuditRow.perjalanan_dinas_id}</span></div>
+                    <div><span className="text-slate-500">Nilai transaksi:</span> <span className="font-semibold">Rp {Number(perjalananAuditRow.nilai || 0).toLocaleString('id-ID')}</span></div>
+                    <div><span className="text-slate-500">Attachment transaksi:</span> <span className="font-medium">{(perjalananAuditRow.attachments || []).length} file</span></div>
+                  </div>
+                </div>
+                <div className="rounded-lg border p-3 bg-blue-50/50">
+                  <div className="text-xs text-slate-500">Ringkasan Perjalanan Dinas</div>
+                  <div className="mt-2 space-y-1 text-sm">
+                    <div><span className="text-slate-500">Kode:</span> <span className="font-medium">{perjalananAuditData.detail?.header?.kode_perjalanan || '-'}</span></div>
+                    <div><span className="text-slate-500">Pelaksana:</span> <span className="font-medium">{perjalananAuditData.detail?.header?.user_name || '-'}</span></div>
+                    <div><span className="text-slate-500">Status:</span> <span className="font-medium">{perjalananAuditData.detail?.header?.status || '-'}</span></div>
+                    <div><span className="text-slate-500">Target posting (rumus aktif):</span> <span className="font-semibold text-blue-700">
+                      Rp {Math.max(0, Number((perjalananAuditData.dana || []).find((d: any) => d.jenis === 'INJECT')?.nominal || 0) - Number(perjalananAuditData.summary?.total_return || 0)).toLocaleString('id-ID')}
+                    </span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-gray-500">Total Inject</div>
+                  <div className="font-semibold">Rp {Number(perjalananAuditData.summary?.total_inject || 0).toLocaleString('id-ID')}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-gray-500">Total Return</div>
+                  <div className="font-semibold">Rp {Number(perjalananAuditData.summary?.total_return || 0).toLocaleString('id-ID')}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-gray-500">Total Approved Item</div>
+                  <div className="font-semibold">Rp {Number(perjalananAuditData.summary?.total_approved || 0).toLocaleString('id-ID')}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-gray-500">Item</div>
+                  <div className="font-semibold">{(perjalananAuditData.items || []).length}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-gray-500">Ledger Dana</div>
+                  <div className="font-semibold">{(perjalananAuditData.dana || []).length}</div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border">
+                <div className="px-3 py-2 border-b bg-slate-50 text-sm font-semibold">Item Perjalanan (untuk cek nominal & bukti)</div>
+                <div className="max-h-64 overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-white sticky top-0">
+                      <tr className="border-b">
+                        <th className="text-left px-3 py-2">Tanggal</th>
+                        <th className="text-left px-3 py-2">Nominal</th>
+                        <th className="text-left px-3 py-2">Status Audit</th>
+                        <th className="text-left px-3 py-2">Bukti</th>
+                        <th className="text-left px-3 py-2">Keterangan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(perjalananAuditData.items || []).map((it: any) => (
+                        <tr key={it._id} className="border-b last:border-b-0">
+                          <td className="px-3 py-2">{it.tanggal_transaksi}</td>
+                          <td className="px-3 py-2">Rp {Number(it.nominal || 0).toLocaleString('id-ID')}</td>
+                          <td className="px-3 py-2">{it.audit_status}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <span>{(it.attachments || []).length} file</span>
+                              {(it.attachments || []).length > 0 && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => {
+                                    const first = it.attachments?.[0];
+                                    if (!first?.path) return;
+                                    handleOpenAttachmentPreviewDialog(first.path, first.original_name || first.path.split('/').pop());
+                                  }}
+                                >
+                                  Preview
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">{it.keterangan || '-'}</td>
+                        </tr>
+                      ))}
+                      {(perjalananAuditData.items || []).length === 0 && (
+                        <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500">Tidak ada item perjalanan</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-lg border">
+                <div className="px-3 py-2 border-b bg-slate-50 text-sm font-semibold">Ledger Dana (Inject / Return)</div>
+                <div className="max-h-52 overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-white sticky top-0">
+                      <tr className="border-b">
+                        <th className="text-left px-3 py-2">Jenis</th>
+                        <th className="text-left px-3 py-2">Tanggal</th>
+                        <th className="text-left px-3 py-2">Nominal</th>
+                        <th className="text-left px-3 py-2">Bukti</th>
+                        <th className="text-left px-3 py-2">Linked Transaksi</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(perjalananAuditData.dana || []).map((d: any) => (
+                        <tr key={d._id} className="border-b last:border-b-0">
+                          <td className="px-3 py-2">{d.jenis}</td>
+                          <td className="px-3 py-2">{d.created_at ? new Date(d.created_at).toLocaleDateString('id-ID') : '-'}</td>
+                          <td className="px-3 py-2">Rp {Number(d.nominal || 0).toLocaleString('id-ID')}</td>
+                          <td className="px-3 py-2">{(d.attachments || []).length} file</td>
+                          <td className="px-3 py-2">{d.tt_finance_detail_id ? String(d.tt_finance_detail_id).slice(-8) : '-'}</td>
+                        </tr>
+                      ))}
+                      {(perjalananAuditData.dana || []).length === 0 && (
+                        <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500">Tidak ada ledger dana</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setPerjalananAuditDialogOpen(false)}>Tutup</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={attachmentPreviewDialogOpen} onOpenChange={setAttachmentPreviewDialogOpen}>
+        <DialogContent className="sm:max-w-5xl w-[96vw]">
+          <DialogHeader>
+            <DialogTitle>Preview Bukti</DialogTitle>
+            <DialogDescription>{attachmentPreviewName || 'Attachment'}</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg border bg-gray-50 min-h-[60vh] flex items-center justify-center overflow-hidden">
+            {!attachmentPreviewUrl ? (
+              <div className="text-sm text-gray-500">Tidak ada file untuk dipreview.</div>
+            ) : /\.pdf($|\?)/i.test(attachmentPreviewUrl) || attachmentPreviewName.toLowerCase().endsWith('.pdf') ? (
+              <iframe
+                src={attachmentPreviewUrl}
+                title={attachmentPreviewName || 'Preview PDF'}
+                className="w-full h-[70vh] bg-white"
+              />
+            ) : (
+              <img
+                src={attachmentPreviewUrl}
+                alt={attachmentPreviewName || 'Preview Image'}
+                className="max-w-full max-h-[70vh] object-contain"
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

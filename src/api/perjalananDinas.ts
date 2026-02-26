@@ -50,6 +50,16 @@ export interface PerjalananDanaLedger {
   nama_rekening_snapshot: string;
   keterangan?: string;
   created_at: string;
+  attachments?: Array<{ path: string; original_name?: string; mime_type?: string; size?: number }>;
+  tt_finance_detail_id?: string;
+  transaksi_snapshot?: {
+    kategori?: string;
+    sub_kategori?: string;
+    akun?: string;
+    tanggal?: string;
+    bulan?: string;
+    tahun_fiskal?: string;
+  };
 }
 
 export interface PerjalananPostingPayload {
@@ -96,8 +106,8 @@ export async function finalizePerjalananAudit(id: string, payload?: any) {
   return res.data;
 }
 
-export async function postPerjalananToTtFinance(id: string, payload: PerjalananPostingPayload) {
-  const res = await axiosInstance.post(`/perjalanan-dinas/${id}/posting`, payload);
+export async function postPerjalananToTtFinance(id: string, payload?: Partial<PerjalananPostingPayload>) {
+  const res = await axiosInstance.post(`/perjalanan-dinas/${id}/posting`, payload || {});
   return res.data;
 }
 
@@ -152,5 +162,19 @@ export async function injectPerjalananDana(id: string, payload: any) {
 
 export async function returnPerjalananDana(id: string, payload: any) {
   const res = await axiosInstance.post(`/perjalanan-dinas/${id}/dana/return`, payload);
+  return res.data;
+}
+
+export async function uploadPerjalananDanaAttachments(id: string, ledgerId: string, files: File[]) {
+  const formData = new FormData();
+  files.forEach((f) => formData.append('attachments', f));
+  const res = await axiosInstance.post(`/perjalanan-dinas/${id}/dana/${ledgerId}/attachments`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
+
+export async function deletePerjalananDanaAttachment(id: string, ledgerId: string, filename: string) {
+  const res = await axiosInstance.delete(`/perjalanan-dinas/${id}/dana/${ledgerId}/attachments/${filename}`);
   return res.data;
 }
