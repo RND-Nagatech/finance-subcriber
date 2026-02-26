@@ -25,6 +25,15 @@ export interface ITransaksi extends Document {
   updated_at: Date;
 }
 
+export interface IHistoryEntry {
+  bulan: string;
+  nilai: number;
+  nilai_awal: number;
+  input_by: string;
+  input_at: Date;
+  action: 'increment' | 'decrement';
+}
+
 const DataBulananSchema: Schema = new Schema({
   bulan: { type: String, required: true },
   nilai: { type: Number, required: true },
@@ -43,6 +52,14 @@ const TransaksiSchema: Schema = new Schema({
   input_by: { type: String, required: true },
   tahun_fiskal: { type: String, required: true },
   attachments: { type: [AttachmentSchema], default: [] },
+  history: { type: [{
+    bulan: { type: String },
+    nilai: { type: Number },
+    nilai_awal: { type: Number },
+    input_by: { type: String },
+    input_at: { type: Date },
+    action: { type: String }
+  }], default: [] },
   created_at: { type: Date, default: Date.now },
   updated_at: { type: Date, default: Date.now },
 });

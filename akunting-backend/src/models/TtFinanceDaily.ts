@@ -8,6 +8,19 @@ const TtFinanceDailySchema = new Schema({
   sub_kategori: { type: String, required: true },
   akun: { type: String, required: true },
   total_nilai: { type: Number, required: true, default: 0 },
+  history: {
+    type: [
+      {
+        nilai: { type: Number },
+        nilai_awal: { type: Number, default: 0 },
+        tanggal: { type: String }, // YYYY-MM-DD
+        input_by: { type: String },
+        input_at: { type: Date, default: Date.now },
+        action: { type: String, enum: ['increment', 'decrement'], default: 'increment' }
+      }
+    ],
+    default: []
+  },
   created_at: { type: Date, default: Date.now },
 });
 

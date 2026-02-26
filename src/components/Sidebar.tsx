@@ -48,6 +48,7 @@ export default function AppSidebar() {
   const location = useLocation();
   const [isMasterOpen, setIsMasterOpen] = useState(false);
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
+  const [isPerjalananOpen, setIsPerjalananOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const { user, logout } = useAppStore();
   const navigate = useNavigate();
@@ -58,6 +59,9 @@ export default function AppSidebar() {
     }
     if (location.pathname.startsWith("/budget")) {
       setIsBudgetOpen(true);
+    }
+    if (location.pathname.startsWith("/perjalanan-dinas")) {
+      setIsPerjalananOpen(true);
     }
   }, [location.pathname]);
 
@@ -309,6 +313,121 @@ export default function AppSidebar() {
                   </NavLink>
                 </SidebarMenuItem>
 
+                {/* PERJALANAN DINAS */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setIsPerjalananOpen(!isPerjalananOpen)}
+                    className={cn(
+                      "group relative rounded-xl px-4 py-4 text-slate-300 hover:text-white transition-all duration-300",
+                      "hover:bg-gradient-to-r hover:from-emerald-600/20 hover:to-teal-600/20",
+                      "hover:shadow-lg hover:shadow-emerald-500/10",
+                      "py-5",
+                      isPerjalananOpen && "bg-gradient-to-r from-emerald-700/30 to-teal-600/30 text-white shadow-lg shadow-emerald-500/15",
+                      location.pathname.startsWith("/perjalanan-dinas") && "border border-emerald-500/30"
+                    )}
+                  >
+                    <Receipt className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                    <span className="font-medium">Perjalanan Dinas</span>
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 ml-auto transition-all duration-300 group-hover:scale-110",
+                        isPerjalananOpen && "rotate-180 text-emerald-400"
+                      )}
+                    />
+                    {location.pathname.startsWith("/perjalanan-dinas") && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-r-full" />
+                    )}
+                  </SidebarMenuButton>
+
+                  {isPerjalananOpen && (
+                    <SidebarMenuSub className="ml-8 mt-3 space-y-2 animate-in slide-in-from-top-2 duration-300">
+                      <SidebarMenuSubItem>
+                        <NavLink to="/perjalanan-dinas">
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={location.pathname === "/perjalanan-dinas"}
+                            className={cn(
+                              "group relative rounded-lg px-3 py-2 text-slate-400 hover:text-white transition-all duration-300",
+                              "hover:bg-gradient-to-r hover:from-emerald-600/30 hover:to-teal-500/30 hover:translate-x-1",
+                              "data-[active=true]:bg-gradient-to-r data-[active=true]:from-emerald-600/30 data-[active=true]:to-teal-600/30",
+                              "data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-emerald-500/20"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-current opacity-60 group-hover:opacity-100 transition-opacity" />
+                              <span className="font-medium text-sm">Perjalanan Dinas</span>
+                            </div>
+                          </SidebarMenuSubButton>
+                        </NavLink>
+                      </SidebarMenuSubItem>
+
+                      <SidebarMenuSubItem>
+                        <NavLink to="/perjalanan-dinas/transaksi">
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={location.pathname === "/perjalanan-dinas/transaksi"}
+                            className={cn(
+                              "group relative rounded-lg px-3 py-2 text-slate-400 hover:text-white transition-all duration-300",
+                              "hover:bg-gradient-to-r hover:from-emerald-600/30 hover:to-teal-500/30 hover:translate-x-1",
+                              "data-[active=true]:bg-gradient-to-r data-[active=true]:from-emerald-600/30 data-[active=true]:to-teal-600/30",
+                              "data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-emerald-500/20"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-current opacity-60 group-hover:opacity-100 transition-opacity" />
+                              <span className="font-medium text-sm">Transaksi Perjalanan</span>
+                            </div>
+                          </SidebarMenuSubButton>
+                        </NavLink>
+                      </SidebarMenuSubItem>
+
+                      {user && ['admin', 'finance', 'corsec', 'superuser'].includes(user.role) && (
+                        <SidebarMenuSubItem>
+                          <NavLink to="/perjalanan-dinas/dana">
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={location.pathname === "/perjalanan-dinas/dana"}
+                              className={cn(
+                                "group relative rounded-lg px-3 py-2 text-slate-400 hover:text-white transition-all duration-300",
+                                "hover:bg-gradient-to-r hover:from-emerald-600/30 hover:to-teal-500/30 hover:translate-x-1",
+                                "data-[active=true]:bg-gradient-to-r data-[active=true]:from-emerald-600/30 data-[active=true]:to-teal-600/30",
+                                "data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-emerald-500/20"
+                              )}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-current opacity-60 group-hover:opacity-100 transition-opacity" />
+                                <span className="font-medium text-sm">Dana Perjalanan</span>
+                              </div>
+                            </SidebarMenuSubButton>
+                          </NavLink>
+                        </SidebarMenuSubItem>
+                      )}
+
+                      {user && ['corsec', 'superuser', 'finance'].includes(user.role) && (
+                        <SidebarMenuSubItem>
+                          <NavLink to="/perjalanan-dinas/audit">
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={location.pathname === "/perjalanan-dinas/audit"}
+                              className={cn(
+                                "group relative rounded-lg px-3 py-2 text-slate-400 hover:text-white transition-all duration-300",
+                                "hover:bg-gradient-to-r hover:from-emerald-600/30 hover:to-teal-500/30 hover:translate-x-1",
+                                "data-[active=true]:bg-gradient-to-r data-[active=true]:from-emerald-600/30 data-[active=true]:to-teal-600/30",
+                                "data-[active=true]:text-white data-[active=true]:shadow-md data-[active=true]:shadow-emerald-500/20"
+                              )}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-current opacity-60 group-hover:opacity-100 transition-opacity" />
+                                <span className="font-medium text-sm">Audit Perjalanan</span>
+                              </div>
+                            </SidebarMenuSubButton>
+                          </NavLink>
+                        </SidebarMenuSubItem>
+                      )}
+                    </SidebarMenuSub>
+                  )}
+                </SidebarMenuItem>
+
                 {/* RIWAYAT SALDO REKENING */}
                 {user.role === 'superuser' && (
                   <SidebarMenuItem>
@@ -413,7 +532,7 @@ export default function AppSidebar() {
           </SidebarGroup>
 
           {/* FOOTER */}
-          <div className="absolute bottom-0 left-0 w-full px-4 pb-6">
+          <div className="mt-auto w-full px-4 pb-6 pt-4 relative z-10">
             <div className="h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent mb-4" />
             <SidebarFooter>
               <SidebarMenu className="space-y-3">

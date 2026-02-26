@@ -5,6 +5,99 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-26
+
+### Added
+- **Perjalanan Dinas Module (Backend + Frontend)**: New end-to-end workflow for business trip fund management and auditing
+  - New backend routes under `/api/perjalanan-dinas`
+  - New frontend pages/routes for:
+    - `Perjalanan Dinas`
+    - `Transaksi Perjalanan`
+    - `Dana Perjalanan`
+    - `Audit Perjalanan`
+  - New sidebar navigation group with `Perjalanan Dinas` parent menu + submenus
+
+- **Dedicated Perjalanan Dinas Data Models**
+  - `tt_perjalanan_dinas` for trip header/workflow
+  - `tt_perjalanan_dinas_detail` for isolated trip transaction items
+  - `tt_perjalanan_dinas_dana` for inject/return fund ledger
+
+- **Trip Fund Injection / Return Flow**
+  - Multi-inject dana support from selected rekening
+  - Final return sisa dana support after audit completion
+  - Rekening saldo mutation integration for inject/return actions
+  - Trip dana ledger listing and summary in dedicated UI
+
+- **Trip Audit and Posting Flow**
+  - Header workflow status: `BERJALAN -> SEDANG_DIAUDIT -> SELESAI`
+  - Item audit status endpoint + notes support
+  - Finalize audit endpoint + UI actions
+  - Manual one-time posting to `tt_finance` with posting metadata lock
+  - Reusable finance aggregation service for posting trip summary into `tt_finance` / `tt_finance_daily`
+
+- **Perjalanan Dinas Attachments**
+  - Upload attachment (image/pdf) to trip items
+  - Delete attachment support
+  - Attachment preview in audit table via in-page dialog (image/PDF)
+  - Multi-attachment preview switching inside dialog
+
+- **Perjalanan Dinas UI/UX Enhancements**
+  - Dialog-based `Buat Header Perjalanan` form
+  - Dialog-based `Tambah Transaksi Perjalanan` form
+  - Currency formatting for nominal inputs (transaksi/inject/return)
+  - Modernized `Inject Dana` and `Return Sisa Dana (Final)` cards
+  - shadcn `Select` for rekening picker (replacing native browser dropdown)
+
+- **Riwayat Saldo Rekening Compatibility Enhancement**
+  - Extended `RiwayatSaldoRekening` schema with `ref_type` and `ref_id`
+  - `transaksi_id` made optional to support non-`tt_finance_detail` balance events (trip inject/return)
+
+- **Finance Aggregation Audit Trail (Existing Transaksi Module)**
+  - Added `history` field to `tt_finance` aggregate model (`Transaksi`)
+  - Added `history` field to `tt_finance_daily` for increment/decrement trace
+  - Added `validator_notes_by` and `validator_notes_at` fields to `tt_finance_detail`
+
+### Changed
+- **Audit Business Process (Perjalanan Dinas)**
+  - After user submits trip to audit (`Selesai Perjalanan`), user can no longer edit transactions or attachments
+  - Auditor now directly adjusts transaction nominal/keterangan in `Audit Item Perjalanan` (no revision roundtrip to user)
+  - Audit table actions moved into dropdown menu to save horizontal table space
+
+- **Trip Fund Summary Calculation**
+  - `sisa_dana` now decreases immediately when trip transactions are created (based on total active trip transactions), not only after approval
+  - Added `total_transaksi` display in summary cards for clarity
+
+- **Sidebar Navigation Layout**
+  - Sidebar footer changed from absolute positioning to normal flow (`mt-auto`) to avoid overlap with long menus
+  - `Perjalanan Dinas`, `Transaksi Perjalanan`, `Dana Perjalanan`, `Audit Perjalanan` reorganized into one collapsible menu group
+
+- **Perjalanan Dinas Header & Transaction Layout**
+  - `Buat Header Perjalanan` action moved into `Daftar Perjalanan` card header (dialog trigger)
+  - Removed separate header-create card so `Daftar Perjalanan` uses full available width
+  - `Tambah Transaksi Perjalanan` action moved into `Daftar Item` card header (dialog trigger)
+
+- **Transaksi Validation & Aggregation Behavior (Existing Module)**
+  - `validateAttachment` now records validator identity and timestamp (`validator_notes_by`, `validator_notes_at`)
+  - Daily aggregate update/decrement now stores history entries and preserves non-negative totals
+  - Aggregate recalculation (`tt_finance`) now stores per-change history entries for better auditability
+  - `updateValidatorNotes` response now returns validator metadata for UI refresh
+
+- **Transaksi UI Action Rules (Existing Module)**
+  - `Edit`, `Hapus`, `Upload`, and `Validasi` actions in transaction detail dropdown are hidden once item is validated
+  - Validated rows now have stronger green hover/highlight styling for clearer visual distinction
+
+### Fixed
+- **Sidebar Menu Overlap**
+  - Fixed footer menu overlap/collision when navigation items increased in count
+
+- **Attachment Preview UX in Audit**
+  - Replaced new-tab proof preview with in-page dialog preview to avoid back-and-forth navigation
+
+### Security
+- **Role-based Access Enforcement for Perjalanan Dinas**
+  - Backend role restrictions applied for create/inject/return/audit/finalize/posting actions
+  - User scope restricted to assigned trips and edit access restricted after submit-to-audit
+
 ## [1.4.0] - 2026-02-16
 
 ### Added

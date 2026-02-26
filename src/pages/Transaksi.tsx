@@ -1613,7 +1613,7 @@ export default function Transaksi() {
                     className={
                       `hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50` +
                       (typeData === 'Detail' && expandedRows[row._id || String(idx)] ? ' pb-6 align-top' : '') +
-                      (row.is_validated ? ' bg-green-50 !border-green-300' : '')
+                      (row.is_validated ? ' bg-green-50 !border-green-300 hover:bg-green-200 hover:!border-green-400' : '')
                     }
                   >
                     {typeData === 'Detail' && (
@@ -1658,35 +1658,50 @@ export default function Transaksi() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem
-                              onClick={() => handleEdit(row)}
-                              className="cursor-pointer"
-                            >
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(row)}
-                              className="cursor-pointer text-red-600 focus:text-red-600"
-                            >
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                              Hapus
-                            </DropdownMenuItem>
-                            {(user?.role === 'superuser' || user?.role === 'corsec' || user?.role === 'finance') && (
-                              <DropdownMenuItem
-                                onClick={() => handleUploadAttachments(row)}
-                                className="cursor-pointer text-green-600 focus:text-green-600"
-                              >
-                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                                Upload
-                              </DropdownMenuItem>
-                            )}
+                            {!row.is_validated ? (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => handleEdit(row)}
+                                  className="cursor-pointer"
+                                >
+                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(row)}
+                                  className="cursor-pointer text-red-600 focus:text-red-600"
+                                >
+                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                  Hapus
+                                </DropdownMenuItem>
+                                {(user?.role === 'superuser' || user?.role === 'corsec' || user?.role === 'finance') && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleUploadAttachments(row)}
+                                    className="cursor-pointer text-green-600 focus:text-green-600"
+                                  >
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
+                                    Upload
+                                  </DropdownMenuItem>
+                                )}
+                                {(!row.is_validated && (user?.role === 'superuser' || user?.role === 'corsec')) && (
+                                  <DropdownMenuItem
+                                    onClick={() => handleValidate(row)}
+                                    className="cursor-pointer text-blue-600 focus:text-blue-600"
+                                  >
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Validasi
+                                  </DropdownMenuItem>
+                                )}
+                              </>
+                            ) : null}
                             {(user?.role === 'superuser' || user?.role === 'corsec') && (
                               <DropdownMenuItem
                                 onClick={() => handleOpenValidatorNotes(row)}
@@ -1698,22 +1713,10 @@ export default function Transaksi() {
                                 Validator Notes
                               </DropdownMenuItem>
                             )}
-                            {/* Button Validasi hanya untuk superuser dan corsec, dan hanya jika belum divalidasi */}
-                            {(user?.role === 'superuser' || user?.role === 'corsec') && !row.is_validated && (
-                              <DropdownMenuItem
-                                onClick={() => handleValidate(row)}
-                                className="cursor-pointer text-blue-600 focus:text-blue-600"
-                              >
-                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                Validasi
-                              </DropdownMenuItem>
-                            )}
-                    {/* Badge status validasi */}
-                    {row.is_validated && (
-                      <span className="inline-block ml-2 px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">Sudah divalidasi</span>
-                    )}
+                              {/* Badge status validasi */}
+                              {row.is_validated && (
+                                <span className="inline-block ml-2 px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">Sudah divalidasi</span>
+                              )}
 
                           </DropdownMenuContent>
                         </DropdownMenu>

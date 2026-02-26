@@ -1,13 +1,3 @@
-          <Route
-            path="/master/perusahaan"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Perusahaan />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
 import Perusahaan from "./pages/MasterData/Perusahaan";
 import Bank from './pages/MasterData/Bank';
 import Rekening from './pages/MasterData/Rekening';
@@ -44,6 +34,10 @@ import VPS from "./pages/VPS";
 import Users from "./pages/Users";
 import UpdateLog from "./pages/UpdateLog";
 import RiwayatSaldoRekening from "./pages/RiwayatSaldoRekening";
+import PerjalananDinas from "./pages/PerjalananDinas";
+import PerjalananDinasTransaksi from "./pages/PerjalananDinasTransaksi";
+import PerjalananDinasDana from "./pages/PerjalananDinasDana";
+import PerjalananDinasAudit from "./pages/PerjalananDinasAudit";
 
 const queryClient = new QueryClient();
 
@@ -218,6 +212,46 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <Transaksi />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/perjalanan-dinas"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PerjalananDinas />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/perjalanan-dinas/transaksi"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PerjalananDinasTransaksi />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/perjalanan-dinas/dana"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PerjalananDinasDana />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/perjalanan-dinas/audit"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <PerjalananDinasAudit />
                 </MainLayout>
               </ProtectedRoute>
             }

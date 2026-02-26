@@ -6,7 +6,6 @@ import TtFinanceDetail from '../models/TtFinanceDetail';
 import TtFinanceDaily from '../models/TtFinanceDaily';
 import Rekening from '../models/Rekening';
 import RiwayatSaldoRekening from '../models/RiwayatSaldoRekening';
-import Bank from '../models/Bank';
 
 // Validasi data hasil attachment (hanya superuser/corsec)
 export const validateAttachment = async (req: Request, res: Response, next: NextFunction) => {
@@ -62,10 +61,14 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
     }
 
     // Jalankan update aggregation
-    await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment');
+    const validatorBy = user?.username || user?.email || user?._id || 'SYSTEM';
+    const validatorAt = new Date();
+    await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment', validatorBy, validatorAt);
     await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
     doc.is_validated = true;
     doc.validator_notes = validator_notes || '';
+    doc.validator_notes_by = validatorBy;
+    doc.validator_notes_at = validatorAt;
     await doc.save();
     res.json({ success: true, message: 'Validasi berhasil' });
   } catch (error) {
@@ -75,7 +78,7 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
 
 
 // Helper function to update tt_finance_daily
-async function updateTtFinanceDaily(tanggal: string, bulan: string, kategori: string, sub_kategori: string, akun: string, nilai: number, operation: 'increment' | 'decrement') {
+async function updateTtFinanceDaily(tanggal: string, bulan: string, kategori: string, sub_kategori: string, akun: string, nilai: number, operation: 'increment' | 'decrement', inputBy?: string, inputAt?: Date) {
   // Calculate fiscal year from bulan
   let tahunFiskal: string | undefined = undefined;
   if (bulan) {
@@ -100,59 +103,73 @@ async function updateTtFinanceDaily(tanggal: string, bulan: string, kategori: st
   const bulanFiskal = `${monthNames[monthIdx]}-${yyyy.slice(2)}`;
 
   if (operation === 'increment') {
-    await TtFinanceDaily.findOneAndUpdate(
-      {
-        tanggal,
-        bulan_fiskal: bulanFiskal,
-        tahun_fiskal: tahunFiskal,
-        kategori,
-        sub_kategori,
-        akun
-      },
-      {
-        $inc: { total_nilai: nilai },
-        $setOnInsert: { created_at: new Date() }
-      },
-      { upsert: true, new: true }
-    );
-  } else if (operation === 'decrement') {
-    const existingDoc = await TtFinanceDaily.findOne({
+    const filter = {
       tanggal,
       bulan_fiskal: bulanFiskal,
       tahun_fiskal: tahunFiskal,
       kategori,
       sub_kategori,
       akun
-    });
+    };
 
-    if (existingDoc) {
-      const newTotalNilai = (existingDoc.total_nilai || 0) - nilai;
+    const existing = await TtFinanceDaily.findOne(filter);
+    const nilaiAwal = existing?.total_nilai || 0;
 
-      if (newTotalNilai <= 0) {
-        await TtFinanceDaily.findOneAndDelete({
+    const updateObj: any = {
+      $inc: { total_nilai: nilai },
+      $setOnInsert: { created_at: new Date() }
+    };
+
+    if (inputBy) {
+      updateObj.$push = {
+        history: {
+          nilai,
+          nilai_awal: nilaiAwal,
           tanggal,
-          bulan_fiskal: bulanFiskal,
-          tahun_fiskal: tahunFiskal,
-          kategori,
-          sub_kategori,
-          akun
-        });
-      } else {
-        await TtFinanceDaily.findOneAndUpdate(
-          {
-            tanggal,
-            bulan_fiskal: bulanFiskal,
-            tahun_fiskal: tahunFiskal,
-            kategori,
-            sub_kategori,
-            akun
-          },
-          {
-            $inc: { total_nilai: -nilai }
-          },
-          { new: true }
-        );
-      }
+          input_by: inputBy,
+          input_at: inputAt || new Date(),
+          action: 'increment'
+        }
+      };
+    }
+
+    await TtFinanceDaily.findOneAndUpdate(filter, updateObj, { upsert: true, new: true });
+  } else if (operation === 'decrement') {
+    const filter = {
+      tanggal,
+      bulan_fiskal: bulanFiskal,
+      tahun_fiskal: tahunFiskal,
+      kategori,
+      sub_kategori,
+      akun
+    };
+
+    const existing = await TtFinanceDaily.findOne(filter);
+    const nilaiAwal = existing?.total_nilai || 0;
+
+    const historyEntry: any = {
+      nilai: -Math.abs(nilai),
+      nilai_awal: nilaiAwal,
+      tanggal,
+      input_by: inputBy || '',
+      input_at: inputAt || new Date(),
+      action: 'decrement'
+    };
+
+    await TtFinanceDaily.findOneAndUpdate(
+      filter,
+      {
+        $inc: { total_nilai: -nilai },
+        $push: { history: historyEntry },
+        $setOnInsert: { created_at: new Date() }
+      },
+      { upsert: true, new: true }
+    );
+
+    const updated = await TtFinanceDaily.findOne(filter);
+    if (updated && (updated.total_nilai || 0) < 0) {
+      updated.total_nilai = 0;
+      await updated.save();
     }
   }
 }
@@ -178,6 +195,14 @@ async function recalculateTransaksiAggregation(kategori: string, sub_kategori: s
 
     if (!doc) {
       // Buat baru jika belum ada
+      const historyEntry: any = {
+        bulan,
+        nilai: operation === 'increment' ? nilai : -Math.abs(nilai),
+        nilai_awal: 0,
+        input_by: input_by || '',
+        input_at: new Date(),
+        action: operation
+      };
       doc = new Transaksi({
         kategori,
         sub_kategori,
@@ -188,16 +213,29 @@ async function recalculateTransaksiAggregation(kategori: string, sub_kategori: s
         tahun_fiskal: tahunFiskal,
         created_at: new Date(),
         updated_at: new Date(),
+        history: [historyEntry]
       });
     } else {
       // Update data_bulanan jika sudah ada
       const idx = doc.data_bulanan.findIndex((d: any) => d.bulan === bulan);
+      const nilaiAwal = idx >= 0 ? doc.data_bulanan[idx].nilai : 0;
       if (idx >= 0) {
         // SUM nilai jika bulan sudah ada
         doc.data_bulanan[idx].nilai += operation === 'increment' ? nilai : -nilai;
       } else {
         doc.data_bulanan.push({ bulan, nilai });
       }
+      // push history entry on setiap perubahan
+      const historyEntry: any = {
+        bulan,
+        nilai: operation === 'increment' ? nilai : -Math.abs(nilai),
+        nilai_awal: nilaiAwal,
+        input_by: input_by || '',
+        input_at: new Date(),
+        action: operation
+      };
+      if (!Array.isArray((doc as any).history)) (doc as any).history = [];
+      (doc as any).history.push(historyEntry);
       // Hitung total tahunan
       doc.total_tahunan = doc.data_bulanan.reduce((sum: number, d: any) => sum + d.nilai, 0);
       doc.updated_at = new Date();
@@ -304,7 +342,10 @@ export const deleteAttachment = async (req: Request, res: Response, next: NextFu
 
     // If this was the last attachment, update tt_finance_daily
     if (wasLastAttachment) {
-      await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'decrement');
+      const user = req.user as any;
+      const inputBy = user?.username || user?.email || doc.deleted_by || 'SYSTEM';
+      const inputAt = new Date();
+      await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'decrement', inputBy, inputAt);
       await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'decrement');
     }
 
@@ -996,8 +1037,10 @@ export const updateValidatorNotes = async (req: Request, res: Response, next: Ne
     if (!doc) return res.status(404).json({ message: 'Transaksi detail not found' });
 
     doc.validator_notes = validator_notes || '';
+    doc.validator_notes_by = user?.username || user?.email || user?._id || '';
+    doc.validator_notes_at = new Date();
     await doc.save();
-    res.json({ success: true, message: 'Validator notes berhasil diperbarui' });
+    res.json({ success: true, message: 'Validator notes berhasil diperbarui', validator_notes_by: doc.validator_notes_by, validator_at: doc.validator_notes_at });
   } catch (error) {
     next(error);
   }

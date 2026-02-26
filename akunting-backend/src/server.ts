@@ -15,6 +15,7 @@ import budgetRoutes from './routes/budgetRoutes';
 import vpsRoutes from './routes/vpsRoutes';
 import vpsTTRoutes from './routes/vpsTTRoutes';
 import userRoutes from './routes/userRoutes';
+import perjalananDinasRoutes from './routes/perjalananDinasRoutes';
 import { errorLoggerMiddleware } from './middleware/errorLoggerMiddleware';
 
 // Import models to ensure they are registered with Mongoose
@@ -62,6 +63,7 @@ app.use('/api/budget', budgetRoutes);
 app.use('/api/vps', vpsRoutes);
 app.use('/api/tt-vps', vpsTTRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/perjalanan-dinas', perjalananDinasRoutes);
 
 // Error logging middleware
 app.use(errorLoggerMiddleware);
@@ -83,5 +85,4 @@ connectDB().then(() => {
   console.error('❌ Failed to connect DB', err);
   process.exit(1);
 });
-
 
