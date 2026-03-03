@@ -529,6 +529,8 @@ export default function Transaksi() {
       const [editData, setEditData] = useState<any>(null);
       const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
       const [deleteData, setDeleteData] = useState<any>(null);
+      const [deleteSecretCode, setDeleteSecretCode] = useState('');
+      const [deletingTransaksi, setDeletingTransaksi] = useState(false);
       const [deleteAttachmentDialogOpen, setDeleteAttachmentDialogOpen] = useState(false);
       const [deleteAttachmentData, setDeleteAttachmentData] = useState<{ transaksiId: string; filename: string; fileUrl: string } | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -628,6 +630,7 @@ export default function Transaksi() {
       // Handler hapus transaksi bulanan - open confirmation dialog
       const handleDelete = (row: any) => {
         setDeleteData(row);
+        setDeleteSecretCode('');
         setDeleteDialogOpen(true);
       };
 
@@ -644,18 +647,29 @@ export default function Transaksi() {
       // Handler konfirmasi hapus
       const handleConfirmDelete = async () => {
         if (!deleteData) return;
+        if (deleteData.is_validated && !deleteSecretCode.trim()) {
+          toast.error('Secret code wajib diisi untuk menghapus transaksi yang sudah divalidasi.');
+          return;
+        }
+        setDeletingTransaksi(true);
         try {
           const parentId = deleteData.parentId || deleteData._id;
           await axiosInstance.delete(`/transaksi/${parentId}`, {
-            data: { deleted_by: user?.name || 'SYSTEM' }
+            data: {
+              deleted_by: user?.name || 'SYSTEM',
+              ...(deleteData.is_validated ? { secret_code: deleteSecretCode.trim() } : {}),
+            }
           });
           queryClient.invalidateQueries({ queryKey: ['transaksi'] });
           toast.success('Transaksi berhasil dihapus!');
           setDeleteDialogOpen(false);
           setDeleteData(null);
+          setDeleteSecretCode('');
         } catch (error: any) {
           const msg = error?.response?.data?.message || 'Gagal menghapus transaksi.';
           toast.error(msg);
+        } finally {
+          setDeletingTransaksi(false);
         }
       };
 
@@ -1746,15 +1760,6 @@ export default function Transaksi() {
                                   </svg>
                                   Edit
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => handleDelete(row)}
-                                  className="cursor-pointer text-red-600 focus:text-red-600"
-                                >
-                                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                  Hapus
-                                </DropdownMenuItem>
                                 {(user?.role === 'superuser' || user?.role === 'corsec' || user?.role === 'finance') && (
                                   <DropdownMenuItem
                                     onClick={() => handleUploadAttachments(row)}
@@ -1779,6 +1784,17 @@ export default function Transaksi() {
                                 )}
                               </>
                             ) : null}
+                            {user?.role === 'superuser' && (
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(row)}
+                                className="cursor-pointer text-red-600 focus:text-red-600"
+                              >
+                                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                Hapus
+                              </DropdownMenuItem>
+                            )}
                             {(user?.role === 'superuser' || user?.role === 'corsec') && (
                               <DropdownMenuItem
                                 onClick={() => handleOpenValidatorNotes(row)}
@@ -2207,22 +2223,40 @@ export default function Transaksi() {
                   </div>
                 </div>
 
+                {deleteData.is_validated && (
+                  <div className="mb-6 space-y-2">
+                    <div className="text-xs font-semibold text-amber-700">
+                      Transaksi ini sudah divalidasi. Masukkan secret code untuk melanjutkan penghapusan.
+                    </div>
+                    <Input
+                      type="password"
+                      value={deleteSecretCode}
+                      onChange={(e) => setDeleteSecretCode(e.target.value)}
+                      placeholder="Masukkan secret code"
+                      className="border-2 border-amber-300 focus-visible:ring-amber-500"
+                    />
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-3">
                   <Button
                     variant="outline"
                     onClick={() => {
                       setDeleteDialogOpen(false);
                       setDeleteData(null);
+                      setDeleteSecretCode('');
                     }}
+                    disabled={deletingTransaksi}
                     className="border-gray-300 hover:bg-gray-50 transition-all duration-200"
                   >
                     Batal
                   </Button>
                   <Button
                     onClick={handleConfirmDelete}
+                    disabled={deletingTransaksi || (deleteData.is_validated && !deleteSecretCode.trim())}
                     className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
                   >
-                    Hapus Transaksi
+                    {deletingTransaksi ? 'Menghapus...' : 'Hapus Transaksi'}
                   </Button>
                 </div>
               </div>

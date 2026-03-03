@@ -42,7 +42,7 @@ router.post('/', createTransaksi);
 router.post('/batch', batchCreateTransaksi);
 router.get('/', listTransaksi);
 router.put('/:id', updateTransaksi);
-router.delete('/:id', deleteTransaksi);
+router.delete('/:id', authenticate, deleteTransaksi);
 
 // Edit nilai data bulanan
 router.put('/:id/bulan/:bulan', editTransaksiBulanan);

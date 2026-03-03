@@ -6,6 +6,7 @@ import TtFinanceDetail from '../models/TtFinanceDetail';
 import TtFinanceDaily from '../models/TtFinanceDaily';
 import Rekening from '../models/Rekening';
 import RiwayatSaldoRekening from '../models/RiwayatSaldoRekening';
+import { AuthRequest } from '../middleware/authMiddleware';
 
 // Validasi data hasil attachment (hanya superuser/corsec)
 export const validateAttachment = async (req: Request, res: Response, next: NextFunction) => {
@@ -244,15 +245,87 @@ async function recalculateTransaksiAggregation(kategori: string, sub_kategori: s
     await doc.save();
 }
 
-export const deleteTransaksi = async (req: Request, res: Response, next: NextFunction) => {
+export const deleteTransaksi = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const deleted_by = req.body?.deleted_by || req.query?.deleted_by || 'SYSTEM';
+    const secret_code = req.body?.secret_code || req.query?.secret_code || '';
     // Find detail
     const detail = await TtFinanceDetail.findById(id);
     if(!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
     if (detail.is_validated) {
-      return res.status(400).json({ message: 'Transaksi sudah divalidasi, tidak bisa dihapus.' });
+      const user = req.user as any;
+      if (!user || user.role !== 'superuser') {
+        return res.status(403).json({ message: 'Hanya superuser yang bisa menghapus transaksi tervalidasi.' });
+      }
+
+      const expectedSecret = process.env.DELETE_VALIDATED_SECRET_CODE || '';
+      if (!expectedSecret) {
+        return res.status(500).json({ message: 'Secret code untuk hapus transaksi tervalidasi belum dikonfigurasi.' });
+      }
+
+      if (String(secret_code) !== expectedSecret) {
+        return res.status(403).json({ message: 'Secret code tidak valid.' });
+      }
+
+      const rollbackBy = user?.username || user?.name || user?.email || user?._id || deleted_by || 'SYSTEM';
+      const rollbackAt = new Date();
+
+      // Rollback saldo rekening jika transaksi sebelumnya pernah memengaruhi saldo saat validasi.
+      if (detail.kode_bank && detail.no_rekening) {
+        const rekening = await Rekening.findOne({ kode_bank: detail.kode_bank, no_rekening: detail.no_rekening });
+        if (rekening) {
+          const saldoAwal = rekening.saldo;
+          let saldoMasuk = 0;
+          let saldoKeluar = 0;
+          let saldoAkhir = saldoAwal;
+
+          if (detail.kategori === 'PENDAPATAN') {
+            saldoKeluar = detail.nilai;
+            saldoAkhir -= detail.nilai;
+          } else {
+            saldoMasuk = detail.nilai;
+            saldoAkhir += detail.nilai;
+          }
+
+          const riwayat = new RiwayatSaldoRekening({
+            kode_bank: detail.kode_bank,
+            no_rekening: detail.no_rekening,
+            saldo_awal: saldoAwal,
+            saldo_masuk: saldoMasuk,
+            saldo_keluar: saldoKeluar,
+            saldo_akhir: saldoAkhir,
+            transaksi_id: detail._id,
+            tanggal: new Date(detail.tanggal),
+            keterangan: `[DELETE VALIDATED] ${detail.kategori}/${detail.sub_kategori}/${detail.akun}`
+          });
+
+          await riwayat.save();
+          rekening.saldo = saldoAkhir;
+          await rekening.save();
+        }
+      }
+
+      await updateTtFinanceDaily(
+        detail.tanggal,
+        detail.bulan,
+        detail.kategori,
+        detail.sub_kategori,
+        detail.akun,
+        detail.nilai,
+        'decrement',
+        rollbackBy,
+        rollbackAt
+      );
+      await recalculateTransaksiAggregation(
+        detail.kategori,
+        detail.sub_kategori,
+        detail.akun,
+        detail.bulan,
+        detail.nilai,
+        rollbackBy,
+        'decrement'
+      );
     }
     // Soft delete: set status_deleted, deleted_at, deleted_by
     detail.status_deleted = true;
