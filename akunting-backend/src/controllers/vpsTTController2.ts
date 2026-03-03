@@ -49,6 +49,7 @@ export const createSchedule = async (req: Request, res: Response) => {
       bulan: number;
       diskon?: number;
       diskon_percent?: number;
+      keterangan?: string;
     };
     if (!body || !body.start || !body.bulan) {
       return res.status(400).json({ message: 'start and bulan are required' });
@@ -115,6 +116,7 @@ export const createSchedule = async (req: Request, res: Response) => {
         diskon: e.diskon,
         diskon_percent: e === entries[0] ? (diskonPercentFirst || (jumlah_harga > 0 ? Math.round((diskonFirst / jumlah_harga) * 100) : 0)) : 0,
         total_harga: jumlah_harga - e.diskon,
+        keterangan: e === entries[0] ? (body.keterangan && String(body.keterangan).trim() ? String(body.keterangan).trim() : '-') : '-',
         is_active: true,
         status: 'OPEN',
         input_date: now,
@@ -279,7 +281,7 @@ export const updateItemStatus = async (req: Request, res: Response) => {
 export const updateItem = async (req: Request, res: Response) => {
   try {
     const { periode, itemId } = req.params as { periode: string; itemId: string };
-    const { start, bulan, harga, diskon, status, diskon_percent } = req.body as Partial<{ start: string; bulan: number; harga: number; diskon: number; status: 'OPEN'|'DONE'; diskon_percent: number }>;
+    const { start, bulan, harga, diskon, status, diskon_percent, keterangan } = req.body as Partial<{ start: string; bulan: number; harga: number; diskon: number; status: 'OPEN'|'DONE'; diskon_percent: number; keterangan?: string }>;
     const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
 
     const doc = await TTVpsDetail.findOne({ _id: itemId, periode });
@@ -297,6 +299,7 @@ export const updateItem = async (req: Request, res: Response) => {
     if (typeof harga === 'number' && harga >= 0) doc.harga = harga;
     if (typeof diskon === 'number' && diskon >= 0) doc.diskon = diskon;
     if (typeof diskon_percent === 'number' && diskon_percent >= 0) doc.diskon_percent = Math.min(100, diskon_percent);
+    if (typeof keterangan === 'string') doc.keterangan = keterangan && String(keterangan).trim() ? String(keterangan).trim() : '-';
     if (status && (status === 'OPEN' || status === 'DONE')) doc.status = status;
 
     const startDateObj = new Date(doc.start + 'T00:00:00.000Z');
@@ -340,6 +343,7 @@ export const updateItem = async (req: Request, res: Response) => {
           toko: doc.toko,
           program: doc.program,
           daerah: (doc as any).daerah,
+          keterangan: '-',
           start: formatYMD(cursorStart),
           bulan: doc.bulan,
           tempo: formatYMD(tempo),
@@ -508,6 +512,7 @@ export const generateNextFiscal = async (req: Request, res: Response) => {
           diskon: 0,
           diskon_percent: 0,
           total_harga: harga * e.bulan,
+          keterangan: '-',
             is_active: true,
           status: 'OPEN',
           input_date: new Date(),
@@ -600,6 +605,7 @@ export const startGenerateNextFiscal = async (req: Request, res: Response) => {
               diskon: 0,
               diskon_percent: 0,
               total_harga: harga * e.bulan,
+              keterangan: '-',
               is_active: true,
               status: 'OPEN',
               input_date: new Date(),
