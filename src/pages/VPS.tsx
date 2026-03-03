@@ -547,6 +547,10 @@ export default function VPS() {
                                 {item.tgl_lunas ? format(new Date(item.tgl_lunas), 'dd MMM yyyy') : <span className="text-slate-400">-</span>}
                               </div>
                             </div>
+                            <div>
+                              <div className="text-xs text-slate-500">Keterangan</div>
+                              <div className="text-sm font-medium">{item.keterangan || '-'}</div>
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -597,8 +601,8 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
   const { data: subs } = useQuery({ queryKey: ['vps-available-subs'], queryFn: fetchAvailableSubscribers, enabled: !editItem });
   const qc = useQueryClient();
   const createMut = useMutation({
-    mutationFn: (payload: { subscriberId?: string; startDate: string; months: number; discount?: number; discountPercent?: number }) =>
-      createSchedule({ subscriber_id: payload.subscriberId, start: payload.startDate, bulan: payload.months, diskon: payload.discount, diskon_percent: payload.discountPercent }),
+    mutationFn: (payload: { subscriberId?: string; startDate: string; months: number; discount?: number; discountPercent?: number; keterangan?: string }) =>
+      createSchedule({ subscriber_id: payload.subscriberId, start: payload.startDate, bulan: payload.months, diskon: payload.discount, diskon_percent: payload.discountPercent, keterangan: payload.keterangan }),
     onSuccess: () => {
       toast.success('Data disimpan');
       // Tetap buka form; reset field agar siap input berikutnya
@@ -621,6 +625,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
   const [startDate, setStartDate] = useState<string>('');
   const [monthsText, setMonthsText] = useState<string>('');
   const [discountPercentText, setDiscountPercentText] = useState<string>('');
+  const [keterangan, setKeterangan] = useState<string>('');
 
   useEffect(() => {
     if (!open) {
@@ -628,6 +633,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
       setStartDate('');
       setMonthsText('');
       setDiscountPercentText('');
+      setKeterangan('');
     }
   }, [open]);
 
@@ -669,7 +675,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
   const handleSubmit = () => {
     if (!startDate || !months || months <= 0) return toast.error('Lengkapi form: jumlah bulan harus diisi (> 0)');
     if (!subscriberId) return toast.error('Pilih toko terlebih dahulu');
-    createMut.mutate({ subscriberId, startDate, months, discount: discountRp, discountPercent });
+    createMut.mutate({ subscriberId, startDate, months, discount: discountRp, discountPercent, keterangan });
   };
 
   return (
@@ -760,6 +766,10 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
             <Label>Total Harga</Label>
             <Input value={currency(net)} readOnly />
           </div>
+          <div className="space-y-1 col-span-2">
+            <Label>Keterangan</Label>
+            <Input value={keterangan} onChange={e => setKeterangan((e.target.value || '').toUpperCase())} placeholder="Keterangan tambahan..." />
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
@@ -783,6 +793,7 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
   const [monthsText, setMonthsText] = useState<string>('');
   const [harga, setHarga] = useState<number>(0);
   const [diskonPercentText, setDiskonPercentText] = useState<string>('');
+  const [keterangan, setKeterangan] = useState<string>('');
 
   useEffect(() => {
     if (open && item) {
@@ -792,9 +803,11 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
       const base = item.harga * item.bulan;
       const pct = base > 0 ? Math.round((item.diskon / base) * 100) : 0;
       setDiskonPercentText(String(pct));
+      setKeterangan(((item as any).keterangan || '').toUpperCase());
     }
     if (!open) {
       setStartDate(''); setMonthsText(''); setHarga(0); setDiskonPercentText('');
+      setKeterangan('');
     }
   }, [open, item]);
 
@@ -827,7 +840,7 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
   const total = Math.max(0, jumlah - diskonRp);
 
   const updateMut = useMutation({
-    mutationFn: () => updateTTItem({ periode: item!.__periode, itemId: item!._id, start: startDate, bulan: months, harga, diskon: diskonRp, diskon_percent: diskonPercent }),
+    mutationFn: () => updateTTItem({ periode: item!.__periode, itemId: item!._id, start: startDate, bulan: months, harga, diskon: diskonRp, diskon_percent: diskonPercent, keterangan }),
     onSuccess: () => { toast.success('Data diupdate'); onSuccess(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal update data'),
   });
@@ -897,6 +910,10 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
                 <Label>Total Harga</Label>
                 <Input value={currency(total)} readOnly />
               </div>
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label>Keterangan</Label>
+              <Input value={keterangan} onChange={e => setKeterangan((e.target.value || '').toUpperCase())} placeholder="Keterangan..." />
             </div>
           </div>
         ) : null}
