@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import Rekening from '../models/Rekening';
 import Bank from '../models/Bank';
+import RiwayatSaldoRekening from '../models/RiwayatSaldoRekening';
 
 export const getAllRekenings = async (req: Request, res: Response) => {
   try {
@@ -68,5 +70,123 @@ export const deleteRekening = async (req: Request, res: Response) => {
     res.json({ message: 'Rekening berhasil dihapus.' });
   } catch (err) {
     res.status(400).json({ message: 'Gagal hapus rekening.' });
+  }
+};
+
+export const transferSaldoAntarRekening = async (req: Request, res: Response) => {
+  const session = await mongoose.startSession();
+  try {
+    const {
+      from_rekening_id,
+      to_rekening_id,
+      nominal,
+      tanggal,
+      keterangan,
+    } = req.body || {};
+
+    if (!from_rekening_id || !to_rekening_id || nominal === undefined || nominal === null) {
+      return res.status(400).json({ message: 'from_rekening_id, to_rekening_id, dan nominal wajib diisi.' });
+    }
+
+    if (String(from_rekening_id) === String(to_rekening_id)) {
+      return res.status(400).json({ message: 'Rekening sumber dan tujuan tidak boleh sama.' });
+    }
+
+    const amount = Number(nominal);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Nominal transfer harus lebih besar dari 0.' });
+    }
+
+    const transferDate = tanggal ? new Date(String(tanggal)) : new Date();
+    if (Number.isNaN(transferDate.getTime())) {
+      return res.status(400).json({ message: 'Tanggal transfer tidak valid.' });
+    }
+
+    let fromAfter: number = 0;
+    let toAfter: number = 0;
+
+    await session.withTransaction(async () => {
+      const [fromRekening, toRekening] = await Promise.all([
+        Rekening.findById(from_rekening_id).session(session),
+        Rekening.findById(to_rekening_id).session(session),
+      ]);
+
+      if (!fromRekening || !toRekening) {
+        throw new Error('Rekening sumber/tujuan tidak ditemukan.');
+      }
+
+      const fromBefore = Number(fromRekening.saldo || 0);
+      const toBefore = Number(toRekening.saldo || 0);
+
+      if (fromBefore < amount) {
+        throw new Error('Saldo rekening sumber tidak mencukupi.');
+      }
+
+      fromAfter = fromBefore - amount;
+      toAfter = toBefore + amount;
+
+      fromRekening.saldo = fromAfter;
+      toRekening.saldo = toAfter;
+
+      await Promise.all([
+        fromRekening.save({ session }),
+        toRekening.save({ session }),
+      ]);
+
+      const noteSuffix = (keterangan ? ` - ${String(keterangan).trim()}` : '');
+      const noteOut = `TRANSFER KELUAR KE ${toRekening.kode_bank}/${toRekening.no_rekening}${noteSuffix}`;
+      const noteIn = `TRANSFER MASUK DARI ${fromRekening.kode_bank}/${fromRekening.no_rekening}${noteSuffix}`;
+
+      await RiwayatSaldoRekening.insertMany([
+        {
+          kode_bank: fromRekening.kode_bank,
+          no_rekening: fromRekening.no_rekening,
+          saldo_awal: fromBefore,
+          saldo_masuk: 0,
+          saldo_keluar: amount,
+          saldo_akhir: fromAfter,
+          tanggal: transferDate,
+          keterangan: noteOut,
+          ref_type: 'PERJALANAN_DANA',
+          created_at: new Date(),
+        },
+        {
+          kode_bank: toRekening.kode_bank,
+          no_rekening: toRekening.no_rekening,
+          saldo_awal: toBefore,
+          saldo_masuk: amount,
+          saldo_keluar: 0,
+          saldo_akhir: toAfter,
+          tanggal: transferDate,
+          keterangan: noteIn,
+          ref_type: 'PERJALANAN_DANA',
+          created_at: new Date(),
+        },
+      ], { session });
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Transfer saldo antar rekening berhasil.',
+      data: {
+        from_rekening_id,
+        to_rekening_id,
+        nominal: amount,
+        from_saldo_akhir: fromAfter,
+        to_saldo_akhir: toAfter,
+        tanggal: transferDate,
+      },
+    });
+  } catch (err: any) {
+    const msg = err?.message || 'Gagal transfer saldo antar rekening.';
+    if (
+      msg.includes('tidak ditemukan') ||
+      msg.includes('mencukupi')
+    ) {
+      return res.status(400).json({ message: msg });
+    }
+    return res.status(500).json({ message: msg });
+  } finally {
+    session.endSession();
   }
 };

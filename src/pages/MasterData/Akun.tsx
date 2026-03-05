@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -45,6 +45,8 @@ interface Akun {
   nama: string;
   kode: string;
   subkategori_id: string;
+  budget_id?: string;
+  budget_name?: string;
   subkategori_nama?: string;
   input_by: string;
   akun?: string;
@@ -58,6 +60,12 @@ interface SubKategori {
   status_aktv?: boolean;
 }
 
+interface BudgetOption {
+  _id: string;
+  name: string;
+  year: number;
+}
+
 export default function Akun() {
     const queryClient = useQueryClient();
     const [modalOpen, setModalOpen] = useState(false);
@@ -66,6 +74,7 @@ export default function Akun() {
       nama: '',
       kode: '',
       subkategori_id: '', // tetap simpan id untuk dropdown
+      budget_id: 'none',
       input_by: '',
     });
     const { user } = useAppStore();
@@ -73,6 +82,10 @@ export default function Akun() {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [showReactivateDialog, setShowReactivateDialog] = useState(false);
     const [reactivateId, setReactivateId] = useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterSubKategori, setFilterSubKategori] = useState('ALL');
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
 
     // Fetch sub categories
     const { data: subCategories = [] } = useQuery({
@@ -80,6 +93,14 @@ export default function Akun() {
       queryFn: async () => {
         const response = await axiosInstance.get('/master/subkategori');
         return response.data || [];
+      },
+    });
+
+    const { data: budgets = [] } = useQuery({
+      queryKey: ['budgets-active-for-akun'],
+      queryFn: async () => {
+        const response = await axiosInstance.get('/budget/budgets');
+        return response.data?.data || [];
       },
     });
 
@@ -155,6 +176,7 @@ export default function Akun() {
       const payload = {
         sub_kategori: formData.subkategori_id,
         akun: formData.nama,
+        budget_id: formData.budget_id && formData.budget_id !== 'none' ? formData.budget_id : null,
         input_by: user?.name || 'Unknown',
       };
       saveMutation.mutate(payload);
@@ -169,6 +191,7 @@ export default function Akun() {
         ...item,
         nama: item.nama || item.akun || '',
         subkategori_id: subKategoriObj ? subKategoriObj._id : '',
+        budget_id: item.budget_id || 'none',
       });
       setModalOpen(true);
     };
@@ -182,8 +205,25 @@ export default function Akun() {
     const handleCloseModal = () => {
       setModalOpen(false);
       setEditId(null);
-      setFormData({ nama: '', kode: '', subkategori_id: '', input_by: '' });
+      setFormData({ nama: '', kode: '', subkategori_id: '', budget_id: 'none', input_by: '' });
     };
+
+  const filteredAkunList = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return data
+      .filter((item) => filterSubKategori === 'ALL' || (item.sub_kategori || '') === filterSubKategori)
+      .filter((item) =>
+        !q ? true : `${item.kode || ''} ${item.akun || item.nama || ''} ${item.sub_kategori || ''} ${item.budget_name || ''}`
+          .toLowerCase()
+          .includes(q)
+      );
+  }, [data, filterSubKategori, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAkunList.length / pageSize));
+  const displayRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredAkunList.slice(start, start + pageSize);
+  }, [filteredAkunList, page, pageSize]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -213,6 +253,55 @@ export default function Akun() {
           </Button>
         </div>
 
+        <div className="bg-white/70 rounded-lg border-2 border-dashed border-blue-200 p-4 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col">
+            <Label htmlFor="search-akun" className="text-sm font-semibold text-gray-700 mb-1">Cari</Label>
+            <Input
+              id="search-akun"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari kode / nama akun / sub kategori / budget"
+              className="w-80 border-2 border-gray-200"
+            />
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="filter-subkategori-akun" className="text-sm font-semibold text-gray-700 mb-1">Filter Sub Kategori</Label>
+            <select
+              id="filter-subkategori-akun"
+              value={filterSubKategori}
+              onChange={(e) => {
+                setFilterSubKategori(e.target.value);
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-56"
+            >
+              <option value="ALL">Semua</option>
+              {Array.from(new Set((data || []).map((item: any) => item.sub_kategori).filter(Boolean))).map((sub) => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="page-size-akun" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
+            <select
+              id="page-size-akun"
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
           <Table className="table-fixed w-full">
             <TableHeader>
@@ -220,6 +309,7 @@ export default function Akun() {
                 <TableHead className="w-20 px-6 py-4 font-semibold text-gray-900">Kode</TableHead>
                 <TableHead className="w-64 px-6 py-4 font-semibold text-gray-900">Nama Akun</TableHead>
                 <TableHead className="w-48 px-6 py-4 font-semibold text-gray-900">Sub Kategori</TableHead>
+                <TableHead className="w-48 px-6 py-4 font-semibold text-gray-900">Budget</TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Input By</TableHead>
                 <TableHead className="w-32 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
               </TableRow>
@@ -227,16 +317,16 @@ export default function Akun() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12">
+                  <TableCell colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data akun...</p>
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : data.length === 0 ? (
+              ) : filteredAkunList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12">
+                  <TableCell colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,12 +338,15 @@ export default function Akun() {
                   </TableCell>
                 </TableRow>
               ) : (
-                data.map((item) => (
+                displayRows.map((item) => (
                   <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-20 px-6 py-4 font-semibold text-gray-900">{item.kode}</TableCell>
                     <TableCell className="w-64 px-6 py-4 font-medium text-gray-900">{item.akun || item.nama}</TableCell>
                     <TableCell className="w-48 px-6 py-4 text-gray-700">
                       {subCategories.find((sub) => sub._id === item.sub_kategori)?.sub_kategori || item.sub_kategori}
+                    </TableCell>
+                    <TableCell className="w-48 px-6 py-4 text-gray-700">
+                      {item.budget_name || '-'}
                     </TableCell>
                     <TableCell className="w-32 px-6 py-4 text-gray-700">{item.input_by}</TableCell>
                     <TableCell className="w-32 px-6 py-4 text-right">
@@ -284,6 +377,18 @@ export default function Akun() {
               )}
             </TableBody>
           </Table>
+          <div className="flex items-center justify-between p-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">Total Data: {filteredAkunList.length}</div>
+            <div className="text-sm text-gray-600">Halaman {page} dari {totalPages}</div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                Sebelumnya
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </div>
         <ModalForm
           open={modalOpen}
@@ -324,6 +429,25 @@ export default function Akun() {
                 className="border-2 border-gray-200 transition-all duration-200"
                 required
               />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="budget_id" className="text-sm font-semibold text-gray-700">Budget (Opsional)</Label>
+              <Select
+                value={formData.budget_id || 'none'}
+                onValueChange={(value) => setFormData({ ...formData, budget_id: value })}
+              >
+                <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                  <SelectValue placeholder="Pilih budget (opsional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Tanpa Budget</SelectItem>
+                  {(budgets as BudgetOption[]).map((budget) => (
+                    <SelectItem key={budget._id} value={budget._id}>
+                      {budget.name} ({budget.year})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <Button

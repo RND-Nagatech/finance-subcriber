@@ -6,7 +6,18 @@ import TtFinanceDetail from '../models/TtFinanceDetail';
 import TtFinanceDaily from '../models/TtFinanceDaily';
 import Rekening from '../models/Rekening';
 import RiwayatSaldoRekening from '../models/RiwayatSaldoRekening';
+import RekeningSaldoHarian from '../models/RekeningSaldoHarian';
 import { AuthRequest } from '../middleware/authMiddleware';
+import {
+  applyInputDelta,
+  applyValidatedDelta,
+  calculateSignedDelta,
+  hasValidRekeningKey,
+} from '../services/rekeningDailyBalanceService';
+import {
+  createBudgetUsageFromValidatedTransaksi,
+  rollbackBudgetUsageFromValidatedTransaksi,
+} from '../services/budgetUsageFromTransaksiService';
 
 // Validasi data hasil attachment (hanya superuser/corsec)
 export const validateAttachment = async (req: Request, res: Response, next: NextFunction) => {
@@ -66,10 +77,29 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
     const validatorAt = new Date();
     await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment', validatorBy, validatorAt);
     await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
+
+    // Snapshot saldo harian (jalur validated) dibucket ke tanggal transaksi.
+    if (hasValidRekeningKey(doc.kode_bank, doc.no_rekening)) {
+      const delta = calculateSignedDelta(doc.kategori, Number(doc.nilai || 0));
+      await applyValidatedDelta({
+        kode_bank: String(doc.kode_bank),
+        no_rekening: String(doc.no_rekening),
+        tanggal: String(doc.tanggal),
+        delta,
+        countDelta: 1,
+      });
+    }
+
+    await createBudgetUsageFromValidatedTransaksi({
+      doc,
+      actor: validatorBy,
+    });
+
     doc.is_validated = true;
     doc.validator_notes = validator_notes || '';
     doc.validator_notes_by = validatorBy;
     doc.validator_notes_at = validatorAt;
+    doc.validated_at = validatorAt;
     await doc.save();
     res.json({ success: true, message: 'Validasi berhasil' });
   } catch (error) {
@@ -253,6 +283,8 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
     // Find detail
     const detail = await TtFinanceDetail.findById(id);
     if(!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
+    const hasRekening = hasValidRekeningKey(detail.kode_bank, detail.no_rekening);
+    const detailDelta = calculateSignedDelta(detail.kategori, Number(detail.nilai || 0));
     if (detail.is_validated) {
       const user = req.user as any;
       if (!user || user.role !== 'superuser') {
@@ -326,7 +358,35 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
         rollbackBy,
         'decrement'
       );
+      await rollbackBudgetUsageFromValidatedTransaksi({
+        transaksiId: String(detail._id),
+        actor: rollbackBy,
+      });
     }
+
+    // Rollback snapshot saldo harian:
+    // - jalur input: selalu rollback saat transaksi dihapus.
+    // - jalur validated: rollback hanya jika transaksi sudah tervalidasi.
+    if (hasRekening) {
+      await applyInputDelta({
+        kode_bank: String(detail.kode_bank),
+        no_rekening: String(detail.no_rekening),
+        tanggal: String(detail.tanggal),
+        delta: -detailDelta,
+        countDelta: -1,
+      });
+
+      if (detail.is_validated) {
+        await applyValidatedDelta({
+          kode_bank: String(detail.kode_bank),
+          no_rekening: String(detail.no_rekening),
+          tanggal: String(detail.tanggal),
+          delta: -detailDelta,
+          countDelta: -1,
+        });
+      }
+    }
+
     // Soft delete: set status_deleted, deleted_at, deleted_by
     detail.status_deleted = true;
     detail.deleted_at = new Date();
@@ -504,6 +564,18 @@ export const createTransaksi = async (req: Request, res: Response, next: NextFun
 
     await detail.save();
 
+    // Snapshot saldo harian (jalur input) langsung masuk saat transaksi dibuat.
+    if (hasValidRekeningKey(detail.kode_bank, detail.no_rekening)) {
+      const delta = calculateSignedDelta(detail.kategori, Number(detail.nilai || 0));
+      await applyInputDelta({
+        kode_bank: String(detail.kode_bank),
+        no_rekening: String(detail.no_rekening),
+        tanggal: String(detail.tanggal),
+        delta,
+        countDelta: 1,
+      });
+    }
+
     res.json(detail);
   } catch (error) {
     next(error);
@@ -676,6 +748,8 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
     const oldBulan = detail.bulan;
     const oldNilai = detail.nilai;
     const oldTanggal = detail.tanggal; // simpan tanggal lama sebelum update
+    const oldKodeBank = detail.kode_bank;
+    const oldNoRekening = detail.no_rekening;
     const oldTahunFiskal = tahun_fiskal || (() => {
       const match = detail.bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
       if (match) {
@@ -795,6 +869,29 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
       attachments: detail.attachments && detail.attachments.length > 0 ? [...detail.attachments] : [],
     });
     await newDetail.save();
+
+    // Snapshot saldo harian (jalur input):
+    // rollback kontribusi transaksi lama, lalu apply transaksi baru.
+    if (hasValidRekeningKey(oldKodeBank, oldNoRekening)) {
+      const oldDelta = calculateSignedDelta(oldKategori, Number(oldNilai || 0));
+      await applyInputDelta({
+        kode_bank: String(oldKodeBank),
+        no_rekening: String(oldNoRekening),
+        tanggal: String(oldTanggal),
+        delta: -oldDelta,
+        countDelta: -1,
+      });
+    }
+    if (hasValidRekeningKey(newDetail.kode_bank, newDetail.no_rekening)) {
+      const newDelta = calculateSignedDelta(String(newDetail.kategori || ''), Number(newDetail.nilai || 0));
+      await applyInputDelta({
+        kode_bank: String(newDetail.kode_bank),
+        no_rekening: String(newDetail.no_rekening),
+        tanggal: String(newDetail.tanggal),
+        delta: newDelta,
+        countDelta: 1,
+      });
+    }
 
     // 3. Update tt_finance aggregation for old and new bulan
     // Find doc for old values
@@ -1092,6 +1189,52 @@ export const getSaldoRekening = async (req: Request, res: Response, next: NextFu
       saldo: rekening.saldo,
       nama_rekening: rekening.nama_rekening,
       nama_bank: rekening.bank_id ? (rekening.bank_id as any).nama_bank : rekening.kode_bank
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get saldo harian rekening (dual basis: input vs validated)
+export const getSaldoHarianRekening = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { kode_bank, no_rekening, start_date, end_date, page = '1', limit = '31' } = req.query;
+    if (!kode_bank || !no_rekening) {
+      return res.status(400).json({ message: 'kode_bank dan no_rekening diperlukan' });
+    }
+
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = Math.max(1, Math.min(365, parseInt(String(limit), 10) || 31));
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter: any = {
+      kode_bank: String(kode_bank),
+      no_rekening: String(no_rekening),
+    };
+    if (start_date || end_date) {
+      filter.tanggal = {};
+      if (start_date) filter.tanggal.$gte = String(start_date);
+      if (end_date) filter.tanggal.$lte = String(end_date);
+    }
+
+    const total = await RekeningSaldoHarian.countDocuments(filter);
+    const rows = await RekeningSaldoHarian.find(filter)
+      .sort({ tanggal: 1 })
+      .skip(skip)
+      .limit(limitNum)
+      .lean();
+
+    const data = rows.map((r: any) => {
+      const gap_harian = Number(r.total_transaksi_input || 0) - Number(r.total_transaksi_validated || 0);
+      const gap_kumulatif = Number(r.saldo_akhir_input || 0) - Number(r.saldo_akhir_validated || 0);
+      return { ...r, gap_harian, gap_kumulatif };
+    });
+
+    res.json({
+      data,
+      page: pageNum,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (error) {
     next(error);

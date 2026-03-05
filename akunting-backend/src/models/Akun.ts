@@ -4,6 +4,7 @@ import { ISubKategori } from './SubKategori';
 export interface IAkun extends Document {
   sub_kategori: string;
   sub_kategori_kode?: string;
+  budget_id?: mongoose.Types.ObjectId | null;
   akun: string;
   kode: string;
     status_aktv: boolean;
@@ -22,6 +23,7 @@ const AkunSchema: Schema = new Schema({
   status_aktv: { type: Boolean, default: true },
   active: { type: Boolean, default: true },
   sub_kategori_kode: { type: String, required: false },
+  budget_id: { type: Schema.Types.ObjectId, ref: 'Budget', required: false, default: null },
   akun: { type: String, required: true },
   kode: { type: String, required: true },
   input_date: { type: Date, default: Date.now },

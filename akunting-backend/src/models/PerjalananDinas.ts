@@ -3,9 +3,14 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type PerjalananStatus = 'BERJALAN' | 'SEDANG_DIAUDIT' | 'SELESAI';
 
 export interface IPostingMeta {
+  posting_mode?: 'REALISASI_FROM_SISA';
   posted_at?: Date;
   posted_by?: string;
   tt_finance_detail_id?: mongoose.Types.ObjectId;
+  inject_tt_finance_detail_id?: mongoose.Types.ObjectId;
+  attachment_target?: 'REALISASI' | 'INJECT';
+  sisa_dana_at_posting?: number;
+  nilai_realisasi?: number | null;
   kategori?: string;
   sub_kategori?: string;
   akun?: string;
@@ -85,9 +90,14 @@ const PerjalananDinasSchema = new Schema<IPerjalananDinas>(
     selesai_at: { type: Date },
     posted_to_tt_finance: { type: Boolean, default: false },
     posting_meta: {
+      posting_mode: { type: String, enum: ['REALISASI_FROM_SISA'] },
       posted_at: { type: Date },
       posted_by: { type: String },
       tt_finance_detail_id: { type: Schema.Types.ObjectId, ref: 'tt_finance_detail' },
+      inject_tt_finance_detail_id: { type: Schema.Types.ObjectId, ref: 'tt_finance_detail' },
+      attachment_target: { type: String, enum: ['REALISASI', 'INJECT'] },
+      sisa_dana_at_posting: { type: Number },
+      nilai_realisasi: { type: Number },
       kategori: { type: String },
       sub_kategori: { type: String },
       akun: { type: String },

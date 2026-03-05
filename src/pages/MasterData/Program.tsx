@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -143,6 +143,10 @@ export default function Program() {
 
   const [showReactivateDialog, setShowReactivateDialog] = useState(false);
   const [reactivateId, setReactivateId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterGroupProgram, setFilterGroupProgram] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Format number for input display (Indonesian format: 100.000)
   const formatNumberInput = (value: string) => {
@@ -204,6 +208,23 @@ export default function Program() {
     setFormattedBiaya('');
   };
 
+  const filteredProgramList = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return programList
+      .filter((item) => filterGroupProgram === 'ALL' || (item.group_program || '') === filterGroupProgram)
+      .filter((item) =>
+        !q ? true : `${item.kode} ${item.internal_kode || ''} ${item.nama} ${item.group_program || ''}`
+          .toLowerCase()
+          .includes(q)
+      );
+  }, [programList, filterGroupProgram, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProgramList.length / pageSize));
+  const displayRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredProgramList.slice(start, start + pageSize);
+  }, [filteredProgramList, page, pageSize]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
       {/* Background decorative elements */}
@@ -232,6 +253,55 @@ export default function Program() {
           </Button>
         </div>
 
+        <div className="bg-white/70 rounded-lg border-2 border-dashed border-blue-200 p-4 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col">
+            <Label htmlFor="search-program" className="text-sm font-semibold text-gray-700 mb-1">Cari</Label>
+            <Input
+              id="search-program"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari kode / nama / group program"
+              className="w-80 border-2 border-gray-200"
+            />
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="filter-group-program" className="text-sm font-semibold text-gray-700 mb-1">Filter Group Program</Label>
+            <select
+              id="filter-group-program"
+              value={filterGroupProgram}
+              onChange={(e) => {
+                setFilterGroupProgram(e.target.value);
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-56"
+            >
+              <option value="ALL">Semua</option>
+              {Array.from(new Set(programList.map((p) => p.group_program).filter(Boolean))).map((grp) => (
+                <option key={grp} value={grp}>{grp}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="page-size-program" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
+            <select
+              id="page-size-program"
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
           <Table className="table-fixed w-full">
             <TableHeader>
@@ -255,7 +325,7 @@ export default function Program() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : programList.length === 0 ? (
+              ) : filteredProgramList.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
@@ -269,7 +339,7 @@ export default function Program() {
                   </TableCell>
                 </TableRow>
               ) : (
-                programList.map((item) => (
+                displayRows.map((item) => (
                   <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-20 px-6 py-4 font-semibold text-gray-900">{item.kode}</TableCell>
                     <TableCell className="w-32 px-6 py-4 text-gray-700">{item.internal_kode || '-'}</TableCell>
@@ -302,6 +372,18 @@ export default function Program() {
               )}
             </TableBody>
           </Table>
+          <div className="flex items-center justify-between p-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">Total Data: {filteredProgramList.length}</div>
+            <div className="text-sm text-gray-600">Halaman {page} dari {totalPages}</div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                Sebelumnya
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </div>
 
         <ModalForm open={modalOpen} onOpenChange={handleCloseModal} title={editId ? 'Edit Program' : 'Tambah Program'}>

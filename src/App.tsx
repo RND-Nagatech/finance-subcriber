@@ -34,6 +34,8 @@ import VPS from "./pages/VPS";
 import Users from "./pages/Users";
 import UpdateLog from "./pages/UpdateLog";
 import RiwayatSaldoRekening from "./pages/RiwayatSaldoRekening";
+import SaldoHarianRekening from "./pages/SaldoHarianRekening";
+import SaldoHarianGenerator from "./pages/SaldoHarianGenerator";
 import PerjalananDinas from "./pages/PerjalananDinas";
 import PerjalananDinasTransaksi from "./pages/PerjalananDinasTransaksi";
 import PerjalananDinasDana from "./pages/PerjalananDinasDana";
@@ -274,6 +276,28 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <RiwayatSaldoRekening />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/saldo-harian-rekening"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <SaldoHarianRekening />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/saldo-harian-generator"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <SaldoHarianGenerator />
                 </MainLayout>
               </ProtectedRoute>
             }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -161,6 +161,10 @@ export default function SubKategori() {
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterKategori, setFilterKategori] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   // ...existing code...
 
   const handleDelete = (id: string) => {
@@ -181,6 +185,21 @@ export default function SubKategori() {
     setEditId(null);
     setFormData({ sub_kategori: '', kode: '', kategori: '', input_by: '' });
   };
+
+  const filteredSubKategoriList = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return data
+      .filter((item) => filterKategori === 'ALL' || item.kategori === filterKategori)
+      .filter((item) =>
+        !q ? true : `${item.kode} ${item.sub_kategori} ${item.kategori}`.toLowerCase().includes(q)
+      );
+  }, [data, filterKategori, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredSubKategoriList.length / pageSize));
+  const displayRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredSubKategoriList.slice(start, start + pageSize);
+  }, [filteredSubKategoriList, page, pageSize]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -209,6 +228,54 @@ export default function SubKategori() {
             Tambah Sub Kategori
           </Button>
         </div>
+        <div className="bg-white/70 rounded-lg border-2 border-dashed border-blue-200 p-4 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col">
+            <Label htmlFor="search-subkategori" className="text-sm font-semibold text-gray-700 mb-1">Cari</Label>
+            <Input
+              id="search-subkategori"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari kode / sub kategori / kategori"
+              className="w-80 border-2 border-gray-200"
+            />
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="filter-kategori-subkategori" className="text-sm font-semibold text-gray-700 mb-1">Filter Kategori</Label>
+            <select
+              id="filter-kategori-subkategori"
+              value={filterKategori}
+              onChange={(e) => {
+                setFilterKategori(e.target.value);
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-56"
+            >
+              <option value="ALL">Semua</option>
+              {Array.from(new Set(categories.map((cat: any) => cat.kategori))).map((kat) => (
+                <option key={kat} value={kat}>{kat}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="page-size-subkategori" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
+            <select
+              id="page-size-subkategori"
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-300">
           <Table className="table-fixed w-full">
             <TableHeader>
@@ -230,7 +297,7 @@ export default function SubKategori() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : data.length === 0 ? (
+              ) : filteredSubKategoriList.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
@@ -244,7 +311,7 @@ export default function SubKategori() {
                   </TableCell>
                 </TableRow>
               ) : (
-                data.map((item) => (
+                displayRows.map((item) => (
                   <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-20 px-6 py-4 font-semibold text-gray-900">{item.kode}</TableCell>
                     <TableCell className="w-64 px-6 py-4 font-medium text-gray-900">{item.sub_kategori}</TableCell>
@@ -275,6 +342,18 @@ export default function SubKategori() {
               )}
             </TableBody>
           </Table>
+          <div className="flex items-center justify-between p-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">Total Data: {filteredSubKategoriList.length}</div>
+            <div className="text-sm text-gray-600">Halaman {page} dari {totalPages}</div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                Sebelumnya
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </div>
 
         <ModalForm open={modalOpen} onOpenChange={handleCloseModal} title={editId ? 'Edit Sub Kategori' : 'Tambah Sub Kategori'}>

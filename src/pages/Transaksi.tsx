@@ -2378,6 +2378,12 @@ export default function Transaksi() {
 
           {/* Proyeksi Saldo */}
           {validationRekening && validateRow ? (
+            (() => {
+              const nilaiTransaksi = Number(validateRow.nilai || 0);
+              const deltaSaldo = validateRow.kategori === 'PENDAPATAN' ? nilaiTransaksi : -nilaiTransaksi;
+              const isPenambahan = deltaSaldo >= 0;
+              const saldoAkhir = Number(validationRekening.saldo || 0) + deltaSaldo;
+              return (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <h3 className="text-m font-semibold text-blue-900 mb-2">Proyeksi Saldo Rekening</h3>
               <div className="space-y-1 text-sm">
@@ -2395,24 +2401,22 @@ export default function Transaksi() {
                 </div>
                 <div className="flex justify-between">
                   <span>
-                    {validateRow.kategori === 'PENDAPATAN' ? 'Penambahan' : 'Pengurangan'}:
+                    {isPenambahan ? 'Penambahan' : 'Pengurangan'}:
                   </span>
-                  <span className={`font-medium ${validateRow.kategori === 'PENDAPATAN' ? 'text-green-600' : 'text-red-600'}`}>
-                    {validateRow.kategori === 'PENDAPATAN' ? '+' : '-'}{formatCurrency(validateRow.nilai)}
+                  <span className={`font-medium ${isPenambahan ? 'text-green-600' : 'text-red-600'}`}>
+                    {isPenambahan ? '+' : '-'}{formatCurrency(Math.abs(deltaSaldo))}
                   </span>
                 </div>
                 <div className="flex justify-between border-t border-blue-300 pt-1">
                   <span className="font-semibold">Saldo Akhir:</span>
                   <span className="font-semibold text-blue-900">
-                    {formatCurrency(
-                      validateRow.kategori === 'PENDAPATAN'
-                        ? validationRekening.saldo + validateRow.nilai
-                        : validationRekening.saldo - validateRow.nilai
-                    )}
+                    {formatCurrency(saldoAkhir)}
                   </span>
                 </div>
               </div>
             </div>
+              );
+            })()
           ) : validateRow?.rekening_id ? (
             <div className="text-gray-500 text-sm mb-4">Memuat data rekening...</div>
           ) : null}

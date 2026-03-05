@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import Kategori, { IKategori } from '../models/Kategori';
 import SubKategori, { ISubKategori } from '../models/SubKategori';
 import Akun, { IAkun } from '../models/Akun';
+import Budget from '../models/Budget';
 import Program, { IProgram } from '../models/Program';
 import Subscriber, { ISubscriber } from '../models/Subscriber';
 import CustomDashboard, { ICustomDashboard } from '../models/CustomDashboard';
@@ -296,15 +297,25 @@ export const listAkun = async (req: Request, res: Response) => {
 
     // Ambil data akun dan join sub kategori agar dapat _id
     const akunList = await Akun.find({ ...filter, status_aktv: true }).sort({ akun: 1 });
+    const budgetIds = Array.from(new Set(
+      akunList
+        .map((a: any) => a.budget_id ? String(a.budget_id) : '')
+        .filter(Boolean)
+    ));
+    const budgets = budgetIds.length > 0
+      ? await Budget.find({ _id: { $in: budgetIds } }).select('name year').lean()
+      : [];
     // Cari sub kategori berdasarkan nama untuk dapatkan _id
     const subKategoriAll = await SubKategori.find({});
     const list = akunList.map((a) => {
       const subKategoriObj = subKategoriAll.find(
         (sub) => sub.sub_kategori === a.sub_kategori
       );
+      const budgetObj = budgets.find((b: any) => String(b._id) === String((a as any).budget_id || ''));
       return {
         ...a.toObject(),
         subkategori_id: subKategoriObj ? subKategoriObj._id : '',
+        budget_name: budgetObj ? `${(budgetObj as any).name} (${(budgetObj as any).year})` : '',
       };
     });
     res.json(list);
@@ -316,7 +327,7 @@ export const listAkun = async (req: Request, res: Response) => {
 
 export const createAkun = async (req: Request, res: Response) => {
   try {
-    const { sub_kategori, akun } = req.body;
+    const { sub_kategori, akun, budget_id } = req.body;
     if (!sub_kategori || !akun) return res.status(400).json({ message: 'sub_kategori & akun required' });
     const userId = resolveUserId(req);
     const finalKode = await generateNextKode(Akun);
@@ -335,11 +346,27 @@ export const createAkun = async (req: Request, res: Response) => {
       kategoriNama = subKategoriDoc.kategori;
     }
 
+    let resolvedBudgetId: mongoose.Types.ObjectId | null = null;
+    if (budget_id && budget_id !== 'none') {
+      if (!mongoose.Types.ObjectId.isValid(String(budget_id))) {
+        return res.status(400).json({ message: 'budget_id tidak valid' });
+      }
+      const budgetDoc = await Budget.findOne({
+        _id: String(budget_id),
+        $or: [{ status_aktv: true }, { active: true }],
+      });
+      if (!budgetDoc) {
+        return res.status(400).json({ message: 'Budget tidak ditemukan atau tidak aktif' });
+      }
+      resolvedBudgetId = budgetDoc._id as any;
+    }
+
     const a = new Akun({
       sub_kategori: subKategoriNama,
       sub_kategori_id: subKategoriId,
       sub_kategori_kode: subKategoriKode,
       kategori: kategoriNama,
+      budget_id: resolvedBudgetId,
       akun,
       kode: finalKode,
       input_date: new Date(),
@@ -361,7 +388,7 @@ export const createAkun = async (req: Request, res: Response) => {
 export const updateAkun = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { sub_kategori, akun, kode } = req.body;
+    const { sub_kategori, akun, kode, budget_id } = req.body;
     const userId = resolveUserId(req);
 
     // Ambil akun lama
@@ -369,16 +396,46 @@ export const updateAkun = async (req: Request, res: Response) => {
     if (!oldAkun) return res.status(404).json({ message: 'Akun not found' });
 
     // sub_kategori dikirim sebagai _id, ambil nama sub kategori
-    let subKategoriNama = sub_kategori;
-    if (mongoose.Types.ObjectId.isValid(sub_kategori)) {
-      const subKategoriDoc = await SubKategori.findById(sub_kategori);
-      if (!subKategoriDoc) return res.status(400).json({ message: 'SubKategori tidak ditemukan' });
-      subKategoriNama = subKategoriDoc.sub_kategori;
+    let subKategoriNama = oldAkun.sub_kategori;
+    if (sub_kategori !== undefined) {
+      subKategoriNama = sub_kategori;
+      if (mongoose.Types.ObjectId.isValid(sub_kategori)) {
+        const subKategoriDoc = await SubKategori.findById(sub_kategori);
+        if (!subKategoriDoc) return res.status(400).json({ message: 'SubKategori tidak ditemukan' });
+        subKategoriNama = subKategoriDoc.sub_kategori;
+      }
+    }
+
+    let resolvedBudgetId: mongoose.Types.ObjectId | null = (oldAkun as any).budget_id || null;
+    if (budget_id !== undefined) {
+      if (!budget_id || budget_id === 'none') {
+        resolvedBudgetId = null;
+      } else {
+        if (!mongoose.Types.ObjectId.isValid(String(budget_id))) {
+          return res.status(400).json({ message: 'budget_id tidak valid' });
+        }
+        const budgetDoc = await Budget.findOne({
+          _id: String(budget_id),
+          $or: [{ status_aktv: true }, { active: true }],
+        });
+        if (!budgetDoc) {
+          return res.status(400).json({ message: 'Budget tidak ditemukan atau tidak aktif' });
+        }
+        resolvedBudgetId = budgetDoc._id as any;
+      }
     }
 
     const a = await Akun.findByIdAndUpdate(
       id,
-      { sub_kategori: subKategoriNama, akun, kode, update_date: new Date(), update_by: userId, status_aktv: req.body.status_aktv ?? true },
+      {
+        sub_kategori: subKategoriNama,
+        akun: akun ?? oldAkun.akun,
+        kode: kode ?? oldAkun.kode,
+        budget_id: resolvedBudgetId,
+        update_date: new Date(),
+        update_by: userId,
+        status_aktv: req.body.status_aktv ?? true
+      },
       { new: true }
     );
 

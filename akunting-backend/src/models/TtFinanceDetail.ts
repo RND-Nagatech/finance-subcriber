@@ -25,6 +25,7 @@ export interface ITtFinanceDetail extends Document {
   validator_notes?: string;
   validator_notes_by?: string;
   validator_notes_at?: Date;
+  validated_at?: Date;
   kode_perusahaan?: string;
   nama_perusahaan?: string;
   kode_bank?: string;
@@ -37,6 +38,7 @@ const TtFinanceDetailSchema: Schema = new Schema({
   validator_notes: { type: String },
   validator_notes_by: { type: String },
   validator_notes_at: { type: Date },
+  validated_at: { type: Date },
   tanggal: { type: String, required: true },
   bulan: { type: String, required: true },
   tahun_fiskal: { type: String },

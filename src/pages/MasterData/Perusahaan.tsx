@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -49,6 +49,9 @@ export default function Perusahaan() {
   const { user } = useAppStore();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Fetch perusahaan
   const { data: perusahaanList = [], isLoading } = useQuery<Perusahaan[]>({
@@ -135,6 +138,20 @@ export default function Perusahaan() {
     }
   };
 
+  const filteredPerusahaanList = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return perusahaanList;
+    return perusahaanList.filter((p) =>
+      `${p.kode_perusahaan} ${p.nama_perusahaan}`.toLowerCase().includes(q)
+    );
+  }, [perusahaanList, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPerusahaanList.length / pageSize));
+  const displayRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredPerusahaanList.slice(start, start + pageSize);
+  }, [filteredPerusahaanList, page, pageSize]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
       {/* Background decorative elements */}
@@ -163,6 +180,38 @@ export default function Perusahaan() {
           </Button>
         </div>
 
+        <div className="bg-white/70 rounded-lg border-2 border-dashed border-blue-200 p-4 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col">
+            <Label htmlFor="search-perusahaan" className="text-sm font-semibold text-gray-700 mb-1">Cari</Label>
+            <Input
+              id="search-perusahaan"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari kode / nama perusahaan"
+              className="w-80 border-2 border-gray-200"
+            />
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="page-size-perusahaan" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
+            <select
+              id="page-size-perusahaan"
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
           <Table className="table-fixed w-full">
             <TableHeader>
@@ -182,7 +231,7 @@ export default function Perusahaan() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : perusahaanList.length === 0 ? (
+              ) : filteredPerusahaanList.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
@@ -196,7 +245,7 @@ export default function Perusahaan() {
                   </TableCell>
                 </TableRow>
               ) : (
-                perusahaanList.map((p) => (
+                displayRows.map((p) => (
                   <TableRow key={p._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-40 px-6 py-4 font-semibold text-gray-900">{p.kode_perusahaan}</TableCell>
                     <TableCell className="w-96 px-6 py-4 font-medium text-gray-900">{p.nama_perusahaan}</TableCell>
@@ -225,6 +274,18 @@ export default function Perusahaan() {
               )}
             </TableBody>
           </Table>
+          <div className="flex items-center justify-between p-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">Total Data: {filteredPerusahaanList.length}</div>
+            <div className="text-sm text-gray-600">Halaman {page} dari {totalPages}</div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                Sebelumnya
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </div>
 
         <ModalForm open={modalOpen} onOpenChange={setModalOpen} title={editId ? 'Edit Perusahaan' : 'Tambah Perusahaan'}>

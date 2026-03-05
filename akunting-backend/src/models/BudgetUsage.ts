@@ -7,6 +7,11 @@ export interface IBudgetUsage extends Document {
   description: string;
   attachment?: string;
   usage_date: Date;
+  source_type?: 'MANUAL' | 'TRANSAKSI_VALIDATION';
+  source_ref_id?: mongoose.Types.ObjectId | null;
+  source_ref_model?: 'TtFinanceDetail' | null;
+  reversed_at?: Date | null;
+  reversed_by?: string | null;
   status_aktv: boolean;
   input_date: Date;
   update_date: Date;
@@ -22,6 +27,11 @@ const BudgetUsageSchema: Schema = new Schema({
   description: { type: String, required: true },
   attachment: { type: String, default: null },
   usage_date: { type: Date, required: true },
+  source_type: { type: String, enum: ['MANUAL', 'TRANSAKSI_VALIDATION'], default: 'MANUAL' },
+  source_ref_id: { type: Schema.Types.ObjectId, ref: 'TtFinanceDetail', default: null },
+  source_ref_model: { type: String, enum: ['TtFinanceDetail'], default: null },
+  reversed_at: { type: Date, default: null },
+  reversed_by: { type: String, default: null },
   status_aktv: { type: Boolean, default: true },
   active: { type: Boolean, default: true },
   input_date: { type: Date, default: Date.now },
@@ -33,5 +43,16 @@ const BudgetUsageSchema: Schema = new Schema({
   delete_by: { type: String, default: null },
   deleted_by: { type: String, default: null },
 });
+
+BudgetUsageSchema.index(
+  { source_type: 1, source_ref_id: 1, active: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      source_type: 'TRANSAKSI_VALIDATION',
+      active: true,
+    },
+  }
+);
 
 export default mongoose.model<IBudgetUsage>('BudgetUsage', BudgetUsageSchema, 'tm_budget_usage');

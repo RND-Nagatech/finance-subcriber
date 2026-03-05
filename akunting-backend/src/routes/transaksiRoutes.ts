@@ -4,7 +4,8 @@ import path from 'path';
 import { Router } from 'express';
 import multer from 'multer';
 import { exportTransaksiExcel } from '../controllers/exportExcelController';
-import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment, updateValidatorNotes, getRiwayatSaldoRekening, getSaldoRekening } from '../controllers/transaksiController';
+import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment, updateValidatorNotes, getRiwayatSaldoRekening, getSaldoRekening, getSaldoHarianRekening } from '../controllers/transaksiController';
+import { previewSaldoHarianRekening, commitSaldoHarianRekening } from '../controllers/saldoHarianGeneratorController';
 import { authenticate } from '../middleware/authMiddleware';
 import { listTtFinanceDetail } from '../controllers/ttFinanceDetailController';
 
@@ -56,5 +57,8 @@ router.delete('/:id/attachments/:filename', deleteAttachment);
 // Riwayat Saldo Rekening
 router.get('/riwayat-saldo-rekening', getRiwayatSaldoRekening);
 router.get('/saldo-rekening', getSaldoRekening);
+router.get('/saldo-harian-rekening', getSaldoHarianRekening);
+router.post('/saldo-harian-rekening/preview', authenticate, previewSaldoHarianRekening);
+router.post('/saldo-harian-rekening/commit', authenticate, commitSaldoHarianRekening);
 
 export default router;

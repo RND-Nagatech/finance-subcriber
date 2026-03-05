@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
@@ -7,6 +7,13 @@ import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -17,6 +24,14 @@ import {
 } from '@/components/ui/table';
 import { ModalForm } from '../../components/ModalForm';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../../components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface Bank {
   _id?: string;
@@ -43,6 +58,19 @@ export default function Rekening() {
   const [saldoDisplay, setSaldoDisplay] = useState<string>('0');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferNominalDisplay, setTransferNominalDisplay] = useState('0');
+  const [transferForm, setTransferForm] = useState({
+    from_rekening_id: '',
+    to_rekening_id: '',
+    nominal: 0,
+    tanggal: new Date().toISOString().slice(0, 10),
+    keterangan: '',
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterBank, setFilterBank] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Helper functions for currency formatting
   const formatCurrency = (value: number): string => {
@@ -109,6 +137,28 @@ export default function Rekening() {
     },
   });
 
+  const transferMutation = useMutation({
+    mutationFn: async (payload: typeof transferForm) => {
+      return axiosInstance.post('/master/rekening/transfer-saldo', payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rekening-all'] });
+      toast.success('Transfer saldo berhasil diproses.');
+      setTransferDialogOpen(false);
+      setTransferForm({
+        from_rekening_id: '',
+        to_rekening_id: '',
+        nominal: 0,
+        tanggal: new Date().toISOString().slice(0, 10),
+        keterangan: '',
+      });
+      setTransferNominalDisplay('0');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Gagal transfer saldo.');
+    },
+  });
+
   const handleOpenModal = (rekening?: Rekening) => {
     if (rekening) {
       let bank_id = rekening.bank_id;
@@ -163,6 +213,23 @@ export default function Rekening() {
     saveMutation.mutate(formData);
   };
 
+  const handleTransferSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferForm.from_rekening_id || !transferForm.to_rekening_id) {
+      toast.error('Pilih rekening sumber dan rekening tujuan.');
+      return;
+    }
+    if (transferForm.from_rekening_id === transferForm.to_rekening_id) {
+      toast.error('Rekening sumber dan tujuan tidak boleh sama.');
+      return;
+    }
+    if (!transferForm.nominal || transferForm.nominal <= 0) {
+      toast.error('Nominal transfer harus lebih besar dari 0.');
+      return;
+    }
+    transferMutation.mutate(transferForm);
+  };
+
   const handleDelete = (id: string) => {
     setDeleteId(id);
     setShowDeleteDialog(true);
@@ -175,6 +242,35 @@ export default function Rekening() {
       setDeleteId(null);
     }
   };
+
+  const filteredRekeningList = useMemo(() => {
+    let rows = [...rekeningList];
+    if (filterBank !== 'ALL') {
+      rows = rows.filter((r) => (r.kode_bank || '') === filterBank);
+    }
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((r) =>
+        `${r.kode_bank || ''} ${r.no_rekening || ''} ${r.nama_rekening || ''}`
+          .toLowerCase()
+          .includes(q)
+      );
+    }
+    return rows;
+  }, [rekeningList, filterBank, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRekeningList.length / pageSize));
+  const pagedRekeningList = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRekeningList.slice(start, start + pageSize);
+  }, [filteredRekeningList, page, pageSize]);
+
+  const bankFilterOptions = useMemo(() => {
+    return Array.from(new Set(rekeningList.map((r) => r.kode_bank).filter(Boolean)));
+  }, [rekeningList]);
+
+  const formatRekeningOptionLabel = (r: Rekening) =>
+    `${r.kode_bank || '-'} - ${r.no_rekening} - ${r.nama_rekening} (Saldo: Rp ${new Intl.NumberFormat('id-ID').format(r.saldo || 0)})`;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -195,12 +291,70 @@ export default function Rekening() {
             </h1>
             <p className="text-gray-600 mt-2">Kelola data rekening</p>
           </div>
-          <Button
-            onClick={() => handleOpenModal()}
-            className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
-          >
-            Tambah Rekening
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setTransferDialogOpen(true)}
+              variant="outline"
+              className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+            >
+              Transfer Saldo
+            </Button>
+            <Button
+              onClick={() => handleOpenModal()}
+              className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+            >
+              Tambah Rekening
+            </Button>
+          </div>
+        </div>
+
+        <div className="bg-white/70 rounded-lg border-2 border-dashed border-blue-200 p-4 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col">
+            <Label htmlFor="search-rekening" className="text-sm font-semibold text-gray-700 mb-1">Cari</Label>
+            <Input
+              id="search-rekening"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Kode bank / No rekening / Nama rekening"
+              className="w-80 border-2 border-gray-200"
+            />
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="filter-bank" className="text-sm font-semibold text-gray-700 mb-1">Filter Bank</Label>
+            <select
+              id="filter-bank"
+              value={filterBank}
+              onChange={(e) => {
+                setFilterBank(e.target.value);
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-48"
+            >
+              <option value="ALL">Semua</option>
+              {bankFilterOptions.map((bank) => (
+                <option key={bank} value={bank}>{bank}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="page-size-rekening" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
+            <select
+              id="page-size-rekening"
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
         </div>
 
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
@@ -226,7 +380,7 @@ export default function Rekening() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : rekeningList.length === 0 ? (
+              ) : filteredRekeningList.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={canViewSaldo ? 5 : 4} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
@@ -240,7 +394,7 @@ export default function Rekening() {
                   </TableCell>
                 </TableRow>
               ) : (
-                rekeningList.map((r) => (
+                pagedRekeningList.map((r) => (
                   <TableRow key={r._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-40 px-6 py-4 font-semibold text-gray-900">
                       {r.kode_bank || '-'}
@@ -277,6 +431,32 @@ export default function Rekening() {
               )}
             </TableBody>
           </Table>
+          <div className="flex items-center justify-between p-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">
+              Total Data: {filteredRekeningList.length}
+            </div>
+            <div className="text-sm text-gray-600">
+              Halaman {page} dari {totalPages}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                Sebelumnya
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </div>
 
         <ModalForm open={modalOpen} onOpenChange={setModalOpen} title={editId ? 'Edit Rekening' : 'Tambah Rekening'}>
@@ -380,6 +560,100 @@ export default function Rekening() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+          <DialogContent className="sm:max-w-[560px]">
+            <DialogHeader>
+              <DialogTitle>Transfer Saldo Antar Rekening</DialogTitle>
+              <DialogDescription>
+                Pindahkan saldo dari rekening sumber ke rekening tujuan.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleTransferSubmit} className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="from_rekening_id">Rekening Sumber</Label>
+                <Select
+                  value={transferForm.from_rekening_id}
+                  onValueChange={(value) => setTransferForm((p) => ({ ...p, from_rekening_id: value }))}
+                >
+                  <SelectTrigger id="from_rekening_id" className="border-2 border-gray-200">
+                    <SelectValue placeholder="Pilih rekening sumber" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {rekeningList.filter((r) => !!r._id).map((r) => (
+                      <SelectItem key={r._id} value={r._id as string}>
+                        <span className="block max-w-[460px] truncate" title={formatRekeningOptionLabel(r)}>
+                          {formatRekeningOptionLabel(r)}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="to_rekening_id">Rekening Tujuan</Label>
+                <Select
+                  value={transferForm.to_rekening_id}
+                  onValueChange={(value) => setTransferForm((p) => ({ ...p, to_rekening_id: value }))}
+                >
+                  <SelectTrigger id="to_rekening_id" className="border-2 border-gray-200">
+                    <SelectValue placeholder="Pilih rekening tujuan" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {rekeningList.filter((r) => !!r._id).map((r) => (
+                      <SelectItem key={r._id} value={r._id as string}>
+                        <span className="block max-w-[460px] truncate" title={formatRekeningOptionLabel(r)}>
+                          {formatRekeningOptionLabel(r)}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="nominal_transfer">Nominal Transfer (Rp)</Label>
+                <Input
+                  id="nominal_transfer"
+                  value={transferNominalDisplay}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d]/g, '');
+                    const amount = Number(raw || 0);
+                    setTransferForm((p) => ({ ...p, nominal: amount }));
+                    setTransferNominalDisplay(raw.replace(/\B(?=(\d{3})+(?!\d))/g, '.'));
+                  }}
+                  placeholder="0"
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="tanggal_transfer">Tanggal</Label>
+                <Input
+                  id="tanggal_transfer"
+                  type="date"
+                  value={transferForm.tanggal}
+                  onChange={(e) => setTransferForm((p) => ({ ...p, tanggal: e.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="ket_transfer">Keterangan</Label>
+                <Input
+                  id="ket_transfer"
+                  value={transferForm.keterangan}
+                  onChange={(e) => setTransferForm((p) => ({ ...p, keterangan: e.target.value }))}
+                  placeholder="Opsional"
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setTransferDialogOpen(false)}>
+                  Batal
+                </Button>
+                <Button type="submit" disabled={transferMutation.isPending}>
+                  {transferMutation.isPending ? 'Memproses...' : 'Transfer Saldo'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

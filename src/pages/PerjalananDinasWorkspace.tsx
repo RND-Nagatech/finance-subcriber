@@ -19,7 +19,6 @@ import {
   listPerjalananDinas,
   listPerjalananItems,
   postPerjalananToTtFinance,
-  returnPerjalananDana,
   submitPerjalananAudit,
   updatePerjalananItem,
   updatePerjalananItemAuditStatus,
@@ -56,7 +55,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowDownLeft, ArrowUpRight, MoreHorizontal, Plus } from 'lucide-react';
+import { ArrowUpRight, MoreHorizontal, Plus } from 'lucide-react';
 
 type WorkspaceView = 'header' | 'transaksi' | 'dana' | 'audit';
 
@@ -176,9 +175,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [itemDialogFiles, setItemDialogFiles] = useState<File[]>([]);
   const [injectForm, setInjectForm] = useState({ tanggal: todayYmd(), nominal: '', rekening_id: '', perusahaan_id: '', keterangan: '', kategori: '', sub_kategori: '', akun: '' });
-  const [returnForm, setReturnForm] = useState({ tanggal: todayYmd(), nominal: '', rekening_id: '', keterangan: '' });
   const [injectDanaFiles, setInjectDanaFiles] = useState<File[]>([]);
-  const [returnDanaFiles, setReturnDanaFiles] = useState<File[]>([]);
   const [auditNotesByItem, setAuditNotesByItem] = useState<Record<string, string>>({});
   const [auditNominalByItem, setAuditNominalByItem] = useState<Record<string, string>>({});
   const [auditKetByItem, setAuditKetByItem] = useState<Record<string, string>>({});
@@ -389,32 +386,6 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
-  const returnMut = useMutation({
-    mutationFn: async () => {
-      const res = await returnPerjalananDana(selectedTripId, { ...returnForm, nominal: Number(returnForm.nominal) });
-      const ledgerId = res?.ledger?._id;
-      if (ledgerId && returnDanaFiles.length > 0) {
-        try {
-          await uploadPerjalananDanaAttachments(selectedTripId, String(ledgerId), returnDanaFiles);
-        } catch (err) {
-          return { ...res, __attachmentUploadError: getErrorMessage(err) };
-        }
-      }
-      return res;
-    },
-    onSuccess: async (res: any) => {
-      if (res?.__attachmentUploadError) {
-        toast.warn(`Return dana berhasil, tetapi upload bukti gagal: ${res.__attachmentUploadError}`);
-      } else {
-        toast.success('Return dana berhasil');
-      }
-      setReturnForm({ tanggal: todayYmd(), nominal: '', rekening_id: '', keterangan: '' });
-      setReturnDanaFiles([]);
-      await invalidateSelectedTrip();
-    },
-    onError: (e) => toast.error(getErrorMessage(e)),
-  });
-
   const postingMut = useMutation({
     mutationFn: () => postPerjalananToTtFinance(selectedTripId, {}),
     onSuccess: async () => {
@@ -431,16 +402,21 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
     () => danaRows.find((d) => d.jenis === 'INJECT'),
     [danaRows]
   );
-  const calculatedPostingValue = useMemo(() => {
-    const injectAwal = Number(latestInjectLedger?.nominal || 0);
-    const totalReturn = Number(activeSummary?.total_return || 0);
-    return injectAwal - totalReturn;
-  }, [latestInjectLedger, activeSummary?.total_return]);
+  const postingSisaDana = useMemo(
+    () => Number(activeSummary?.sisa_dana || 0),
+    [activeSummary?.sisa_dana]
+  );
+  const willCreateRealisasi = postingSisaDana > 0;
+  const realisasiPostingValue = willCreateRealisasi ? -postingSisaDana : 0;
   const estimatedMergedAttachmentCount = useMemo(() => {
     const itemCount = items.reduce((sum, it) => sum + (it.attachments?.length || 0), 0);
     const danaCount = danaRows.reduce((sum, d) => sum + (d.attachments?.length || 0), 0);
     return itemCount + danaCount;
   }, [items, danaRows]);
+  const estimatedItemAttachmentCount = useMemo(
+    () => items.reduce((sum, it) => sum + (it.attachments?.length || 0), 0),
+    [items]
+  );
   const selectedHeaderFull = detailQuery.data?.header || selectedHeader;
   const transaksiInputLocked = String((selectedHeaderFull as any)?.status || '') !== 'BERJALAN';
 
@@ -1035,7 +1011,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
       )}
 
       {view === 'dana' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           <Card className="bg-white/85 backdrop-blur-md border-blue-100 shadow-sm overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-blue-500 to-indigo-600" />
             <CardHeader className="pb-3">
@@ -1049,26 +1025,28 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Tanggal Inject</Label>
-                <Input
-                  type="date"
-                  value={injectForm.tanggal}
-                  onChange={(e) => setInjectForm({ ...injectForm, tanggal: e.target.value })}
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Nominal Inject</Label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="Contoh: 1.500.000"
-                  value={formatCurrencyInput(injectForm.nominal)}
-                  onChange={(e) => setInjectForm({ ...injectForm, nominal: parseCurrencyInput(e.target.value) })}
-                  className="h-11"
-                />
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Tanggal Inject</Label>
+                  <Input
+                    type="date"
+                    value={injectForm.tanggal}
+                    onChange={(e) => setInjectForm({ ...injectForm, tanggal: e.target.value })}
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Nominal Inject</Label>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Contoh: 1.500.000"
+                    value={formatCurrencyInput(injectForm.nominal)}
+                    onChange={(e) => setInjectForm({ ...injectForm, nominal: parseCurrencyInput(e.target.value) })}
+                    className="h-11"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="space-y-2">
@@ -1117,35 +1095,37 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                   </Select>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Perusahaan</Label>
-                <Select value={injectForm.perusahaan_id} onValueChange={(value) => setInjectForm({ ...injectForm, perusahaan_id: value })}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Pilih perusahaan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(perusahaanQuery.data || []).map((p: any) => (
-                      <SelectItem key={p._id} value={p._id}>
-                        {p.nama_perusahaan} ({p.kode_perusahaan})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Rekening Sumber</Label>
-                <Select value={injectForm.rekening_id} onValueChange={(value) => setInjectForm({ ...injectForm, rekening_id: value })}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Pilih rekening" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(rekeningQuery.data || []).map((r: any) => (
-                      <SelectItem key={r._id} value={r._id}>
-                        {r.kode_bank} - {r.no_rekening} ({r.nama_rekening})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Perusahaan</Label>
+                  <Select value={injectForm.perusahaan_id} onValueChange={(value) => setInjectForm({ ...injectForm, perusahaan_id: value })}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Pilih perusahaan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(perusahaanQuery.data || []).map((p: any) => (
+                        <SelectItem key={p._id} value={p._id}>
+                          {p.nama_perusahaan} ({p.kode_perusahaan})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Rekening Sumber</Label>
+                  <Select value={injectForm.rekening_id} onValueChange={(value) => setInjectForm({ ...injectForm, rekening_id: value })}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue placeholder="Pilih rekening" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(rekeningQuery.data || []).map((r: any) => (
+                        <SelectItem key={r._id} value={r._id}>
+                          {r.kode_bank} - {r.no_rekening} ({r.nama_rekening})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Keterangan</Label>
@@ -1181,102 +1161,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
             </CardContent>
           </Card>
 
-          <Card className="bg-white/85 backdrop-blur-md border-emerald-100 shadow-sm overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-emerald-500 to-teal-600" />
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                  <ArrowDownLeft className="w-5 h-5" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Return Sisa Dana (Final)</CardTitle>
-                  <p className="text-xs text-gray-500 mt-1">Kembalikan sisa dana saat status sedang diaudit atau setelah audit selesai</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3">
-                <div className="text-xs text-emerald-700 font-medium">Sisa Dana Saat Ini</div>
-                <div className="text-lg font-bold text-emerald-800">
-                  Rp {Number(activeSummary?.sisa_dana || 0).toLocaleString('id-ID')}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Tanggal Return</Label>
-                <Input
-                  type="date"
-                  value={returnForm.tanggal}
-                  onChange={(e) => setReturnForm({ ...returnForm, tanggal: e.target.value })}
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Nominal Return</Label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="Harus sama dengan sisa dana"
-                  value={formatCurrencyInput(returnForm.nominal)}
-                  onChange={(e) => setReturnForm({ ...returnForm, nominal: parseCurrencyInput(e.target.value) })}
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Rekening Tujuan</Label>
-                <Select value={returnForm.rekening_id} onValueChange={(value) => setReturnForm({ ...returnForm, rekening_id: value })}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue placeholder="Pilih rekening" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(rekeningQuery.data || []).map((r: any) => (
-                      <SelectItem key={r._id} value={r._id}>
-                        {r.kode_bank} - {r.no_rekening} ({r.nama_rekening})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Keterangan</Label>
-                <Input
-                  placeholder="Contoh: Return sisa dana perjalanan"
-                  value={returnForm.keterangan}
-                  onChange={(e) => setReturnForm({ ...returnForm, keterangan: e.target.value })}
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Attachment Bukti Return (Opsional)</Label>
-                <Input
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf"
-                  className="h-11"
-                  onChange={(e) => setReturnDanaFiles(Array.from(e.target.files || []))}
-                />
-                {returnDanaFiles.length > 0 && (
-                  <div className="text-xs text-gray-500">{returnDanaFiles.length} file dipilih</div>
-                )}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  className="h-11 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                  onClick={() => setReturnForm((prev) => ({ ...prev, nominal: String(Math.max(Number(activeSummary?.sisa_dana || 0), 0)) }))}
-                >
-                  Isi Nominal Sisa
-                </Button>
-                <Button
-                  className="h-11 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800"
-                  disabled={!selectedTripId || !isOffice || returnMut.isPending}
-                  onClick={() => returnMut.mutate()}
-                >
-                  {returnMut.isPending ? 'Memproses Return...' : 'Return Dana'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="xl:col-span-2 bg-white/85 backdrop-blur-md border-blue-100 shadow-sm overflow-hidden">
+          <Card className="bg-white/85 backdrop-blur-md border-blue-100 shadow-sm overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-slate-500 via-blue-500 to-emerald-500" />
             <CardHeader className="pb-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -1580,7 +1465,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <CardTitle className="text-base">Finalisasi Audit & Posting</CardTitle>
-                  <p className="text-xs text-gray-500 mt-1">Finalisasi audit perjalanan dan posting total approved ke modul transaksi (tt_finance_detail)</p>
+                  <p className="text-xs text-gray-500 mt-1">Finalisasi audit perjalanan dan posting berbasis sisa dana ke modul transaksi (tt_finance_detail)</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge value={(selectedHeaderFull as any)?.status || '-'} />
@@ -1632,7 +1517,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                   <div className="text-sm font-semibold text-slate-800">Posting Transaksi</div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="rounded-xl border border-white bg-white p-3">
-                      <div className="text-xs text-slate-500">Target Inject (Terakhir)</div>
+                      <div className="text-xs text-slate-500">Inject Dana Terakhir</div>
                       {latestInjectLedger ? (
                         <div className="mt-2 space-y-1">
                           <div className="text-sm font-semibold text-slate-900">
@@ -1647,34 +1532,51 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                           <div className="text-xs text-slate-500">
                             Total return perjalanan: Rp {Number(activeSummary?.total_return || 0).toLocaleString('id-ID')}
                           </div>
+                          <div className="text-xs text-slate-500">
+                            Sisa dana saat ini: Rp {Number(postingSisaDana || 0).toLocaleString('id-ID')}
+                          </div>
                         </div>
                       ) : (
                         <div className="mt-2 text-xs text-amber-700">Belum ada inject dana.</div>
                       )}
                     </div>
                     <div className="rounded-xl border border-white bg-white p-3">
-                      <div className="text-xs text-slate-500">Preview Lampiran Merge</div>
+                      <div className="text-xs text-slate-500">Target Lampiran Posting</div>
                       <div className="mt-2 space-y-1 text-xs text-slate-600">
-                        <div>Item perjalanan: {items.reduce((sum, it) => sum + (it.attachments?.length || 0), 0)} file</div>
-                        <div>Inject + Return: {danaRows.reduce((sum, d) => sum + (d.attachments?.length || 0), 0)} file</div>
-                        <div className="font-semibold text-blue-700">Estimasi total: {estimatedMergedAttachmentCount} file</div>
+                        {willCreateRealisasi ? (
+                          <>
+                            <div>Target transaksi: REALISASI (BIAYA / LAIN LAIN / REALISASI)</div>
+                            <div>Item perjalanan: {estimatedItemAttachmentCount} file</div>
+                            <div>Inject + Return: {danaRows.reduce((sum, d) => sum + (d.attachments?.length || 0), 0)} file</div>
+                            <div className="font-semibold text-blue-700">Estimasi total merge: {estimatedMergedAttachmentCount} file</div>
+                          </>
+                        ) : (
+                          <>
+                            <div>Target transaksi: Inject dana terakhir</div>
+                            <div>Sumber lampiran: Item perjalanan saja</div>
+                            <div className="font-semibold text-blue-700">Estimasi total item: {estimatedItemAttachmentCount} file</div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-blue-100 bg-white p-3">
                     <div>
-                      <div className="text-xs text-slate-500">Nilai yang akan diposting</div>
+                      <div className="text-xs text-slate-500">Nilai transaksi REALISASI</div>
                       <div className="text-lg font-bold text-blue-900">
-                        Rp {Number(calculatedPostingValue || 0).toLocaleString('id-ID')}
+                        Rp {Number(realisasiPostingValue || 0).toLocaleString('id-ID')}
                       </div>
                       <div className="text-[11px] text-slate-500 mt-1">
-                        Rumus: Inject terakhir - Total Return
+                        Rumus: REALISASI = -sisa_dana (hanya dibuat jika sisa dana &gt; 0)
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-1">
+                        Jika sisa dana ≤ 0: tidak membuat transaksi REALISASI, hanya sinkron lampiran item ke transaksi inject.
                       </div>
                     </div>
                     <Button
                       className="h-11 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800"
-                      disabled={!selectedTripId || !canPost || postingMut.isPending || !!(selectedHeaderFull as any)?.posted_to_tt_finance || !latestInjectLedger || calculatedPostingValue <= 0}
+                      disabled={!selectedTripId || !canPost || postingMut.isPending || !!(selectedHeaderFull as any)?.posted_to_tt_finance || !latestInjectLedger}
                       onClick={() => postingMut.mutate()}
                     >
                       {postingMut.isPending ? 'Posting...' : 'Posting Transaksi'}

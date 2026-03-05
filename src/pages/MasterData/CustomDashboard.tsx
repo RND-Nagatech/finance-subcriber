@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -149,6 +149,10 @@ export default function CustomDashboard() {
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterSubKategori, setFilterSubKategori] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const handleDelete = (id: string) => {
     setDeleteId(id);
@@ -185,6 +189,23 @@ export default function CustomDashboard() {
     }));
   };
 
+  const filteredCustomDashboards = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return data
+      .filter((item) => filterSubKategori === 'ALL' || (item.sub_kategories || []).includes(filterSubKategori))
+      .filter((item) =>
+        !q ? true : `${item.title} ${(item.sub_kategories || []).join(' ')} ${item.input_by || ''}`
+          .toLowerCase()
+          .includes(q)
+      );
+  }, [data, filterSubKategori, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCustomDashboards.length / pageSize));
+  const displayRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredCustomDashboards.slice(start, start + pageSize);
+  }, [filteredCustomDashboards, page, pageSize]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
       {/* Background decorative elements */}
@@ -213,6 +234,55 @@ export default function CustomDashboard() {
           </Button>
         </div>
 
+        <div className="bg-white/70 rounded-lg border-2 border-dashed border-blue-200 p-4 flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col">
+            <Label htmlFor="search-custom-dashboard" className="text-sm font-semibold text-gray-700 mb-1">Cari</Label>
+            <Input
+              id="search-custom-dashboard"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Cari title / sub kategori / input by"
+              className="w-80 border-2 border-gray-200"
+            />
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="filter-sub-custom-dashboard" className="text-sm font-semibold text-gray-700 mb-1">Filter Sub Kategori</Label>
+            <select
+              id="filter-sub-custom-dashboard"
+              value={filterSubKategori}
+              onChange={(e) => {
+                setFilterSubKategori(e.target.value);
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-56"
+            >
+              <option value="ALL">Semua</option>
+              {Array.from(new Set(subKategories.map((s: any) => s.sub_kategori))).map((sub) => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col">
+            <Label htmlFor="page-size-custom-dashboard" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
+            <select
+              id="page-size-custom-dashboard"
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
+            >
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-300">
           <Table className="table-fixed w-full">
             <TableHeader>
@@ -233,7 +303,7 @@ export default function CustomDashboard() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : data.length === 0 ? (
+              ) : filteredCustomDashboards.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
@@ -247,7 +317,7 @@ export default function CustomDashboard() {
                   </TableCell>
                 </TableRow>
               ) : (
-                data.map((item) => (
+                displayRows.map((item) => (
                   <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="w-64 px-6 py-4 font-semibold text-gray-900">{item.title}</TableCell>
                     <TableCell className="w-96 px-6 py-4 text-gray-700">
@@ -285,6 +355,18 @@ export default function CustomDashboard() {
               )}
             </TableBody>
           </Table>
+          <div className="flex items-center justify-between p-4 border-t border-gray-200">
+            <div className="text-sm text-gray-600">Total Data: {filteredCustomDashboards.length}</div>
+            <div className="text-sm text-gray-600">Halaman {page} dari {totalPages}</div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                Sebelumnya
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
+                Berikutnya
+              </Button>
+            </div>
+          </div>
         </div>
 
         <ModalForm open={modalOpen} onOpenChange={handleCloseModal} title={editId ? 'Edit Custom Dashboard' : 'Tambah Custom Dashboard'}>

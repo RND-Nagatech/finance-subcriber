@@ -117,6 +117,12 @@ const RiwayatSaldoRekening: React.FC = () => {
     }).format(amount);
   };
 
+  const formatSignedCurrency = (amount: number) => {
+    const n = Number(amount || 0);
+    const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+    return `${sign}${formatCurrency(Math.abs(n))}`;
+  };
+
   const formatDate = (dateString: string) => {
     try {
       if (!dateString) return '-';
@@ -249,7 +255,7 @@ const RiwayatSaldoRekening: React.FC = () => {
                   <Eye className="w-5 h-5 text-green-600" />
                   <h3 className="text-lg font-semibold text-gray-900">Informasi Rekening</h3>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200/50">
                     <Label className="text-xs text-green-700 font-medium">Kode Bank</Label>
                     <p className="font-bold text-green-900 text-lg">{selectedRekening.kode_bank}</p>
@@ -258,9 +264,9 @@ const RiwayatSaldoRekening: React.FC = () => {
                     <Label className="text-xs text-green-700 font-medium">Nomor Rekening</Label>
                     <p className="font-bold text-green-900 text-lg">{selectedRekening.no_rekening}</p>
                   </div>
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200/50">
+                  <div className="md:col-span-2 bg-gradient-to-r from-emerald-100 to-green-100 p-5 rounded-lg border border-emerald-300/60">
                     <Label className="text-xs text-green-700 font-medium">Saldo Saat Ini</Label>
-                    <p className="font-bold text-green-900 text-xl">{formatCurrency(selectedRekening.saldo)}</p>
+                    <p className="font-bold text-green-900 text-3xl tracking-tight">{formatCurrency(selectedRekening.saldo)}</p>
                   </div>
                 </div>
               </>
@@ -307,8 +313,12 @@ const RiwayatSaldoRekening: React.FC = () => {
                       <TableCell className="px-6 py-4 text-gray-900 font-medium">{formatDate(item.created_at)}</TableCell>
                       <TableCell className="px-6 py-4 text-gray-700">{item.keterangan}</TableCell>
                       <TableCell className="px-6 py-4 text-right text-gray-900 font-medium">{formatCurrency(item.saldo_awal)}</TableCell>
-                      <TableCell className="px-6 py-4 text-right text-green-600 font-semibold">+{formatCurrency(item.saldo_masuk)}</TableCell>
-                      <TableCell className="px-6 py-4 text-right text-red-600 font-semibold">-{formatCurrency(item.saldo_keluar)}</TableCell>
+                      <TableCell className={`px-6 py-4 text-right font-semibold ${Number(item.saldo_masuk || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatSignedCurrency(item.saldo_masuk)}
+                      </TableCell>
+                      <TableCell className={`px-6 py-4 text-right font-semibold ${Number(item.saldo_keluar || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {formatSignedCurrency(-Number(item.saldo_keluar || 0))}
+                      </TableCell>
                       <TableCell className="px-6 py-4 text-right text-gray-900 font-bold">{formatCurrency(item.saldo_akhir)}</TableCell>
                     </TableRow>
                   ))}
