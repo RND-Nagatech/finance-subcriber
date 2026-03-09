@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface ISubscriber extends Document {
   kode: string;
   no_ok: string | null;
+  nomor_telepon: string | null;
   sales: string | null;
   toko: string;
   alamat: string | null;
@@ -30,6 +31,7 @@ export interface ISubscriber extends Document {
 const SubscriberSchema: Schema = new Schema({
   kode: { type: String, required: true, unique: true },
   no_ok: { type: String, required: false, default: null },
+  nomor_telepon: { type: String, required: false, default: null },
   sales: { type: String, required: false, default: null },
   toko: { type: String, required: true },
   alamat: { type: String, required: false, default: null },

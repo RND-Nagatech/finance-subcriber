@@ -2,10 +2,35 @@ import { Request, Response } from 'express';
 import TTVpsDetail, { ITTVpsDetail } from '../models/TTVpsDetail';
 import TTVps from '../models/TTVps';
 import Subscriber from '../models/Subscriber';
+import InvoiceCounter from '../models/InvoiceCounter';
 import { addDays, calcTempo, enumerateMonthsInclusive, toPeriod, formatYMD } from '../utils/vpsPeriod';
 import mongoose from 'mongoose';
 
 function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }
+
+const INVOICE_SENDER = {
+  name: 'PT. GRAHA INTEGRA APLIKASI',
+  address: 'SEMARANG',
+  phone: '0815-1959-5999',
+};
+
+function getDateKeyYYMMDD(date = new Date()): string {
+  const yy = String(date.getFullYear()).slice(-2);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yy}${mm}${dd}`;
+}
+
+async function generateDailyInvoiceNumber(): Promise<string> {
+  const dateKey = getDateKeyYYMMDD(new Date());
+  const counter = await InvoiceCounter.findOneAndUpdate(
+    { date_key: dateKey },
+    { $inc: { last_seq: 1 } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+  const seq = String(counter?.last_seq || 1).padStart(4, '0');
+  return `FJ${dateKey}-${seq}`;
+}
 
 async function recalcAggregateForPeriode(periode: string, user: any) {
   const allDetailsDocs = await TTVpsDetail.find({});
@@ -271,6 +296,106 @@ export const updateItemStatus = async (req: Request, res: Response) => {
       realisasi: 0,
       total_toko_estimasi: 0,
       total_toko_realisasi: 0,
+    });
+  } catch (err: any) {
+    console.error(err);
+    return res.status(500).json({ message: 'internal error', error: err?.message });
+  }
+};
+
+export const generateInvoiceAndMarkProcess = async (req: Request, res: Response) => {
+  try {
+    const { periode, itemId } = req.params as { periode: string; itemId: string };
+    const body = req.body as {
+      customer?: { name?: string; address?: string; phone?: string };
+      items?: Array<{ program_name?: string; qty?: number; unit_price?: number; line_total?: number }>;
+      discount_percent?: number;
+      discount_rp?: number;
+      subtotal?: number;
+      grand_total?: number;
+      notes?: string;
+      display_date?: string;
+    };
+
+    const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
+    const item = await TTVpsDetail.findOne({ _id: itemId, periode });
+    if (!item) return res.status(404).json({ message: 'item not found' });
+    if ((item as any).is_active === false) {
+      return res.status(400).json({ message: 'Data nonaktif. Aktifkan terlebih dahulu sebelum proses invoice.' });
+    }
+    if (item.status !== 'OPEN') {
+      return res.status(400).json({ message: 'Invoice hanya bisa digenerate dari status OPEN.' });
+    }
+
+    const customerName = String(body?.customer?.name || item.toko || '').trim();
+    if (!customerName) return res.status(400).json({ message: 'Nama toko/customer wajib diisi.' });
+    const customerAddress = String(body?.customer?.address || '').trim();
+    const customerPhone = String(body?.customer?.phone || '').trim();
+
+    const rawItems = Array.isArray(body?.items) ? body.items : [];
+    const sanitizedItems = rawItems
+      .map((it) => {
+        const program_name = String(it?.program_name || '').trim();
+        const qty = Math.max(0, Number(it?.qty || 0));
+        const unit_price = Math.max(0, Number(it?.unit_price || 0));
+        const line_total = Math.max(0, Math.round(qty * unit_price));
+        return { program_name, qty, unit_price, line_total };
+      })
+      .filter((it) => it.program_name && it.qty > 0);
+
+    if (sanitizedItems.length === 0) {
+      return res.status(400).json({ message: 'Minimal harus ada 1 item invoice yang valid.' });
+    }
+
+    const subtotalCalculated = sanitizedItems.reduce((acc, it) => acc + it.line_total, 0);
+    const discountPercentInput = Math.max(0, Math.min(100, Number(body?.discount_percent || 0)));
+    const discountRpInput = Math.max(0, Number(body?.discount_rp || 0));
+    const discountRp =
+      discountRpInput > 0
+        ? Math.min(subtotalCalculated, Math.floor(discountRpInput))
+        : Math.min(subtotalCalculated, Math.floor((subtotalCalculated * discountPercentInput) / 100));
+    const discountPercent =
+      subtotalCalculated > 0 ? Math.round((discountRp / subtotalCalculated) * 10000) / 100 : 0;
+    const grandTotal = Math.max(0, subtotalCalculated - discountRp);
+
+    const invoiceNumber = await generateDailyInvoiceNumber();
+    const now = new Date();
+    const displayDate = body?.display_date && /^\d{4}-\d{2}-\d{2}$/.test(String(body.display_date))
+      ? String(body.display_date)
+      : formatYMD(now);
+
+    item.invoice_meta = {
+      invoice_number: invoiceNumber,
+      generated_at: now,
+      generated_by: userTag,
+      sender: INVOICE_SENDER,
+      customer: {
+        name: customerName,
+        address: customerAddress,
+        phone: customerPhone,
+      },
+      items: sanitizedItems,
+      subtotal: subtotalCalculated,
+      discount_percent: discountPercent,
+      discount_rp: discountRp,
+      grand_total: grandTotal,
+      notes: (body?.notes || '').toString().trim(),
+      display_date: displayDate,
+    };
+    item.status = 'PROCESS';
+    item.tgl_lunas = undefined;
+    item.update_date = now;
+    item.update_by = userTag;
+    await item.save();
+
+    await recalcAggregateForPeriode(periode, (req as any).user);
+
+    return res.json({
+      message: 'invoice generated',
+      status: item.status,
+      invoice: item.invoice_meta,
+      item_id: item._id,
+      periode: item.periode,
     });
   } catch (err: any) {
     console.error(err);

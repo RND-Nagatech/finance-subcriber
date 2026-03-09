@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authMiddleware';
-import { createSchedule, deleteItem, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive } from '../controllers/vpsTTController2';
+import { createSchedule, deleteItem, generateInvoiceAndMarkProcess, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive } from '../controllers/vpsTTController2';
 
 const router = Router();
 
@@ -22,6 +22,7 @@ router.get('/generate-next-year/status', getGenerateStatus);
 router.patch('/details/:periode/item/:itemId/status', updateItemStatus);
 router.patch('/details/:periode/item/:itemId/active', updateItemActive);
 router.patch('/details/:periode/item/:itemId', updateItem);
+router.post('/details/:periode/item/:itemId/invoice/generate', generateInvoiceAndMarkProcess);
 router.delete('/details/:periode/item/:itemId', deleteItem);
 
 export default router;

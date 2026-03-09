@@ -725,6 +725,8 @@ export default function Transaksi() {
     perusahaan_id: '', // new
     rekening_id: '',   // new
   });
+  const [createAttachments, setCreateAttachments] = useState<File[]>([]);
+  const [creatingWithAttachments, setCreatingWithAttachments] = useState(false);
 
   // Fiscal month validation hooks (must be after formData, editModalOpen, editData)
   const [fiscalMonthInvalid, setFiscalMonthInvalid] = useState(false);
@@ -1083,29 +1085,13 @@ export default function Transaksi() {
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
       try {
-        return await axiosInstance.post('/transaksi', payload);
+        const response = await axiosInstance.post('/transaksi', payload);
+        return response.data;
       } catch (error: any) {
         const msg = error?.response?.data?.message || 'Gagal menyimpan transaksi.';
         toast.error(msg);
         throw error;
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transaksi'] });
-      toast.success('Transaksi berhasil ditambahkan!');
-      setFormData({
-        kategori_id: '',
-        subkategori_id: '',
-        akun_id: '',
-        bulan_fiskal: '',
-        nilai: 0,
-        input_by: '',
-        keterangan: '',
-        tanggal: '',
-        perusahaan_id: '',
-        rekening_id: '',
-      });
-      setFormattedNilai('');
     },
     onError: (error: any) => {
       const msg = error?.response?.data?.message || 'Gagal menyimpan transaksi. Silakan coba lagi.';
@@ -1148,7 +1134,65 @@ export default function Transaksi() {
       kode_bank: rekeningObj?.kode_bank || '',
       no_rekening: rekeningObj?.no_rekening || '',
     };
-    createMutation.mutate(payload);
+    setCreatingWithAttachments(true);
+    try {
+      const created = await createMutation.mutateAsync(payload);
+
+      if (createAttachments.length > 0) {
+        if (!created?._id) {
+          toast.error('Transaksi tersimpan, tetapi ID transaksi tidak ditemukan untuk upload attachment.');
+        } else {
+          const attachFormData = new FormData();
+          createAttachments.forEach((file) => attachFormData.append('attachments', file));
+          try {
+            await axiosInstance.post(`/transaksi/${created._id}/attachments`, attachFormData, {
+              headers: {
+                'Content-Type': 'multipart/form-data',
+              },
+            });
+            toast.success(`${createAttachments.length} attachment berhasil diupload.`);
+          } catch (error: any) {
+            const msg = error?.response?.data?.message || 'Transaksi tersimpan, tetapi upload attachment gagal.';
+            toast.error(msg);
+          }
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['transaksi'] });
+      toast.success('Transaksi berhasil ditambahkan!');
+      setFormData({
+        kategori_id: '',
+        subkategori_id: '',
+        akun_id: '',
+        bulan_fiskal: '',
+        nilai: 0,
+        input_by: '',
+        keterangan: '',
+        tanggal: '',
+        perusahaan_id: '',
+        rekening_id: '',
+      });
+      setFormattedNilai('');
+      setCreateAttachments([]);
+    } finally {
+      setCreatingWithAttachments(false);
+    }
+  };
+
+  const handleCreateAttachmentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const selected = Array.from(e.target.files);
+    setCreateAttachments((prev) => [...prev, ...selected]);
+    e.target.value = '';
+  };
+
+  const removeCreateAttachment = (index: number) => {
+    setCreateAttachments((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const closeAddTransaksiModal = () => {
+    setAddModalOpen(false);
+    setCreateAttachments([]);
   };
 
   const formatCurrency = (value: number) => {
@@ -1422,7 +1466,7 @@ export default function Transaksi() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setAddModalOpen(false)}
+                    onClick={closeAddTransaksiModal}
                     className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
                   >
                     ✕
@@ -1609,14 +1653,45 @@ export default function Transaksi() {
                                 style={{ textTransform: 'uppercase' }}
                               />
                             </div>
+                            <div className="grid gap-2 mt-2">
+                              <Label htmlFor="create-attachments" className="text-sm font-semibold text-gray-700">
+                                Attachment (Opsional)
+                              </Label>
+                              <Input
+                                id="create-attachments"
+                                type="file"
+                                multiple
+                                accept=".jpg,.jpeg,.png,.pdf,.xlsx,.xls"
+                                onChange={handleCreateAttachmentChange}
+                                className="border-2 border-gray-200 transition-all duration-200"
+                              />
+                              {createAttachments.length > 0 && (
+                                <div className="max-h-36 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 space-y-1">
+                                  {createAttachments.map((file, idx) => (
+                                    <div key={`${file.name}-${idx}`} className="flex items-center justify-between gap-2 text-xs">
+                                      <span className="truncate text-gray-700">{file.name}</span>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeCreateAttachment(idx)}
+                                        className="h-6 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      >
+                                        Hapus
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                   <div className="flex justify-end pt-4">
                     <Button
                       type="submit"
                       className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
-                      disabled={fiscalMonthInvalid}
+                      disabled={fiscalMonthInvalid || createMutation.isPending || creatingWithAttachments}
                     >
                       <Plus className="w-5 h-5 mr-2" />
-                      Simpan Transaksi
+                      {creatingWithAttachments ? 'Menyimpan...' : 'Simpan Transaksi'}
                     </Button>
                   </div>
                 </form>

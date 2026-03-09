@@ -19,6 +19,33 @@ export interface TTVpsDetailItemDTO {
   is_active?: boolean;
   status: TTVpsStatus;
   tgl_lunas?: string;
+  invoice_meta?: {
+    invoice_number: string;
+    generated_at: string;
+    generated_by: string;
+    sender: {
+      name: string;
+      address: string;
+      phone: string;
+    };
+    customer: {
+      name: string;
+      address: string;
+      phone: string;
+    };
+    items: Array<{
+      program_name: string;
+      qty: number;
+      unit_price: number;
+      line_total: number;
+    }>;
+    subtotal: number;
+    discount_percent: number;
+    discount_rp: number;
+    grand_total: number;
+    notes?: string;
+    display_date: string;
+  };
 }
 
 export async function fetchDetailsByPeriode(periode: string): Promise<TTVpsDetailItemDTO[]> {
@@ -32,7 +59,17 @@ export async function fetchDetailsByToko(toko: string): Promise<TTVpsDetailItemD
   return Array.isArray(data) ? data : [];
 }
 
-export interface SubscriberDTO { _id: string; toko: string; program: string; daerah: string; biaya: number; }
+export interface SubscriberDTO {
+  kode?: string;
+  _id: string;
+  toko: string;
+  program: string;
+  daerah: string;
+  biaya: number;
+  alamat?: string | null;
+  no_ok?: string | null;
+  nomor_telepon?: string | null;
+}
 export async function fetchSubscribers(all = true): Promise<SubscriberDTO[]> {
   const params = all ? { all: 1, limit: 10000 } : {};
   const resp = await axiosInstance.get('/subscriber', { params });
@@ -56,7 +93,7 @@ export async function createSchedule(payload: { subscriber_id?: string; toko?: s
 
 export async function updateItemStatus(params: { periode: string; itemId: string; status: TTVpsStatus; tanggalLunas?: string }) {
   const { periode, itemId, status, tanggalLunas } = params;
-  const body: any = { status };
+  const body: Record<string, unknown> = { status };
   if (tanggalLunas) body.tanggalLunas = tanggalLunas;
   const { data } = await axiosInstance.patch(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/status`, body);
   return data;
@@ -110,5 +147,45 @@ export async function startGenerateNextFiscal(): Promise<{ jobId: string; nextFi
 
 export async function getGenerateStatus(jobId: string): Promise<{ status: 'running'|'done'|'error'; nextFiscalLabel: number; total: number; done: number; startedAt: number; finishedAt?: number; error?: string }> {
   const { data } = await axiosInstance.get('/tt-vps/generate-next-year/status', { params: { jobId } });
+  return data;
+}
+
+export interface GenerateInvoiceVpsPayload {
+  customer: {
+    name: string;
+    address: string;
+    phone: string;
+  };
+  items: Array<{
+    program_name: string;
+    qty: number;
+    unit_price: number;
+    line_total?: number;
+  }>;
+  discount_percent: number;
+  discount_rp: number;
+  subtotal: number;
+  grand_total: number;
+  notes?: string;
+  display_date?: string;
+}
+
+export interface GenerateInvoiceVpsResponse {
+  message: string;
+  status: TTVpsStatus;
+  periode: string;
+  item_id: string;
+  invoice: NonNullable<TTVpsDetailItemDTO['invoice_meta']>;
+}
+
+export async function generateInvoiceVps(params: { periode: string; itemId: string; payload: GenerateInvoiceVpsPayload }): Promise<GenerateInvoiceVpsResponse> {
+  const { periode, itemId, payload } = params;
+  const { data } = await axiosInstance.post(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/invoice/generate`, payload);
+  return data;
+}
+
+export async function updateSubscriberPhoneByKode(params: { kode: string; nomor_telepon: string }) {
+  const { kode, nomor_telepon } = params;
+  const { data } = await axiosInstance.put(`/subscriber/${encodeURIComponent(kode)}`, { nomor_telepon });
   return data;
 }

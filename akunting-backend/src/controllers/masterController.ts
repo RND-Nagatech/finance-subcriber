@@ -869,6 +869,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
   try {
     const {
       no_ok,
+      nomor_telepon,
       sales,
       toko,
       alamat,
@@ -914,6 +915,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
     const subscriber = new Subscriber({
       kode: finalKode,
       no_ok,
+      nomor_telepon,
       sales,
       toko,
       alamat,
@@ -950,6 +952,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     const { id } = req.params;
     const {
       no_ok,
+      nomor_telepon,
       sales,
       toko,
       alamat,
@@ -1022,6 +1025,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     const finalBiaya = customBiaya !== undefined ? customBiaya : programBiaya;
 
     old.no_ok = no_ok ?? old.no_ok;
+    old.nomor_telepon = nomor_telepon ?? old.nomor_telepon;
     old.sales = sales ?? old.sales;
     old.toko = toko ?? old.toko;
     old.alamat = alamat ?? old.alamat;
@@ -1045,6 +1049,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       { kode: id },
       {
         no_ok: old.no_ok,
+        nomor_telepon: old.nomor_telepon,
         sales: old.sales,
         toko: old.toko,
         alamat: old.alamat,

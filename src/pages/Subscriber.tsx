@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
+import { createSchedule } from '@/api/ttvps';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +23,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ModalForm } from '@/components/ModalForm';
-import { Plus, Pencil, Trash2, Check, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, ChevronDown, ChevronRight, Search, X, Server } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -33,6 +34,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Subscriber {
   _id?: string;
@@ -279,7 +281,15 @@ export default function Subscriber() {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
+      maximumFractionDigits: 0,
     }).format(value);
+  };
+
+  const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('id-ID');
   };
 
   // Format number for input display (Indonesian format: 100.000)
@@ -313,10 +323,100 @@ export default function Subscriber() {
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [vpsDialogOpen, setVpsDialogOpen] = useState(false);
+  const [selectedSubscriberForVps, setSelectedSubscriberForVps] = useState<Subscriber | null>(null);
+  const [vpsStartDate, setVpsStartDate] = useState('');
+  const [vpsMonthsText, setVpsMonthsText] = useState('');
+  const [vpsDiscountPercentText, setVpsDiscountPercentText] = useState('');
+  const [vpsKeterangan, setVpsKeterangan] = useState('');
 
   const handleDelete = (id: string) => {
     setDeleteId(id);
     setShowDeleteDialog(true);
+  };
+
+  const pricePerMonthVps = selectedSubscriberForVps?.biaya || 0;
+  const vpsMonths = useMemo(() => {
+    const digits = (vpsMonthsText || '').replace(/[^0-9]/g, '');
+    if (!digits) return 0;
+    return parseInt(digits, 10);
+  }, [vpsMonthsText]);
+
+  const vpsDueDate = useMemo(() => {
+    if (!vpsStartDate || !vpsMonths || vpsMonths <= 0) return '';
+    const start = new Date(vpsStartDate);
+    const next = new Date(start);
+    const day = next.getDate();
+    next.setMonth(next.getMonth() + vpsMonths);
+    if (next.getDate() < day) next.setDate(0);
+    const due = new Date(next);
+    due.setDate(due.getDate() - 1);
+    return due.toISOString().slice(0, 10);
+  }, [vpsStartDate, vpsMonths]);
+
+  const vpsGross = (pricePerMonthVps || 0) * (vpsMonths || 0);
+  const vpsDiscountPercent = useMemo(() => {
+    const digits = (vpsDiscountPercentText || '').replace(/[^0-9]/g, '');
+    if (!digits) return 0;
+    const value = parseInt(digits, 10);
+    return Math.max(0, Math.min(100, value));
+  }, [vpsDiscountPercentText]);
+  const vpsDiscountRp = Math.floor(vpsGross * vpsDiscountPercent / 100);
+  const vpsTotal = Math.max(0, vpsGross - vpsDiscountRp);
+
+  const closeVpsDialog = () => {
+    setVpsDialogOpen(false);
+    setSelectedSubscriberForVps(null);
+    setVpsStartDate('');
+    setVpsMonthsText('');
+    setVpsDiscountPercentText('');
+    setVpsKeterangan('');
+  };
+
+  const createVpsMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSubscriberForVps?._id) {
+        throw new Error('Subscriber tidak valid untuk didaftarkan ke VPS.');
+      }
+      if (!vpsStartDate) {
+        throw new Error('Start date wajib diisi.');
+      }
+      if (!vpsMonths || vpsMonths <= 0) {
+        throw new Error('Jumlah bulan wajib diisi dan harus lebih dari 0.');
+      }
+      return createSchedule({
+        subscriber_id: selectedSubscriberForVps._id,
+        start: vpsStartDate,
+        bulan: vpsMonths,
+        diskon: vpsDiscountRp,
+        diskon_percent: vpsDiscountPercent,
+        keterangan: vpsKeterangan || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Daftar VPS berhasil ditambahkan.');
+      closeVpsDialog();
+      queryClient.invalidateQueries({ queryKey: ['tt-vps-details'] });
+    },
+    onError: (error: unknown) => {
+      const maybeAxios = error as { response?: { data?: { message?: string } }; message?: string };
+      const msg = maybeAxios?.response?.data?.message || maybeAxios?.message || 'Gagal menambahkan daftar VPS.';
+      toast.error(msg);
+    },
+  });
+
+  const handleOpenVpsDialog = (item: Subscriber) => {
+    const normalizedDate = item.tanggal ? new Date(item.tanggal).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    setSelectedSubscriberForVps(item);
+    setVpsStartDate(normalizedDate);
+    setVpsMonthsText('1');
+    setVpsDiscountPercentText('0');
+    setVpsKeterangan('');
+    setVpsDialogOpen(true);
+  };
+
+  const handleSubmitVpsFromSubscriber = () => {
+    createVpsMutation.mutate();
   };
 
   const confirmDelete = () => {
@@ -544,7 +644,7 @@ export default function Subscriber() {
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Internal Kode</TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Biaya</TableHead>
                 <TableHead className="w-28 px-6 py-4 font-semibold text-gray-900">Tanggal</TableHead>
-                <TableHead className="w-24 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
+                <TableHead className="w-44 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -598,8 +698,17 @@ export default function Subscriber() {
                       <TableCell className="w-32 px-6 py-4 text-gray-700">{item.internal_kode || '-'}</TableCell>
                       <TableCell className="w-32 px-6 py-4 text-gray-700 font-semibold">{formatCurrency(item.biaya)}</TableCell>
                       <TableCell className="w-28 px-6 py-4 text-gray-700">{new Date(item.tanggal).toLocaleDateString('id-ID')}</TableCell>
-                      <TableCell className="w-24 px-6 py-4 text-right">
+                      <TableCell className="w-44 px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenVpsDialog(item)}
+                            className="border-emerald-300 hover:bg-emerald-50 hover:border-emerald-400 text-emerald-700 hover:text-emerald-800 transition-all duration-200"
+                            title="Daftar VPS"
+                          >
+                            <Server className="w-4 h-4" />
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -947,6 +1056,124 @@ export default function Subscriber() {
             </div>
           </form>
         </ModalForm>
+
+        <Dialog open={vpsDialogOpen} onOpenChange={(open) => { if (!open) closeVpsDialog(); }}>
+          <DialogContent className="sm:max-w-[560px]">
+            <DialogHeader>
+              <DialogTitle>Tambah VPS</DialogTitle>
+            </DialogHeader>
+
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="vps-toko">Toko</Label>
+                <Input
+                  id="vps-toko"
+                  value={selectedSubscriberForVps?.toko || ''}
+                  readOnly
+                  placeholder="Pilih Toko"
+                  className="border-2 border-gray-200 bg-gray-50"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-harga">Harga/Bln</Label>
+                  <Input id="vps-harga" value={formatCurrency(pricePerMonthVps)} readOnly className="border-2 border-gray-200 bg-gray-50" />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-start-date">Start Date</Label>
+                  <Input
+                    id="vps-start-date"
+                    type="date"
+                    value={vpsStartDate}
+                    onChange={(e) => setVpsStartDate(e.target.value)}
+                    className="border-2 border-gray-200"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-jumlah-bulan">Jumlah Bulan</Label>
+                  <Input
+                    id="vps-jumlah-bulan"
+                    type="text"
+                    inputMode="numeric"
+                    value={vpsMonthsText}
+                    onChange={(e) => setVpsMonthsText(e.target.value.replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, ''))}
+                    placeholder="0"
+                    className="border-2 border-gray-200"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-tanggal-tempo">Tanggal Tempo</Label>
+                  <Input
+                    id="vps-tanggal-tempo"
+                    value={formatDateDisplay(vpsDueDate)}
+                    readOnly
+                    placeholder="dd/mm/yyyy"
+                    className="border-2 border-gray-200 bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-jumlah-harga">Jumlah Harga</Label>
+                  <Input id="vps-jumlah-harga" value={formatCurrency(vpsGross)} readOnly className="border-2 border-gray-200 bg-gray-50" />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-diskon-persentase">Diskon (%)</Label>
+                  <Input
+                    id="vps-diskon-persentase"
+                    type="text"
+                    inputMode="numeric"
+                    value={vpsDiscountPercentText}
+                    onChange={(e) => setVpsDiscountPercentText(e.target.value.replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, ''))}
+                    placeholder="0"
+                    className="border-2 border-gray-200"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-diskon-rp">Diskon (Rp)</Label>
+                  <Input id="vps-diskon-rp" value={formatCurrency(vpsDiscountRp)} readOnly className="border-2 border-gray-200 bg-gray-50" />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="vps-total-harga">Total Harga</Label>
+                  <Input id="vps-total-harga" value={formatCurrency(vpsTotal)} readOnly className="border-2 border-gray-200 bg-gray-50" />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="vps-keterangan">Keterangan</Label>
+                <Input
+                  id="vps-keterangan"
+                  value={vpsKeterangan}
+                  onChange={(e) => setVpsKeterangan((e.target.value || '').toUpperCase())}
+                  placeholder="Keterangan tambahan..."
+                  className="border-2 border-gray-200"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={closeVpsDialog}>
+                Batal
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSubmitVpsFromSubscriber}
+                disabled={createVpsMutation.isPending || !selectedSubscriberForVps?._id || !vpsStartDate || vpsMonths <= 0}
+                className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white"
+              >
+                {createVpsMutation.isPending ? 'Menyimpan...' : 'Tambah'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent className="bg-white/95 backdrop-blur-sm shadow-2xl">

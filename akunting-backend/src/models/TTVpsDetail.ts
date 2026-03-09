@@ -21,6 +21,33 @@ export interface ITTVpsDetail extends Document {
   status: VpsStatus;
   tgl_lunas?: string;
   keterangan?: string;
+  invoice_meta?: {
+    invoice_number: string;
+    generated_at: Date;
+    generated_by: string;
+    sender: {
+      name: string;
+      address: string;
+      phone: string;
+    };
+    customer: {
+      name: string;
+      address: string;
+      phone: string;
+    };
+    items: Array<{
+      program_name: string;
+      qty: number;
+      unit_price: number;
+      line_total: number;
+    }>;
+    subtotal: number;
+    discount_percent: number;
+    discount_rp: number;
+    grand_total: number;
+    notes?: string;
+    display_date: string;
+  };
   input_date: Date;
   update_date: Date;
   delete_date: Date | null;
@@ -46,6 +73,35 @@ const TTVpsDetailSchema: Schema = new Schema(
     total_harga: { type: Number, required: true, min: 0 },
     is_active: { type: Boolean, required: false, default: true },
     keterangan: { type: String, required: false, default: '-' },
+    invoice_meta: {
+      invoice_number: { type: String, required: false },
+      generated_at: { type: Date, required: false },
+      generated_by: { type: String, required: false },
+      sender: {
+        name: { type: String, required: false },
+        address: { type: String, required: false },
+        phone: { type: String, required: false },
+      },
+      customer: {
+        name: { type: String, required: false },
+        address: { type: String, required: false },
+        phone: { type: String, required: false },
+      },
+      items: [
+        {
+          program_name: { type: String, required: false },
+          qty: { type: Number, required: false, min: 0 },
+          unit_price: { type: Number, required: false, min: 0 },
+          line_total: { type: Number, required: false, min: 0 },
+        },
+      ],
+      subtotal: { type: Number, required: false, min: 0 },
+      discount_percent: { type: Number, required: false, min: 0, max: 100 },
+      discount_rp: { type: Number, required: false, min: 0 },
+      grand_total: { type: Number, required: false, min: 0 },
+      notes: { type: String, required: false, default: '' },
+      display_date: { type: String, required: false },
+    },
     status: { type: String, enum: ['OPEN', 'PROCESS', 'DONE'], default: 'OPEN' },
     tgl_lunas: { type: String, required: false },
     input_date: { type: Date, default: Date.now },
@@ -69,6 +125,10 @@ TTVpsDetailSchema.index({ toko: 1, periode: 1, start: 1 });
 TTVpsDetailSchema.index({ chain_id: 1 });
 // - by status and tgl_lunas prefix search for realisasi queries
 TTVpsDetailSchema.index({ status: 1, tgl_lunas: 1 });
+TTVpsDetailSchema.index(
+  { 'invoice_meta.invoice_number': 1 },
+  { unique: true, sparse: true }
+);
 
 export default mongoose.model<ITTVpsDetail>(
   'TTVpsDetail',
