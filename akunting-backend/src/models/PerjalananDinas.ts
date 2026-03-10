@@ -18,6 +18,13 @@ export interface IPostingMeta {
   tanggal_posting?: string;
   tahun_fiskal?: string;
   nilai_posting?: number;
+  posting_payload?: {
+    perusahaan_id?: string;
+    rekening_id?: string;
+    kategori?: string;
+    sub_kategori?: string;
+    akun?: string;
+  };
   attachment_merge_count?: number;
   attachment_sources?: {
     item?: number;
@@ -105,6 +112,13 @@ const PerjalananDinasSchema = new Schema<IPerjalananDinas>(
       tanggal_posting: { type: String },
       tahun_fiskal: { type: String },
       nilai_posting: { type: Number },
+      posting_payload: {
+        perusahaan_id: { type: String },
+        rekening_id: { type: String },
+        kategori: { type: String },
+        sub_kategori: { type: String },
+        akun: { type: String },
+      },
       attachment_merge_count: { type: Number },
       attachment_sources: {
         item: { type: Number },

@@ -363,7 +363,7 @@ export default function AppSidebar() {
                       </SidebarMenuSubItem>
 
                       {/* Transaksi Perjalanan disembunyikan dari menu web (sudah via aplikasi mobile) */}
-                          {user && ['admin', 'finance', 'corsec', 'superuser'].includes(user.role) && (
+                      {/* {user && ['admin', 'finance', 'corsec', 'superuser'].includes(user.role) && (
                         <SidebarMenuSubItem>
                           <NavLink to="/perjalanan-dinas/transaksi">
                             <SidebarMenuSubButton
@@ -383,7 +383,7 @@ export default function AppSidebar() {
                             </SidebarMenuSubButton>
                           </NavLink>
                         </SidebarMenuSubItem>
-                      )}
+                      )} */}
                       {user && ['admin', 'finance', 'corsec', 'superuser'].includes(user.role) && (
                         <SidebarMenuSubItem>
                           <NavLink to="/perjalanan-dinas/dana">

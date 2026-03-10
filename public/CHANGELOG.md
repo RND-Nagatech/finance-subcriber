@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-10
+
+### Added
+- **Perjalanan Dinas Posting Dialog (Dynamic Mapping)**
+  - Posting transaksi akhir sekarang membuka dialog input ketika `sisa_dana > 0`
+  - Field wajib: `perusahaan`, `rekening`, `kategori`, `sub kategori`, `akun`
+  - Upload attachment posting langsung dari dialog (multi-file)
+  - Frontend mengirim payload posting dinamis ke endpoint posting perjalanan
+
+- **Posting Metadata Extension (Perjalanan Dinas)**
+  - `posting_meta.posting_payload` ditambahkan untuk jejak audit mapping posting
+  - Response posting menambahkan `target_tt_finance_detail_id` untuk target upload attachment transaksi
+
+### Changed
+- **Perjalanan Dinas Final Posting**
+  - Untuk `sisa_dana > 0`, transaksi REALISASI tidak lagi hardcoded kategori/sub kategori/akun/perusahaan/rekening
+  - Backend memvalidasi mapping master (`perusahaan`, `rekening`, `kategori`, `sub kategori`, `akun`) sebelum create transaksi posting
+
+- **Inject Dana Default Keterangan**
+  - Field keterangan inject otomatis terisi template:
+    - `Biaya OPR {tujuan} ({pelaksana}) - {kode_perjalanan}`
+  - Template tetap editable manual, tidak menimpa saat user sudah mengetik
+
+### Fixed
+- **Dashboard Stacked Breakdown Minus Handling**
+  - Nilai minus kini tetap tampil pada stacked bar (turun di bawah garis nol)
+  - Tooltip menampilkan nilai signed (`+/-`) untuk tiap sub kategori
+  - Total tooltip dihitung sebagai net total (positif + negatif), bukan hanya nilai positif
+  - Added garis referensi `0` dan domain Y-axis signed agar visual koreksi/retur lebih jelas
+
+- **UI Stability**
+  - Perbaikan kecil pada sidebar/VPS terkait sinkronisasi perubahan terbaru
+
 ## [1.5.0] - 2026-02-26
 
 ### Added

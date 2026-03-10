@@ -50,7 +50,7 @@ function sanitizeFilename(value: string): string {
 }
 
 // DEBUG MODE: set true to generate PDF only without updating VPS item/invoice data in backend.
-const VPS_INVOICE_PRINT_ONLY = true;
+const VPS_INVOICE_PRINT_ONLY = false;
 
 const INVOICE_PROGRAM_PREFIX = 'BIAYA BERLANGGANAN ONLINE &\nMAINTENANCE';
 const INVOICE_STORE_SUFFIX_PREFIX = 'TOKO EMAS';

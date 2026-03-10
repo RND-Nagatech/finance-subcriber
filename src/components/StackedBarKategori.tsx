@@ -1,4 +1,4 @@
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, LabelList } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ReferenceLine, Cell } from 'recharts';
 
 
 interface ISubItem {
@@ -15,8 +15,19 @@ interface IStackedBarKategoriProps {
 const COLORS = [
   '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#7B61FF', '#F95D6A', '#4CAF50', '#9C27B0', '#03A9F4', '#FF9800'
 ];
+const NEGATIVE_COLOR = '#ef4444';
 
 const keyFromName = (name: string) => name.replace(/[^a-zA-Z0-9]/g, '_');
+
+function formatRupiah(value: number) {
+  return `Rp ${Math.abs(value).toLocaleString('id-ID')}`;
+}
+
+function formatSignedRupiah(value: number) {
+  if (value < 0) return `-${formatRupiah(value)}`;
+  if (value > 0) return `+${formatRupiah(value)}`;
+  return formatRupiah(0);
+}
 
 export default function StackedBarKategori({ data, title, description }: IStackedBarKategoriProps) {
   const allSubNames: string[] = [];
@@ -24,10 +35,17 @@ export default function StackedBarKategori({ data, title, description }: IStacke
 
   const chartData = data.map(d => {
     const row: any = { kategori: d.kategori };
-    let totalKategori = 0;
-    d.subs.forEach(s => { row[keyFromName(s.name)] = s.total; totalKategori += s.total; });
+    d.subs.forEach(s => { row[keyFromName(s.name)] = s.total; });
     allSubNames.forEach(n => { const k = keyFromName(n); if (row[k] === undefined) row[k] = 0; });
-    row._total = totalKategori;
+    const totals = allSubNames.reduce((acc, name) => {
+      const val = Number(row[keyFromName(name)] || 0);
+      if (val >= 0) acc.positive += val;
+      else acc.negative += val;
+      return acc;
+    }, { positive: 0, negative: 0 });
+    row._positiveTotal = totals.positive;
+    row._negativeTotal = totals.negative;
+    row._total = totals.positive + totals.negative;
     return row;
   })
 
@@ -66,9 +84,17 @@ export default function StackedBarKategori({ data, title, description }: IStacke
 
   // Bar size dinamis: jika kategori < 4, bar lebih lebar
   const barSize = chartData.length < 4 ? 80 : 40;
-   // Calculate dynamic YAxis width based on max value
-  const maxValue = Math.max(...chartData.map(d => d._total));
-  const formattedMaxValue = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(maxValue);
+  // Calculate dynamic YAxis width and domain based on signed stacked totals.
+  const maxPositive = Math.max(0, ...chartData.map(d => Number(d._positiveTotal || 0)));
+  const minNegative = Math.min(0, ...chartData.map(d => Number(d._negativeTotal || 0)));
+  const maxAbs = Math.max(Math.abs(maxPositive), Math.abs(minNegative), 1);
+  const domainPadding = Math.max(1_000, Math.round(maxAbs * 0.08));
+  const yDomain: [number, number] = [
+    minNegative < 0 ? minNegative - domainPadding : 0,
+    maxPositive > 0 ? maxPositive + domainPadding : 0,
+  ];
+  const maxValueForWidth = Math.max(Math.abs(yDomain[0]), Math.abs(yDomain[1]));
+  const formattedMaxValue = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(maxValueForWidth);
   const yAxisWidth = Math.max(60, formattedMaxValue.length * 5); // ensure enough width for 'Rp'
   return (
     <div
@@ -127,8 +153,9 @@ export default function StackedBarKategori({ data, title, description }: IStacke
             width={yAxisWidth}
             tick={{ fontSize: 12, fill: '#222', fontWeight: 600 }}
             axisLine={{ stroke: '#e7e7e7ff' }}
-            domain={[0, 'auto']}
+            domain={yDomain}
           />
+          <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
           <Tooltip
             content={({ active, payload, label }) => {
               if (active && payload && payload.length > 0) {
@@ -139,7 +166,8 @@ export default function StackedBarKategori({ data, title, description }: IStacke
                   name: subName,
                   value: barData[keyFromName(subName)] || 0,
                   color: COLORS[allSubNames.indexOf(subName) % COLORS.length]
-                })).filter(item => item.value > 0);
+                }));
+                const netTotal = subItems.reduce((sum, item) => sum + item.value, 0);
 
                 return (
                   <div style={{
@@ -163,7 +191,7 @@ export default function StackedBarKategori({ data, title, description }: IStacke
                         <div style={{
                           width: 12,
                           height: 12,
-                          backgroundColor: item.color,
+                          backgroundColor: item.value < 0 ? NEGATIVE_COLOR : item.color,
                           marginRight: 8,
                           borderRadius: 2
                         }}></div>
@@ -171,7 +199,7 @@ export default function StackedBarKategori({ data, title, description }: IStacke
                           <span style={{ fontWeight: 500 }}>{item.name}:</span>
                         </div>
                         <div style={{ fontWeight: 600 }}>
-                          Rp {item.value.toLocaleString('id-ID')}
+                          {formatSignedRupiah(item.value)}
                         </div>
                       </div>
                     ))}
@@ -182,7 +210,7 @@ export default function StackedBarKategori({ data, title, description }: IStacke
                       fontWeight: 700,
                       fontSize: 13
                     }}>
-                      Total: Rp {subItems.reduce((sum, item) => sum + item.value, 0).toLocaleString('id-ID')}
+                      Total: {formatSignedRupiah(netTotal)}
                     </div>
                   </div>
                 );
@@ -199,7 +227,14 @@ export default function StackedBarKategori({ data, title, description }: IStacke
               fill={COLORS[idx % COLORS.length]}
               barSize={barSize}
               isAnimationActive={true}
-            />
+            >
+              {chartData.map((entry, entryIdx) => (
+                <Cell
+                  key={`${subName}-${entryIdx}`}
+                  fill={Number(entry[keyFromName(subName)] || 0) < 0 ? NEGATIVE_COLOR : COLORS[idx % COLORS.length]}
+                />
+              ))}
+            </Bar>
           ))}
 
         </BarChart>

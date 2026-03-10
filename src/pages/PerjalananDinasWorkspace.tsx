@@ -85,6 +85,17 @@ function todayYmd() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function buildInjectKeteranganTemplate(header?: any) {
+  if (!header) return 'Biaya OPR';
+  const kodePerjalanan = String(header?.kode_perjalanan || '').trim();
+  const tujuan = String(header?.tujuan || '').trim();
+  const pelaksana = String(header?.user_name || '').trim();
+  const baseParts = ['Biaya OPR', tujuan].filter(Boolean);
+  const baseText = baseParts.join(' ').trim() || 'Biaya OPR';
+  const withPelaksana = pelaksana ? `${baseText} (${pelaksana})` : baseText;
+  return kodePerjalanan ? `${withPelaksana} - ${kodePerjalanan}` : withPelaksana;
+}
+
 function AttachmentUploader({ tripId, itemId, onDone, disabled = false }: { tripId: string; itemId: string; onDone: () => Promise<void> | void; disabled?: boolean }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -175,7 +186,17 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
   const [itemDialogFiles, setItemDialogFiles] = useState<File[]>([]);
   const [injectForm, setInjectForm] = useState({ tanggal: todayYmd(), nominal: '', rekening_id: '', perusahaan_id: '', keterangan: '', kategori: '', sub_kategori: '', akun: '' });
+  const [injectKeteranganTouched, setInjectKeteranganTouched] = useState(false);
   const [injectDanaFiles, setInjectDanaFiles] = useState<File[]>([]);
+  const [postingDialogOpen, setPostingDialogOpen] = useState(false);
+  const [postingFiles, setPostingFiles] = useState<File[]>([]);
+  const [postingForm, setPostingForm] = useState({
+    perusahaan_id: '',
+    rekening_id: '',
+    kategori: 'BIAYA',
+    sub_kategori: 'LAIN LAIN',
+    akun: 'REALISASI',
+  });
   const [auditNotesByItem, setAuditNotesByItem] = useState<Record<string, string>>({});
   const [auditNominalByItem, setAuditNominalByItem] = useState<Record<string, string>>({});
   const [auditKetByItem, setAuditKetByItem] = useState<Record<string, string>>({});
@@ -244,12 +265,12 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
       const res = await axiosInstance.get('/master/rekening?all=true');
       return res.data || [];
     },
-    enabled: view === 'dana' && isOffice,
+    enabled: (view === 'dana' && isOffice) || (view === 'audit' && canPost),
   });
   const perusahaanQuery = useQuery({
     queryKey: ['perusahaan-all-perjalanan'],
     queryFn: async () => (await axiosInstance.get('/master/perusahaan?all=true')).data || [],
-    enabled: view === 'dana' && isOffice,
+    enabled: (view === 'dana' && isOffice) || (view === 'audit' && canPost),
   });
 
   const kategoriQuery = useQuery({
@@ -379,7 +400,17 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
       } else {
         toast.success('Inject dana berhasil');
       }
-      setInjectForm({ tanggal: todayYmd(), nominal: '', rekening_id: '', perusahaan_id: '', keterangan: '', kategori: '', sub_kategori: '', akun: '' });
+      setInjectForm({
+        tanggal: todayYmd(),
+        nominal: '',
+        rekening_id: '',
+        perusahaan_id: '',
+        keterangan: buildInjectKeteranganTemplate(selectedHeaderFull),
+        kategori: '',
+        sub_kategori: '',
+        akun: '',
+      });
+      setInjectKeteranganTouched(false);
       setInjectDanaFiles([]);
       await invalidateSelectedTrip();
     },
@@ -387,12 +418,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
   });
 
   const postingMut = useMutation({
-    mutationFn: () => postPerjalananToTtFinance(selectedTripId, {}),
-    onSuccess: async () => {
-      toast.success('Posting transaksi berhasil (menunggu validasi)');
-      await invalidateSelectedTrip();
-    },
-    onError: (e) => toast.error(getErrorMessage(e)),
+    mutationFn: (payload: any) => postPerjalananToTtFinance(selectedTripId, payload || {}),
   });
 
   const activeSummary = summaryQuery.data || detailQuery.data?.summary || selectedHeader?.summary;
@@ -419,6 +445,88 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
   );
   const selectedHeaderFull = detailQuery.data?.header || selectedHeader;
   const transaksiInputLocked = String((selectedHeaderFull as any)?.status || '') !== 'BERJALAN';
+  const postingSubKategoriOptions = useMemo(
+    () => (subKategoriQuery.data || []).filter((s: any) => !postingForm.kategori || s.kategori === postingForm.kategori),
+    [subKategoriQuery.data, postingForm.kategori]
+  );
+  const postingAkunOptions = useMemo(
+    () => (akunQuery.data || []).filter((a: any) => (
+      (!postingForm.kategori || a.kategori === postingForm.kategori) &&
+      (!postingForm.sub_kategori || a.sub_kategori === postingForm.sub_kategori)
+    )),
+    [akunQuery.data, postingForm.kategori, postingForm.sub_kategori]
+  );
+
+  const uploadAttachmentsToTransaksi = async (transaksiId: string, files: File[]) => {
+    if (!transaksiId || files.length === 0) return;
+    const formData = new FormData();
+    files.forEach((file) => formData.append('attachments', file));
+    await axiosInstance.post(`/transaksi/${transaksiId}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  };
+
+  const openPostingDialogWithDefaults = () => {
+    let rekeningId = '';
+    if (latestInjectLedger?.kode_bank && latestInjectLedger?.no_rekening) {
+      const matchedRekening = (rekeningQuery.data || []).find((r: any) =>
+        String(r.kode_bank || '') === String(latestInjectLedger.kode_bank || '') &&
+        String(r.no_rekening || '') === String(latestInjectLedger.no_rekening || '')
+      );
+      rekeningId = matchedRekening?._id || '';
+    }
+    setPostingForm({
+      perusahaan_id: '',
+      rekening_id: rekeningId,
+      kategori: 'BIAYA',
+      sub_kategori: 'LAIN LAIN',
+      akun: 'REALISASI',
+    });
+    setPostingFiles([]);
+    setPostingDialogOpen(true);
+  };
+
+  const handleSubmitPostingWithDialog = async () => {
+    if (!selectedTripId) return;
+    if (!postingForm.perusahaan_id || !postingForm.rekening_id || !postingForm.kategori || !postingForm.sub_kategori || !postingForm.akun) {
+      toast.error('Perusahaan, rekening, kategori, sub kategori, dan akun wajib dipilih.');
+      return;
+    }
+    try {
+      const res = await postingMut.mutateAsync({
+        perusahaan_id: postingForm.perusahaan_id,
+        rekening_id: postingForm.rekening_id,
+        kategori: postingForm.kategori,
+        sub_kategori: postingForm.sub_kategori,
+        akun: postingForm.akun,
+      });
+      const targetId = String(res?.target_tt_finance_detail_id || '');
+      if (targetId && postingFiles.length > 0) {
+        await uploadAttachmentsToTransaksi(targetId, postingFiles);
+      }
+      toast.success('Posting transaksi berhasil (menunggu validasi)');
+      setPostingDialogOpen(false);
+      setPostingFiles([]);
+      await invalidateSelectedTrip();
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    }
+  };
+
+  const handleClickPosting = async () => {
+    if (!selectedTripId) return;
+    if (willCreateRealisasi) {
+      openPostingDialogWithDefaults();
+      return;
+    }
+    try {
+      await postingMut.mutateAsync({});
+      toast.success('Posting transaksi berhasil (menunggu validasi)');
+      await invalidateSelectedTrip();
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    }
+  };
 
   const navLinks = useMemo(
     () => [
@@ -434,6 +542,19 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
   const activePreviewUrl = activePreview ? `${previewBaseUrl}${activePreview.path}` : '';
   const activePreviewName = activePreview?.original_name || activePreview?.path?.split('/').pop() || '';
   const isPdfPreview = /\.pdf($|\?)/i.test(activePreviewUrl) || activePreviewName.toLowerCase().endsWith('.pdf');
+
+  useEffect(() => {
+    setInjectKeteranganTouched(false);
+  }, [selectedTripId]);
+
+  useEffect(() => {
+    if (view !== 'dana') return;
+    const template = buildInjectKeteranganTemplate(selectedHeaderFull);
+    setInjectForm((prev) => {
+      if (injectKeteranganTouched) return prev;
+      return { ...prev, keterangan: template };
+    });
+  }, [selectedHeaderFull, view, injectKeteranganTouched]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -1132,7 +1253,10 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                 <Input
                   placeholder="Contoh: Inject awal perjalanan"
                   value={injectForm.keterangan}
-                  onChange={(e) => setInjectForm({ ...injectForm, keterangan: e.target.value })}
+                  onChange={(e) => {
+                    setInjectKeteranganTouched(true);
+                    setInjectForm({ ...injectForm, keterangan: e.target.value });
+                  }}
                   className="h-11"
                 />
               </div>
@@ -1545,7 +1669,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                       <div className="mt-2 space-y-1 text-xs text-slate-600">
                         {willCreateRealisasi ? (
                           <>
-                            <div>Target transaksi: REALISASI (BIAYA / LAIN LAIN / REALISASI)</div>
+                            <div>Target transaksi: REALISASI (mapping dipilih saat klik Posting)</div>
                             <div>Item perjalanan: {estimatedItemAttachmentCount} file</div>
                             <div>Inject + Return: {danaRows.reduce((sum, d) => sum + (d.attachments?.length || 0), 0)} file</div>
                             <div className="font-semibold text-blue-700">Estimasi total merge: {estimatedMergedAttachmentCount} file</div>
@@ -1577,7 +1701,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                     <Button
                       className="h-11 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800"
                       disabled={!selectedTripId || !canPost || postingMut.isPending || !!(selectedHeaderFull as any)?.posted_to_tt_finance || !latestInjectLedger}
-                      onClick={() => postingMut.mutate()}
+                      onClick={handleClickPosting}
                     >
                       {postingMut.isPending ? 'Posting...' : 'Posting Transaksi'}
                     </Button>
@@ -1595,6 +1719,151 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
           </Card>
         </div>
       )}
+
+      <Dialog open={postingDialogOpen} onOpenChange={setPostingDialogOpen}>
+        <DialogContent className="sm:max-w-2xl bg-white/95 backdrop-blur-sm">
+          <DialogHeader>
+            <DialogTitle>Posting Transaksi REALISASI</DialogTitle>
+            <DialogDescription>
+              Pilih perusahaan, rekening, kategori, sub kategori, akun, dan attachment untuk transaksi hasil posting.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Perusahaan</Label>
+                <Select
+                  value={postingForm.perusahaan_id}
+                  onValueChange={(value) => setPostingForm((prev) => ({ ...prev, perusahaan_id: value }))}
+                >
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Pilih perusahaan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(perusahaanQuery.data || []).map((p: any) => (
+                      <SelectItem key={p._id} value={p._id}>
+                        {p.nama_perusahaan} ({p.kode_perusahaan})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Rekening</Label>
+                <Select
+                  value={postingForm.rekening_id}
+                  onValueChange={(value) => setPostingForm((prev) => ({ ...prev, rekening_id: value }))}
+                >
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Pilih rekening" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(rekeningQuery.data || []).map((r: any) => (
+                      <SelectItem key={r._id} value={r._id}>
+                        {r.kode_bank} - {r.no_rekening} ({r.nama_rekening})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>Kategori</Label>
+                <Select
+                  value={postingForm.kategori}
+                  onValueChange={(value) => setPostingForm((prev) => ({ ...prev, kategori: value, sub_kategori: '', akun: '' }))}
+                >
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Pilih kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(kategoriQuery.data || []).map((k: any, idx: number) => (
+                      <SelectItem key={k._id || idx} value={k.kategori || k.nama || `kat-${idx}`}>
+                        {k.kategori || k.nama}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Sub Kategori</Label>
+                <Select
+                  value={postingForm.sub_kategori}
+                  onValueChange={(value) => setPostingForm((prev) => ({ ...prev, sub_kategori: value, akun: '' }))}
+                  disabled={!postingForm.kategori}
+                >
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Pilih sub kategori" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {postingSubKategoriOptions.map((s: any, idx: number) => (
+                      <SelectItem key={s._id || idx} value={s.sub_kategori || s.nama || `sub-${idx}`}>
+                        {s.sub_kategori || s.nama}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Akun</Label>
+                <Select
+                  value={postingForm.akun}
+                  onValueChange={(value) => setPostingForm((prev) => ({ ...prev, akun: value }))}
+                  disabled={!postingForm.sub_kategori}
+                >
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Pilih akun" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {postingAkunOptions.map((a: any, idx: number) => (
+                      <SelectItem key={a._id || idx} value={a.akun || a.nama || `akun-${idx}`}>
+                        {a.akun || a.nama}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Attachment Posting (Opsional)</Label>
+              <Input
+                type="file"
+                multiple
+                accept="image/*,.pdf"
+                className="h-11"
+                onChange={(e) => setPostingFiles(Array.from(e.target.files || []))}
+              />
+              {postingFiles.length > 0 && (
+                <div className="text-xs text-gray-500">{postingFiles.length} file dipilih</div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPostingDialogOpen(false);
+                  setPostingFiles([]);
+                }}
+                disabled={postingMut.isPending}
+              >
+                Batal
+              </Button>
+              <Button
+                className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800"
+                onClick={handleSubmitPostingWithDialog}
+                disabled={postingMut.isPending}
+              >
+                {postingMut.isPending ? 'Posting...' : 'Posting Sekarang'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
         <DialogContent className="sm:max-w-5xl w-[96vw] bg-white/95 backdrop-blur-sm">

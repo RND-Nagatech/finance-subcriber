@@ -7,6 +7,9 @@ import PerjalananDinasDetail from '../models/PerjalananDinasDetail';
 import PerjalananDinasDana from '../models/PerjalananDinasDana';
 import Perusahaan from '../models/Perusahaan';
 import Rekening from '../models/Rekening';
+import Kategori from '../models/Kategori';
+import SubKategori from '../models/SubKategori';
+import Akun from '../models/Akun';
 import TtFinanceDetail from '../models/TtFinanceDetail';
 import { mutateRekeningForPerjalananLedger } from '../services/rekeningMutationService';
 import { deriveTahunFiskalFromBulan } from '../services/financeAggregationService';
@@ -160,6 +163,9 @@ async function createInjectFinanceDetailDraft(params: {
 async function createRealisasiFinanceDetailDraft(params: {
   header: any;
   nominal: number;
+  kategori?: string;
+  sub_kategori?: string;
+  akun?: string;
   actor: string;
   tanggal?: string;
   keterangan?: string;
@@ -179,9 +185,9 @@ async function createRealisasiFinanceDetailDraft(params: {
     tanggal,
     bulan,
     tahun_fiskal,
-    kategori: 'BIAYA',
-    sub_kategori: 'LAIN LAIN',
-    akun: 'REALISASI',
+    kategori: params.kategori || 'BIAYA',
+    sub_kategori: params.sub_kategori || 'LAIN LAIN',
+    akun: params.akun || 'REALISASI',
     nilai: Number(params.nominal),
     keterangan: (params.keterangan && String(params.keterangan).trim() !== ''
       ? String(params.keterangan)
@@ -199,6 +205,61 @@ async function createRealisasiFinanceDetailDraft(params: {
   } as any);
 
   return { detail, tanggal, bulan, tahun_fiskal };
+}
+
+type PostingTargetResolved = {
+  kategori: string;
+  sub_kategori: string;
+  akun: string;
+  perusahaan_id: string;
+  rekening_id: string;
+  kode_perusahaan: string;
+  nama_perusahaan: string;
+  kode_bank: string;
+  no_rekening: string;
+  tanggal_posting?: string;
+};
+
+async function resolvePostingTargetFromPayload(payload: any): Promise<PostingTargetResolved> {
+  const kategori = String(payload?.kategori || '').trim();
+  const sub_kategori = String(payload?.sub_kategori || '').trim();
+  const akun = String(payload?.akun || '').trim();
+  const perusahaan_id = String(payload?.perusahaan_id || '').trim();
+  const rekening_id = String(payload?.rekening_id || '').trim();
+  const tanggal_posting = String(payload?.tanggal_posting || '').trim();
+
+  if (!perusahaan_id || !rekening_id || !kategori || !sub_kategori || !akun) {
+    throw httpError('perusahaan_id, rekening_id, kategori, sub_kategori, akun wajib diisi', 400);
+  }
+  ensureObjectId(perusahaan_id, 'perusahaan_id');
+  ensureObjectId(rekening_id, 'rekening_id');
+
+  const [perusahaan, rekening, kategoriDoc, subKategoriDoc, akunDoc] = await Promise.all([
+    Perusahaan.findById(perusahaan_id),
+    Rekening.findById(rekening_id),
+    Kategori.findOne({ kategori, status_aktv: { $ne: false } }),
+    SubKategori.findOne({ sub_kategori, kategori, status_aktv: { $ne: false } }),
+    Akun.findOne({ akun, sub_kategori, kategori, status_aktv: { $ne: false } }),
+  ]);
+
+  if (!perusahaan) throw httpError('Perusahaan tidak ditemukan', 400);
+  if (!rekening) throw httpError('Rekening tidak ditemukan', 400);
+  if (!kategoriDoc) throw httpError('Kategori tidak ditemukan atau tidak aktif', 400);
+  if (!subKategoriDoc) throw httpError('Sub kategori tidak ditemukan atau tidak sesuai kategori', 400);
+  if (!akunDoc) throw httpError('Akun tidak ditemukan atau tidak sesuai kategori/sub kategori', 400);
+
+  return {
+    kategori,
+    sub_kategori,
+    akun,
+    perusahaan_id,
+    rekening_id,
+    kode_perusahaan: String((perusahaan as any).kode_perusahaan || ''),
+    nama_perusahaan: String((perusahaan as any).nama_perusahaan || ''),
+    kode_bank: String((rekening as any).kode_bank || ''),
+    no_rekening: String((rekening as any).no_rekening || ''),
+    tanggal_posting: tanggal_posting || undefined,
+  };
 }
 
 function ensureTransaksiUploadDir() {
@@ -1036,19 +1097,24 @@ export const postPerjalananToTtFinance = async (req: Request, res: Response, nex
     let attachmentTarget: 'REALISASI' | 'INJECT' = 'INJECT';
     const now = new Date();
 
+    let resolvedPostingTarget: PostingTargetResolved | null = null;
     if (sisaDana > 0) {
+      resolvedPostingTarget = await resolvePostingTargetFromPayload(req.body || {});
       // Buat transaksi lawan (REALISASI) bernilai minus dari sisa dana.
       const nominalRealisasi = -Number(sisaDana);
-      const realisasiTanggal = (injectDetail as any)?.tanggal || toYmd(now);
+      const realisasiTanggal = resolvedPostingTarget.tanggal_posting || (injectDetail as any)?.tanggal || toYmd(now);
       const createdRealisasi = await createRealisasiFinanceDetailDraft({
         header,
         nominal: nominalRealisasi,
+        kategori: resolvedPostingTarget.kategori,
+        sub_kategori: resolvedPostingTarget.sub_kategori,
+        akun: resolvedPostingTarget.akun,
         actor: getActorName(req),
         tanggal: realisasiTanggal,
-        kode_perusahaan: (injectDetail as any)?.kode_perusahaan || '',
-        nama_perusahaan: (injectDetail as any)?.nama_perusahaan || '',
-        kode_bank: (injectDetail as any)?.kode_bank || (latestInject as any)?.kode_bank || '-',
-        no_rekening: (injectDetail as any)?.no_rekening || (latestInject as any)?.no_rekening || '-',
+        kode_perusahaan: resolvedPostingTarget.kode_perusahaan,
+        nama_perusahaan: resolvedPostingTarget.nama_perusahaan,
+        kode_bank: resolvedPostingTarget.kode_bank || '-',
+        no_rekening: resolvedPostingTarget.no_rekening || '-',
       });
 
       merged = await mergePerjalananAttachmentsIntoTransaksi(String(header._id));
@@ -1086,6 +1152,13 @@ export const postPerjalananToTtFinance = async (req: Request, res: Response, nex
       tanggal_posting: postingDetail ? (postingDetail as any).tanggal : (injectDetail as any)?.tanggal,
       tahun_fiskal: postingDetail ? (postingDetail as any).tahun_fiskal : (injectDetail as any)?.tahun_fiskal,
       nilai_posting: postingDetail ? Number((postingDetail as any).nilai || 0) : 0,
+      posting_payload: resolvedPostingTarget ? {
+        perusahaan_id: resolvedPostingTarget.perusahaan_id,
+        rekening_id: resolvedPostingTarget.rekening_id,
+        kategori: resolvedPostingTarget.kategori,
+        sub_kategori: resolvedPostingTarget.sub_kategori,
+        akun: resolvedPostingTarget.akun,
+      } : undefined,
       attachment_merge_count: merged?.counts?.merged || 0,
       attachment_sources: merged.counts,
     };
@@ -1102,6 +1175,7 @@ export const postPerjalananToTtFinance = async (req: Request, res: Response, nex
       nilai_posting: postingDetail ? Number((postingDetail as any).nilai || 0) : 0,
       sisa_dana_at_posting: sisaDana,
       attachment_target: attachmentTarget,
+      target_tt_finance_detail_id: postingDetail ? String((postingDetail as any)._id) : String((injectDetail as any)?._id || ''),
     });
   } catch (error) {
     next(error);

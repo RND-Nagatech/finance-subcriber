@@ -63,11 +63,13 @@ export interface PerjalananDanaLedger {
 }
 
 export interface PerjalananPostingPayload {
-  kategori: string;
-  sub_kategori: string;
-  akun: string;
-  tanggal_posting: string;
-  bulan: string;
+  kategori?: string;
+  sub_kategori?: string;
+  akun?: string;
+  perusahaan_id?: string;
+  rekening_id?: string;
+  tanggal_posting?: string;
+  bulan?: string;
   tahun_fiskal?: string;
 }
 
@@ -108,7 +110,15 @@ export async function finalizePerjalananAudit(id: string, payload?: any) {
 
 export async function postPerjalananToTtFinance(id: string, payload?: Partial<PerjalananPostingPayload>) {
   const res = await axiosInstance.post(`/perjalanan-dinas/${id}/posting`, payload || {});
-  return res.data;
+  return res.data as {
+    success: boolean;
+    attachment_target?: 'REALISASI' | 'INJECT';
+    target_tt_finance_detail_id?: string;
+    sisa_dana_at_posting?: number;
+    tt_finance_detail?: any;
+    inject_tt_finance_detail?: any;
+    [key: string]: any;
+  };
 }
 
 export async function listPerjalananItems(id: string, params?: any) {
