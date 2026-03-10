@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-03-10
+
+### Fixed
+- **Subscriber Analytics Fiscal Cumulative Logic**
+  - `subscriber-growth/:tahun` dan `subscriber-cumulative/:tahun` sekarang membaca tahun dari path param `:tahun` (dengan fallback query untuk kompatibilitas).
+  - Perhitungan cumulative diperbaiki menjadi:
+    - `opening_balance` sebelum awal fiskal (1 Desember tahun sebelumnya)
+    - `running total` dari DEC sampai NOV berdasarkan penambahan subscriber bulanan.
+  - Bug pergeseran bulan cumulative (JAN/FEB dan seterusnya) diperbaiki sehingga tidak lagi offset satu bulan.
+
+- **Subscriber Combined Merge (Frontend)**
+  - Merge growth + cumulative di frontend tidak lagi berdasarkan index array.
+  - Data sekarang digabung berdasarkan key bulan fiskal `DEC..NOV` untuk mencegah mismatch urutan/data kosong.
+  - Guard carry-forward total ditambahkan pada chart agar line total tetap konsisten jika ada bulan tanpa data.
+
+### Added
+- **Subscriber Cumulative Metadata**
+  - Response endpoint cumulative sekarang menyertakan:
+    - `opening_balance`
+    - `fiscal_start_date`
+    - `fiscal_end_date`
+  - Tetap backward-compatible dengan field lama (`data`, `totalSubscriber`).
+
 ## [1.6.0] - 2026-03-10
 
 ### Added

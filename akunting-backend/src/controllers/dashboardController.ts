@@ -918,11 +918,17 @@ export const pendapatanHarian = async (req: Request, res: Response) => {
 
 export const subscriberGrowth = async (req: Request, res: Response) => {
   try {
-    const tahun = String(req.query.tahun || new Date().getFullYear());
+    const tahun = String(req.params.tahun || req.query.tahun || new Date().getFullYear());
+    const tahunNum = Number(tahun);
+    if (!Number.isFinite(tahunNum)) {
+      return res.status(400).json({ message: 'Tahun tidak valid' });
+    }
     const Subscriber = require('../models/Subscriber').default;
 
-    // Urutan bulan dimulai dari Desember
-    const order = ["DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV"];
+    // Fiscal year: DEC (tahun-1) s/d NOV (tahun)
+    const order = ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV'];
+    const fiscalStart = new Date(Date.UTC(tahunNum - 1, 11, 1, 0, 0, 0, 0)); // 1 DEC tahun-1
+    const fiscalEndExclusive = new Date(Date.UTC(tahunNum, 11, 1, 0, 0, 0, 0)); // 1 DEC tahun
 
     // Pipeline untuk menghitung subscriber baru per bulan
     const pipeline = [
@@ -930,8 +936,8 @@ export const subscriberGrowth = async (req: Request, res: Response) => {
         $match: {
           status_aktv: true,
           tanggal: {
-            $gte: new Date(`${parseInt(tahun) - 1}-12-01`), // Mulai dari Desember tahun sebelumnya
-            $lt: new Date(`${parseInt(tahun)}-12-01`) // Sampai November tahun ini
+            $gte: fiscalStart,
+            $lt: fiscalEndExclusive
           }
         }
       },
@@ -979,19 +985,11 @@ export const subscriberGrowth = async (req: Request, res: Response) => {
 
     const result = await Subscriber.aggregate(pipeline);
 
-    // Buat array lengkap untuk semua bulan dalam tahun fiskal (Desember tahun sebelumnya sampai November tahun ini)
-    const allMonths: Array<{bulan: string, count: number, year: number}> = [];
-    const startYear = parseInt(tahun) - 1; // Mulai dari Desember tahun sebelumnya
-
-    for (let i = 0; i < 12; i++) {
-      const monthName = order[i]; // Langsung ambil dari order array
-      const year = (i === 0) ? startYear : parseInt(tahun); // Hanya bulan pertama (DEC) yang tahun sebelumnya
-      allMonths.push({
-        bulan: monthName,
-        count: 0,
-        year: year
-      });
-    }
+    const allMonths: Array<{bulan: string, count: number, year: number}> = order.map((monthName, i) => ({
+      bulan: monthName,
+      count: 0,
+      year: i === 0 ? tahunNum - 1 : tahunNum,
+    }));
 
     // Isi data aktual
     result.forEach((item: any) => {
@@ -1005,7 +1003,7 @@ export const subscriberGrowth = async (req: Request, res: Response) => {
     const totalSubscriber = await Subscriber.countDocuments({
       status_aktv: true,
       tanggal: {
-        $lt: new Date(`${parseInt(tahun)}-12-01`) // Sampai akhir November tahun ini
+        $lt: fiscalEndExclusive // Sampai akhir November tahun
       }
     });
 
@@ -1024,71 +1022,91 @@ export const subscriberGrowth = async (req: Request, res: Response) => {
 
 export const subscriberCumulative = async (req: Request, res: Response) => {
   try {
-    const tahun = String(req.query.tahun || new Date().getFullYear());
+    const tahun = String(req.params.tahun || req.query.tahun || new Date().getFullYear());
+    const tahunNum = Number(tahun);
+    if (!Number.isFinite(tahunNum)) {
+      return res.status(400).json({ message: 'Tahun tidak valid' });
+    }
     const Subscriber = require('../models/Subscriber').default;
 
-    // Urutan bulan dimulai dari Desember
-    const order = ["DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV"];
+    const order = ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV'];
+    const fiscalStart = new Date(Date.UTC(tahunNum - 1, 11, 1, 0, 0, 0, 0)); // 1 DEC tahun-1
+    const fiscalEndExclusive = new Date(Date.UTC(tahunNum, 11, 1, 0, 0, 0, 0)); // 1 DEC tahun
 
-    // Buat array lengkap untuk semua bulan dalam tahun fiskal (Desember tahun sebelumnya sampai November tahun ini)
-    const allMonths: Array<{bulan: string, total: number, year: number}> = [];
-    const startYear = parseInt(tahun) - 1; // Mulai dari Desember tahun sebelumnya
-
-    for (let i = 0; i < 12; i++) {
-      const monthName = order[i]; // Langsung ambil dari order array
-      const year = (i === 0) ? startYear : parseInt(tahun); // Hanya bulan pertama (DEC) yang tahun sebelumnya
-      allMonths.push({
-        bulan: monthName,
-        total: 0,
-        year: year
-      });
-    }
-
-    // Hitung total kumulatif untuk setiap bulan
-    let cumulativeTotal = 0;
-    for (let i = 0; i < 12; i++) {
-      const monthName = order[i];
-      const year = (i === 0) ? startYear : parseInt(tahun);
-
-      // Tentukan tanggal akhir untuk bulan ini
-      let endDate: Date;
-      if (i === 0) { // DEC tahun sebelumnya
-        endDate = new Date(`${startYear}-12-31`);
-      } else if (i === 11) { // NOV tahun ini
-        endDate = new Date(`${parseInt(tahun)}-11-30`);
-      } else {
-        // Untuk bulan lainnya, gunakan akhir bulan
-        const monthNum = i; // 0 = JAN, 1 = FEB, ..., 10 = NOV
-        const nextMonth = monthNum + 1;
-        const endYear = nextMonth > 11 ? parseInt(tahun) + 1 : parseInt(tahun);
-        const endMonth = nextMonth > 11 ? 0 : nextMonth;
-        endDate = new Date(`${endYear}-${String(endMonth + 1).padStart(2, '0')}-01`);
-        endDate.setDate(endDate.getDate() - 1); // Akhir bulan sebelumnya
-      }
-
-      // Hitung total subscriber sampai akhir bulan ini
-      const count = await Subscriber.countDocuments({
-        status_aktv: true,
-        tanggal: {
-          $lte: endDate
-        }
-      });
-
-      allMonths[i].total = count;
-    }
-
-    // Total subscriber akhir tahun fiskal
-    const totalSubscriber = await Subscriber.countDocuments({
+    // Opening balance: aktif sebelum fiscal start.
+    const openingBalance = await Subscriber.countDocuments({
       status_aktv: true,
-      tanggal: {
-        $lte: new Date(`${parseInt(tahun)}-11-30`) // Sampai akhir November tahun ini
-      }
+      tanggal: { $lt: fiscalStart }
     });
+
+    // Growth per fiscal month dalam range DEC..NOV.
+    const growthPipeline = [
+      {
+        $match: {
+          status_aktv: true,
+          tanggal: {
+            $gte: fiscalStart,
+            $lt: fiscalEndExclusive
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: '%m',
+              date: '$tanggal'
+            }
+          },
+          count: { $sum: 1 }
+        }
+      }
+    ];
+    const growthRows = await Subscriber.aggregate(growthPipeline);
+    const growthByMonth: Record<string, number> = {};
+    growthRows.forEach((row: any) => {
+      const mm = String(row._id || '').padStart(2, '0');
+      const map: Record<string, string> = {
+        '12': 'DEC', '01': 'JAN', '02': 'FEB', '03': 'MAR', '04': 'APR', '05': 'MAY',
+        '06': 'JUN', '07': 'JUL', '08': 'AUG', '09': 'SEP', '10': 'OCT', '11': 'NOV',
+      };
+      const monthName = map[mm];
+      if (monthName) growthByMonth[monthName] = Number(row.count || 0);
+    });
+
+    let runningTotal = openingBalance;
+    const allMonths: Array<{bulan: string, total: number, year: number}> = order.map((bulan, idx) => {
+      runningTotal += Number(growthByMonth[bulan] || 0);
+      return {
+        bulan,
+        total: runningTotal,
+        year: idx === 0 ? tahunNum - 1 : tahunNum,
+      };
+    });
+
+    const totalSubscriber = runningTotal;
+
+    // Optional guard logs for debugging fiscal cumulative consistency.
+    if (allMonths.length > 0) {
+      const decGrowth = Number(growthByMonth.DEC || 0);
+      if (allMonths[0].total !== openingBalance + decGrowth) {
+        console.warn('[subscriberCumulative] DEC total mismatch', { openingBalance, decGrowth, decTotal: allMonths[0].total });
+      }
+      for (let i = 1; i < allMonths.length; i++) {
+        const expected = allMonths[i - 1].total + Number(growthByMonth[allMonths[i].bulan] || 0);
+        if (allMonths[i].total !== expected) {
+          console.warn('[subscriberCumulative] Running total mismatch', { idx: i, bulan: allMonths[i].bulan, expected, actual: allMonths[i].total });
+        }
+      }
+    }
 
     res.json({
       success: true,
       tahun,
       totalSubscriber,
+      opening_balance: openingBalance,
+      fiscal_start_date: fiscalStart.toISOString().slice(0, 10),
+      fiscal_end_date: new Date(fiscalEndExclusive.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
       data: allMonths
     });
 

@@ -34,12 +34,28 @@ export async function fetchSubscriberCombined(tahun: number | string) {
 
   const growthData = growthRes.data?.data ?? growthRes.data ?? [];
   const cumulativeData = cumulativeRes.data?.data ?? cumulativeRes.data ?? [];
+  const order = ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV'];
+  const growthMap = new Map<string, any>();
+  const cumulativeMap = new Map<string, any>();
 
-  // Gabungkan data growth dan cumulative
-  return growthData.map((growth: any, index: number) => ({
-    ...growth,
-    total: cumulativeData[index]?.total || 0
-  }));
+  growthData.forEach((row: any) => {
+    growthMap.set(String(row?.bulan || ''), row);
+  });
+  cumulativeData.forEach((row: any) => {
+    cumulativeMap.set(String(row?.bulan || ''), row);
+  });
+
+  // Gabungkan by month key agar aman dari urutan/index mismatch.
+  return order.map((bulan) => {
+    const growth = growthMap.get(bulan) || {};
+    const cumulative = cumulativeMap.get(bulan) || {};
+    return {
+      bulan,
+      year: growth?.year ?? cumulative?.year ?? Number(tahun),
+      count: Number(growth?.count || 0),
+      total: Number(cumulative?.total || 0),
+    };
+  });
 }
 
 export async function fetchSubscriberByProgram(tahun?: number | string, bulan?: string) {

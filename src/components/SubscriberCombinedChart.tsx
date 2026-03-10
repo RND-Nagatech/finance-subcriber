@@ -20,6 +20,23 @@ const COLORS = [
 ];
 
 export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) {
+  // Guard: keep cumulative total carried forward if any month is missing total.
+  const normalizedData = (() => {
+    let runningTotal = 0;
+    return (data || []).map((row) => {
+      const nextCount = Number(row?.count || 0);
+      const providedTotal = Number(row?.total || 0);
+      if (providedTotal > 0 || nextCount > 0 || runningTotal === 0) {
+        runningTotal = providedTotal || (runningTotal + nextCount);
+      }
+      return {
+        ...row,
+        count: nextCount,
+        total: runningTotal,
+      };
+    });
+  })();
+
   function CustomTooltip({ active, payload, label }: {
     active?: boolean;
     payload?: Array<{
@@ -52,7 +69,7 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <ResponsiveContainer width="100%" height={450}>
         <ComposedChart
-          data={data}
+          data={normalizedData}
           margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
         >
           <XAxis
@@ -107,7 +124,7 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
             radius={[4, 4, 0, 0]}
             barSize={50}
           >
-            {data.map((entry, index) => (
+            {normalizedData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill="#10b981" />
             ))}
             <LabelList
