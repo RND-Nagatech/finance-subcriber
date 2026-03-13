@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
-import { createSchedule } from '@/api/ttvps';
+import { createSchedule, fetchDetailsByToko } from '@/api/ttvps';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -364,6 +364,22 @@ export default function Subscriber() {
   const vpsDiscountRp = Math.floor(vpsGross * vpsDiscountPercent / 100);
   const vpsTotal = Math.max(0, vpsGross - vpsDiscountRp);
 
+  const { data: vpsExistingByToko = [] } = useQuery({
+    queryKey: ['subscriber-vps-existing-by-toko', selectedSubscriberForVps?.toko],
+    queryFn: () => fetchDetailsByToko(selectedSubscriberForVps?.toko || ''),
+    enabled: vpsDialogOpen && !!selectedSubscriberForVps?.toko,
+  });
+
+  const duplicateVpsRecord = useMemo(() => {
+    if (!selectedSubscriberForVps?.toko || !vpsStartDate) return null;
+    const normalizedToko = selectedSubscriberForVps.toko.trim().toLowerCase();
+    return (vpsExistingByToko || []).find((row: any) => {
+      const rowToko = String(row?.toko || '').trim().toLowerCase();
+      const rowStart = String(row?.start || '').slice(0, 10);
+      return rowToko === normalizedToko && rowStart === vpsStartDate;
+    }) || null;
+  }, [selectedSubscriberForVps?.toko, vpsStartDate, vpsExistingByToko]);
+
   const closeVpsDialog = () => {
     setVpsDialogOpen(false);
     setSelectedSubscriberForVps(null);
@@ -416,6 +432,10 @@ export default function Subscriber() {
   };
 
   const handleSubmitVpsFromSubscriber = () => {
+    if (duplicateVpsRecord) {
+      toast.warn('Data VPS dengan toko dan start date yang sama sudah ada.');
+      return;
+    }
     createVpsMutation.mutate();
   };
 
@@ -1117,6 +1137,14 @@ export default function Subscriber() {
                 </div>
               </div>
 
+              {duplicateVpsRecord && (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Data VPS sudah ada untuk kombinasi yang sama:
+                  {' '}<span className="font-semibold">{selectedSubscriberForVps?.toko}</span>,
+                  {' '}start <span className="font-semibold">{formatDateDisplay(vpsStartDate)}</span>.
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="vps-jumlah-harga">Jumlah Harga</Label>
@@ -1166,7 +1194,7 @@ export default function Subscriber() {
               <Button
                 type="button"
                 onClick={handleSubmitVpsFromSubscriber}
-                disabled={createVpsMutation.isPending || !selectedSubscriberForVps?._id || !vpsStartDate || vpsMonths <= 0}
+                disabled={createVpsMutation.isPending || !selectedSubscriberForVps?._id || !vpsStartDate || vpsMonths <= 0 || !!duplicateVpsRecord}
                 className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white"
               >
                 {createVpsMutation.isPending ? 'Menyimpan...' : 'Tambah'}

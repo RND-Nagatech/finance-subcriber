@@ -873,7 +873,8 @@ export const pendapatanHarian = async (req: Request, res: Response) => {
           bulan: `${bulan}-${String(tahun).slice(-2)}`,
           kategori: 'PENDAPATAN',
           is_validated: true,
-          status_deleted: { $ne: true }
+          status_deleted: { $ne: true },
+          is_special_transaction: { $ne: true }
         }
       },
       {

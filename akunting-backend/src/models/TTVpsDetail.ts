@@ -40,10 +40,13 @@ export interface ITTVpsDetail extends Document {
       qty: number;
       unit_price: number;
       line_total: number;
+      start_date?: string;
+      tempo_date?: string;
     }>;
     subtotal: number;
     discount_percent: number;
     discount_rp: number;
+    extra_deduction_rp?: number;
     grand_total: number;
     notes?: string;
     display_date: string;
@@ -93,11 +96,14 @@ const TTVpsDetailSchema: Schema = new Schema(
           qty: { type: Number, required: false, min: 0 },
           unit_price: { type: Number, required: false, min: 0 },
           line_total: { type: Number, required: false, min: 0 },
+          start_date: { type: String, required: false },
+          tempo_date: { type: String, required: false },
         },
       ],
       subtotal: { type: Number, required: false, min: 0 },
       discount_percent: { type: Number, required: false, min: 0, max: 100 },
       discount_rp: { type: Number, required: false, min: 0 },
+      extra_deduction_rp: { type: Number, required: false, min: 0, default: 0 },
       grand_total: { type: Number, required: false, min: 0 },
       notes: { type: String, required: false, default: '' },
       display_date: { type: String, required: false },
@@ -127,7 +133,7 @@ TTVpsDetailSchema.index({ chain_id: 1 });
 TTVpsDetailSchema.index({ status: 1, tgl_lunas: 1 });
 TTVpsDetailSchema.index(
   { 'invoice_meta.invoice_number': 1 },
-  { unique: true, sparse: true }
+  { sparse: true }
 );
 
 export default mongoose.model<ITTVpsDetail>(

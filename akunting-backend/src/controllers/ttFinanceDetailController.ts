@@ -4,7 +4,7 @@ import TtFinanceDetail from '../models/TtFinanceDetail';
 // GET /tt-finance-detail?from=YYYY-MM-DD&to=YYYY-MM-DD&kategori=...&sub_kategori=...&nama_perusahaan=...&page=1&limit=10&aggregate=1
 export const listTtFinanceDetail = async (req: Request, res: Response) => {
   try {
-    const { from, to, kategori, sub_kategori, akun, input_by, sortKategori, nama_perusahaan, page = '1', limit = '10', aggregate, q } = req.query as any;
+    const { from, to, kategori, sub_kategori, akun, input_by, sortKategori, nama_perusahaan, page = '1', limit = '10', aggregate, q, special_type } = req.query as any;
     const pageNum = parseInt(String(page), 10) || 1;
     const limitNum = parseInt(String(limit), 10) || 10;
     const doAggregate = String(aggregate || '').toLowerCase() === '1' || String(aggregate || '').toLowerCase() === 'true';
@@ -22,6 +22,8 @@ export const listTtFinanceDetail = async (req: Request, res: Response) => {
     if (nama_perusahaan && nama_perusahaan !== 'ALL') filter.nama_perusahaan = nama_perusahaan;
     if (akun && akun !== 'ALL') filter.akun = akun;
     if (input_by && input_by !== 'ALL') filter.created_by = input_by;
+    if (special_type === 'SPECIAL') filter.is_special_transaction = true;
+    if (special_type === 'NORMAL') filter.is_special_transaction = { $ne: true };
 
     // Apply free-text search (q) across common fields
     if (q && String(q).trim() !== '') {

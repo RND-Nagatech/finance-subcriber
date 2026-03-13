@@ -19,6 +19,19 @@ import {
   rollbackBudgetUsageFromValidatedTransaksi,
 } from '../services/budgetUsageFromTransaksiService';
 
+function isSpecialTransaction(doc: any): boolean {
+  return Boolean(doc?.is_special_transaction);
+}
+
+function parseSpecialTransactionFlag(value: any): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function buildRekeningHistoryDescription(doc: any, prefix = ''): string {
+  const specialPrefix = isSpecialTransaction(doc) ? '[KHUSUS] ' : '';
+  return `${prefix}${specialPrefix}${doc.kategori}/${doc.sub_kategori}/${doc.akun}`;
+}
+
 // Validasi data hasil attachment (hanya superuser/corsec)
 export const validateAttachment = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -61,7 +74,7 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
           saldo_akhir: saldoAkhir,
           transaksi_id: doc._id,
           tanggal: new Date(doc.tanggal),
-          keterangan: `${doc.kategori}/${doc.sub_kategori}/${doc.akun}`
+          keterangan: buildRekeningHistoryDescription(doc)
         });
 
         await riwayat.save();
@@ -72,11 +85,12 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
       }
     }
 
-    // Jalankan update aggregation
     const validatorBy = user?.username || user?.email || user?._id || 'SYSTEM';
     const validatorAt = new Date();
-    await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment', validatorBy, validatorAt);
-    await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
+    if (!isSpecialTransaction(doc)) {
+      await updateTtFinanceDaily(doc.tanggal, doc.bulan, doc.kategori, doc.sub_kategori, doc.akun, doc.nilai, 'increment', validatorBy, validatorAt);
+      await recalculateTransaksiAggregation(doc.kategori, doc.sub_kategori, doc.akun, doc.bulan, doc.nilai, doc.created_by, 'increment');
+    }
 
     // Snapshot saldo harian (jalur validated) dibucket ke tanggal transaksi.
     if (hasValidRekeningKey(doc.kode_bank, doc.no_rekening)) {
@@ -90,10 +104,12 @@ export const validateAttachment = async (req: Request, res: Response, next: Next
       });
     }
 
-    await createBudgetUsageFromValidatedTransaksi({
-      doc,
-      actor: validatorBy,
-    });
+    if (!isSpecialTransaction(doc)) {
+      await createBudgetUsageFromValidatedTransaksi({
+        doc,
+        actor: validatorBy,
+      });
+    }
 
     doc.is_validated = true;
     doc.validator_notes = validator_notes || '';
@@ -329,7 +345,7 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
             saldo_akhir: saldoAkhir,
             transaksi_id: detail._id,
             tanggal: new Date(detail.tanggal),
-            keterangan: `[DELETE VALIDATED] ${detail.kategori}/${detail.sub_kategori}/${detail.akun}`
+            keterangan: buildRekeningHistoryDescription(detail, '[DELETE VALIDATED] ')
           });
 
           await riwayat.save();
@@ -338,30 +354,32 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
         }
       }
 
-      await updateTtFinanceDaily(
-        detail.tanggal,
-        detail.bulan,
-        detail.kategori,
-        detail.sub_kategori,
-        detail.akun,
-        detail.nilai,
-        'decrement',
-        rollbackBy,
-        rollbackAt
-      );
-      await recalculateTransaksiAggregation(
-        detail.kategori,
-        detail.sub_kategori,
-        detail.akun,
-        detail.bulan,
-        detail.nilai,
-        rollbackBy,
-        'decrement'
-      );
-      await rollbackBudgetUsageFromValidatedTransaksi({
-        transaksiId: String(detail._id),
-        actor: rollbackBy,
-      });
+      if (!isSpecialTransaction(detail)) {
+        await updateTtFinanceDaily(
+          detail.tanggal,
+          detail.bulan,
+          detail.kategori,
+          detail.sub_kategori,
+          detail.akun,
+          detail.nilai,
+          'decrement',
+          rollbackBy,
+          rollbackAt
+        );
+        await recalculateTransaksiAggregation(
+          detail.kategori,
+          detail.sub_kategori,
+          detail.akun,
+          detail.bulan,
+          detail.nilai,
+          rollbackBy,
+          'decrement'
+        );
+        await rollbackBudgetUsageFromValidatedTransaksi({
+          transaksiId: String(detail._id),
+          actor: rollbackBy,
+        });
+      }
     }
 
     // Rollback snapshot saldo harian:
@@ -474,7 +492,7 @@ export const deleteAttachment = async (req: Request, res: Response, next: NextFu
     await doc.save();
 
     // If this was the last attachment, update tt_finance_daily
-    if (wasLastAttachment) {
+    if (wasLastAttachment && !isSpecialTransaction(doc)) {
       const user = req.user as any;
       const inputBy = user?.username || user?.email || doc.deleted_by || 'SYSTEM';
       const inputAt = new Date();
@@ -491,7 +509,7 @@ export const deleteAttachment = async (req: Request, res: Response, next: NextFu
 
 export const createTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening } = req.body;
+    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening, is_special_transaction } = req.body;
     if (!kategori || !sub_kategori || !akun || !bulan || nilai === undefined) {
       return res.status(400).json({ message: 'kategori, sub_kategori, akun, bulan, nilai required' });
     }
@@ -559,7 +577,8 @@ export const createTransaksi = async (req: Request, res: Response, next: NextFun
       nama_perusahaan: nama_perusahaan || '',
       kode_bank: kode_bank && kode_bank.trim() !== '' ? kode_bank : '-',
       no_rekening: no_rekening && no_rekening.trim() !== '' ? no_rekening : '-',
-      tahun_fiskal
+      tahun_fiskal,
+      is_special_transaction: parseSpecialTransactionFlag(is_special_transaction),
     });
 
     await detail.save();
@@ -584,7 +603,7 @@ export const createTransaksi = async (req: Request, res: Response, next: NextFun
 
 export const listTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { tahun, bulan, kategori, sub_kategori, akun, input_by, page = '1', limit = '10', flatten = '0', sortKategori, q } = req.query as any;
+    const { tahun, bulan, kategori, sub_kategori, akun, input_by, page = '1', limit = '10', flatten = '0', sortKategori, q, special_type } = req.query as any;
     const pageNum = parseInt(page as string, 10) || 1;
     const limitNum = parseInt(limit as string, 10) || 10;
     const doFlatten = String(flatten) === '1' || String(flatten).toLowerCase() === 'true';
@@ -594,6 +613,8 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
     if (sub_kategori && sub_kategori !== 'ALL') filter.sub_kategori = sub_kategori;
     if (akun && akun !== 'ALL') filter.akun = akun;
     if (input_by && input_by !== 'ALL') filter.input_by = input_by;
+    if (special_type === 'SPECIAL') filter.is_special_transaction = true;
+    if (special_type === 'NORMAL') filter.is_special_transaction = { $ne: true };
 
     // Determine which collection to use (Transaksi or ThFinance)
     let Model: any = Transaksi;
@@ -710,7 +731,7 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
 export const updateTransaksi = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening } = req.body;
+    const { kategori, sub_kategori, akun, bulan, nilai, input_by, tahun_fiskal, tanggal, keterangan, kode_perusahaan, nama_perusahaan, kode_bank, no_rekening, is_special_transaction } = req.body;
     // Cari detail transaksi di tt_finance_detail
     const detail = await TtFinanceDetail.findById(id);
     if (!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
@@ -750,6 +771,8 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
     const oldTanggal = detail.tanggal; // simpan tanggal lama sebelum update
     const oldKodeBank = detail.kode_bank;
     const oldNoRekening = detail.no_rekening;
+    const oldIsSpecial = isSpecialTransaction(detail);
+    const newIsSpecial = parseSpecialTransactionFlag(is_special_transaction ?? detail.is_special_transaction);
     const oldTahunFiskal = tahun_fiskal || (() => {
       const match = detail.bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
       if (match) {
@@ -772,7 +795,7 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
     await detail.save();
 
     // 2. Decrement/rekap tt_finance_daily untuk tanggal lama (aggregate ulang)
-    if (oldTanggal && oldKategori && oldSubKategori && oldAkun && oldBulan && oldNilai && oldTahunFiskal) {
+    if (!oldIsSpecial && oldTanggal && oldKategori && oldSubKategori && oldAkun && oldBulan && oldNilai && oldTahunFiskal) {
       const [yyyyOld, mmOld, ddOld] = oldTanggal.split('-');
       const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
       const monthIdxOld = parseInt(mmOld, 10) - 1;
@@ -784,7 +807,8 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
             kategori: oldKategori,
             sub_kategori: oldSubKategori,
             akun: oldAkun,
-            status_deleted: { $ne: true }
+            status_deleted: { $ne: true },
+            is_special_transaction: { $ne: true }
         } },
         { $group: { _id: null, total: { $sum: "$nilai" } } }
       ]);
@@ -821,36 +845,6 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
       }
     }
 
-    // Try to find tt_finance by new values first
-    let doc = await Transaksi.findOne({ kategori: detail.kategori, sub_kategori: detail.sub_kategori, akun: detail.akun, tahun_fiskal: tahunFiskal });
-    // If not found, try by old values
-    if (!doc) {
-      doc = await Transaksi.findOne({ kategori: oldKategori, sub_kategori: oldSubKategori, akun: oldAkun, tahun_fiskal: oldTahunFiskal });
-    }
-    if (!doc) {
-      // Buat dokumen baru jika tidak ditemukan
-      doc = new Transaksi({
-        kategori: kategori || detail.kategori,
-        sub_kategori: sub_kategori || detail.sub_kategori,
-        akun: akun || detail.akun,
-        data_bulanan: [],
-        total_tahunan: 0,
-        input_by: input_by || detail.created_by || 'system',
-        tahun_fiskal: tahunFiskal,
-        attachments: [],
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
-      await doc.save();
-    }
-    if (!doc) return res.status(404).json({ message: 'Transaksi not found' });
-
-    // 1. Soft delete old detail
-    detail.status_deleted = true;
-    detail.deleted_at = new Date();
-    detail.deleted_by = input_by || 'SYSTEM';
-    await detail.save();
-
     // 2. Create new detail (like add)
     const newDetail = new TtFinanceDetail({
       tanggal: tanggal || detail.tanggal,
@@ -866,6 +860,7 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
       nama_perusahaan: nama_perusahaan || '',
       kode_bank: kode_bank && kode_bank.trim() !== '' ? kode_bank : '-',
       no_rekening: no_rekening && no_rekening.trim() !== '' ? no_rekening : '-',
+      is_special_transaction: newIsSpecial,
       attachments: detail.attachments && detail.attachments.length > 0 ? [...detail.attachments] : [],
     });
     await newDetail.save();
@@ -904,7 +899,7 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
       docOld = await Transaksi.findOne({ kategori: oldKategori, sub_kategori: oldSubKategori, akun: oldAkun });
       if (docOld) tahunFiskalOld = docOld.tahun_fiskal;
     }
-    if (docOld) {
+    if (!oldIsSpecial && docOld) {
       // Only sum nilai where status_deleted != true
       const sumOld = await TtFinanceDetail.aggregate([
         { $match: {
@@ -912,7 +907,8 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
           sub_kategori: oldSubKategori,
           akun: oldAkun,
           bulan: oldBulan,
-          status_deleted: { $ne: true }
+          status_deleted: { $ne: true },
+          is_special_transaction: { $ne: true }
         } },
         { $group: { _id: null, total: { $sum: "$nilai" } } }
       ]);
@@ -954,10 +950,10 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
         tahunFiskalNew = bulanAngka >= 12 ? (tahunNum + 1).toString() : tahunNum.toString();
       }
     }
-    if (tahunFiskalNew) {
+    if (!newIsSpecial && tahunFiskalNew) {
       docNew = await Transaksi.findOne({ kategori: kategori || detail.kategori, sub_kategori: sub_kategori || detail.sub_kategori, akun: akun || detail.akun, tahun_fiskal: tahunFiskalNew });
     }
-    if (!docNew) {
+    if (!newIsSpecial && !docNew) {
       docNew = await Transaksi.findOne({ kategori: kategori || detail.kategori, sub_kategori: sub_kategori || detail.sub_kategori, akun: akun || detail.akun });
       if (docNew) tahunFiskalNew = docNew.tahun_fiskal;
     }
@@ -982,7 +978,7 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
       }
     }
 
-    if (!tahunFiskalNew) {
+    if (!newIsSpecial && !tahunFiskalNew) {
       return res.status(400).json({ message: 'Gagal menentukan tahun_fiskal untuk transaksi baru.' });
     }
     // const newTransaksi = new Transaksi({
@@ -1225,9 +1221,25 @@ export const getSaldoHarianRekening = async (req: Request, res: Response, next: 
       .lean();
 
     const data = rows.map((r: any) => {
-      const gap_harian = Number(r.total_transaksi_input || 0) - Number(r.total_transaksi_validated || 0);
+      const debit_input = Number(r.debit_input || 0);
+      const credit_input = Number(r.credit_input || 0);
+      const debit_validated = Number(r.debit_validated || 0);
+      const credit_validated = Number(r.credit_validated || 0);
+      const total_transaksi_input = Number((r.total_transaksi_input ?? (debit_input - credit_input)) || 0);
+      const total_transaksi_validated = Number((r.total_transaksi_validated ?? (debit_validated - credit_validated)) || 0);
+      const gap_harian = total_transaksi_input - total_transaksi_validated;
       const gap_kumulatif = Number(r.saldo_akhir_input || 0) - Number(r.saldo_akhir_validated || 0);
-      return { ...r, gap_harian, gap_kumulatif };
+      return {
+        ...r,
+        debit_input,
+        credit_input,
+        debit_validated,
+        credit_validated,
+        total_transaksi_input,
+        total_transaksi_validated,
+        gap_harian,
+        gap_kumulatif,
+      };
     });
 
     res.json({

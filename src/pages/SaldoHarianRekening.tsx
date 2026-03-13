@@ -43,9 +43,13 @@ interface SaldoHarianRow {
   kode_bank: string;
   no_rekening: string;
   saldo_awal_input: number;
+  debit_input: number;
+  credit_input: number;
   total_transaksi_input: number;
   saldo_akhir_input: number;
   saldo_awal_validated: number;
+  debit_validated: number;
+  credit_validated: number;
   total_transaksi_validated: number;
   saldo_akhir_validated: number;
   gap_harian: number;
@@ -78,6 +82,7 @@ export default function SaldoHarianRekening() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(31);
   const [searchTrigger, setSearchTrigger] = useState(0);
+  const [showValidatedColumns, setShowValidatedColumns] = useState(false);
 
   const { data: rekeningList = [] } = useQuery<RekeningOption[]>({
     queryKey: ['rekening-saldo-harian-options'],
@@ -213,6 +218,15 @@ export default function SaldoHarianRekening() {
                   Buka Generator
                 </Button>
               )}
+              <label className="ml-auto flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={showValidatedColumns}
+                  onChange={(e) => setShowValidatedColumns(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Tampilkan kolom validated
+              </label>
             </div>
           </CardContent>
         </Card>
@@ -236,11 +250,19 @@ export default function SaldoHarianRekening() {
                   <TableRow>
                     <TableHead className="min-w-[120px]">Tanggal</TableHead>
                     <TableHead className="min-w-[180px] text-right">Saldo Awal Input</TableHead>
-                    <TableHead className="min-w-[200px] text-right">Saldo Awal Validated</TableHead>
-                    <TableHead className="min-w-[170px] text-right">Total Input</TableHead>
-                    <TableHead className="min-w-[180px] text-right">Total Validated</TableHead>
+                    <TableHead className="min-w-[170px] text-right">Debit Input</TableHead>
+                    <TableHead className="min-w-[170px] text-right">Credit Input</TableHead>
+                    <TableHead className="min-w-[170px] text-right">Net Input</TableHead>
                     <TableHead className="min-w-[180px] text-right">Saldo Akhir Input</TableHead>
-                    <TableHead className="min-w-[200px] text-right">Saldo Akhir Validated</TableHead>
+                    {showValidatedColumns && (
+                      <>
+                        <TableHead className="min-w-[200px] text-right">Saldo Awal Validated</TableHead>
+                        <TableHead className="min-w-[180px] text-right">Debit Validated</TableHead>
+                        <TableHead className="min-w-[180px] text-right">Credit Validated</TableHead>
+                        <TableHead className="min-w-[180px] text-right">Net Validated</TableHead>
+                        <TableHead className="min-w-[200px] text-right">Saldo Akhir Validated</TableHead>
+                      </>
+                    )}
                     <TableHead className="min-w-[140px] text-right">Gap Harian</TableHead>
                     <TableHead className="min-w-[160px] text-right">Gap Kumulatif</TableHead>
                   </TableRow>
@@ -248,22 +270,30 @@ export default function SaldoHarianRekening() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-gray-500">Memuat data...</TableCell>
+                      <TableCell colSpan={showValidatedColumns ? 13 : 8} className="text-center py-8 text-gray-500">Memuat data...</TableCell>
                     </TableRow>
                   ) : rows.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-gray-500">Belum ada data untuk filter ini.</TableCell>
+                      <TableCell colSpan={showValidatedColumns ? 13 : 8} className="text-center py-8 text-gray-500">Belum ada data untuk filter ini.</TableCell>
                     </TableRow>
                   ) : (
                     rows.map((row) => (
                       <TableRow key={row._id || `${row.tanggal}-${row.kode_bank}-${row.no_rekening}`}>
                         <TableCell className="font-medium">{row.tanggal}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.saldo_awal_input)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.saldo_awal_validated)}</TableCell>
+                        <TableCell className="text-right text-emerald-700">{formatCurrency(row.debit_input)}</TableCell>
+                        <TableCell className="text-right text-rose-700">{formatCurrency(row.credit_input)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.total_transaksi_input)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.total_transaksi_validated)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.saldo_akhir_input)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(row.saldo_akhir_validated)}</TableCell>
+                        {showValidatedColumns && (
+                          <>
+                            <TableCell className="text-right">{formatCurrency(row.saldo_awal_validated)}</TableCell>
+                            <TableCell className="text-right text-emerald-700">{formatCurrency(row.debit_validated)}</TableCell>
+                            <TableCell className="text-right text-rose-700">{formatCurrency(row.credit_validated)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.total_transaksi_validated)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.saldo_akhir_validated)}</TableCell>
+                          </>
+                        )}
                         <TableCell className={`text-right ${row.gap_harian >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
                           {formatCurrency(row.gap_harian)}
                         </TableCell>

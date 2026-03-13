@@ -80,7 +80,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       // Rekap tidak perlu kolom Input By
       header = ['No', 'Kategori', 'Sub Kategori', 'Akun', 'Bulan Fiskal', 'Nilai', 'Tahun Fiskal'];
     } else {
-      const filter: any = { status_deleted: { $ne: true } };
+      const filter: any = { status_deleted: { $ne: true }, is_special_transaction: { $ne: true } };
       if (from) filter.tanggal = { ...filter.tanggal, $gte: from };
       if (to) filter.tanggal = { ...filter.tanggal, $lte: to };
       if (nama_perusahaan) filter.nama_perusahaan = nama_perusahaan;

@@ -22,6 +22,7 @@ router.get('/generate-next-year/status', getGenerateStatus);
 router.patch('/details/:periode/item/:itemId/status', updateItemStatus);
 router.patch('/details/:periode/item/:itemId/active', updateItemActive);
 router.patch('/details/:periode/item/:itemId', updateItem);
+router.post('/invoice/generate', generateInvoiceAndMarkProcess);
 router.post('/details/:periode/item/:itemId/invoice/generate', generateInvoiceAndMarkProcess);
 router.delete('/details/:periode/item/:itemId', deleteItem);
 

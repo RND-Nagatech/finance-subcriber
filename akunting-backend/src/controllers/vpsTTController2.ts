@@ -304,13 +304,23 @@ export const updateItemStatus = async (req: Request, res: Response) => {
 };
 
 export const generateInvoiceAndMarkProcess = async (req: Request, res: Response) => {
+  let session: mongoose.ClientSession | null = null;
   try {
     const { periode, itemId } = req.params as { periode: string; itemId: string };
     const body = req.body as {
+      target_items?: Array<{ periode?: string; item_id?: string }>;
       customer?: { name?: string; address?: string; phone?: string };
-      items?: Array<{ program_name?: string; qty?: number; unit_price?: number; line_total?: number }>;
+      items?: Array<{
+        program_name?: string;
+        qty?: number;
+        unit_price?: number;
+        line_total?: number;
+        start_date?: string;
+        tempo_date?: string;
+      }>;
       discount_percent?: number;
       discount_rp?: number;
+      extra_deduction_rp?: number;
       subtotal?: number;
       grand_total?: number;
       notes?: string;
@@ -318,16 +328,60 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     };
 
     const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
-    const item = await TTVpsDetail.findOne({ _id: itemId, periode });
-    if (!item) return res.status(404).json({ message: 'item not found' });
-    if ((item as any).is_active === false) {
-      return res.status(400).json({ message: 'Data nonaktif. Aktifkan terlebih dahulu sebelum proses invoice.' });
-    }
-    if (item.status !== 'OPEN') {
-      return res.status(400).json({ message: 'Invoice hanya bisa digenerate dari status OPEN.' });
+
+    const targetItemsRaw = Array.isArray(body?.target_items) ? body.target_items : [];
+    const normalizedTargetItems = (
+      targetItemsRaw.length > 0
+        ? targetItemsRaw
+        : (periode && itemId ? [{ periode, item_id: itemId }] : [])
+    )
+      .map((it) => ({
+        periode: String(it?.periode || '').trim(),
+        item_id: String(it?.item_id || '').trim(),
+      }))
+      .filter((it) => it.periode && it.item_id);
+
+    if (normalizedTargetItems.length === 0) {
+      return res.status(400).json({ message: 'Minimal harus ada 1 item target invoice.' });
     }
 
-    const customerName = String(body?.customer?.name || item.toko || '').trim();
+    const uniqueTargets = Array.from(
+      new Map(
+        normalizedTargetItems.map((it) => [`${it.periode}::${it.item_id}`, it])
+      ).values()
+    );
+
+    const targetIds = uniqueTargets.map((it) => new mongoose.Types.ObjectId(it.item_id));
+    const targetPeriodes = Array.from(new Set(uniqueTargets.map((it) => it.periode)));
+    const docs = await TTVpsDetail.find({
+      _id: { $in: targetIds },
+      periode: { $in: targetPeriodes },
+    });
+
+    if (docs.length !== uniqueTargets.length) {
+      return res.status(404).json({ message: 'Sebagian item target invoice tidak ditemukan.' });
+    }
+
+    const sortedDocs = uniqueTargets.map((target) => {
+      const found = docs.find((doc) => doc._id.toString() === target.item_id && doc.periode === target.periode);
+      if (!found) {
+        throw new Error(`Target item tidak ditemukan untuk ${target.periode}/${target.item_id}`);
+      }
+      return found;
+    });
+
+    const invalidInactive = sortedDocs.find((doc) => (doc as any).is_active === false);
+    if (invalidInactive) {
+      return res.status(400).json({ message: 'Ada data nonaktif. Aktifkan terlebih dahulu sebelum proses invoice.' });
+    }
+    const invalidStatus = sortedDocs.find((doc) => doc.status !== 'OPEN');
+    if (invalidStatus) {
+      return res.status(400).json({ message: 'Semua item invoice harus berstatus OPEN.' });
+    }
+
+    const firstItem = sortedDocs[0];
+
+    const customerName = String(body?.customer?.name || firstItem.toko || '').trim();
     if (!customerName) return res.status(400).json({ message: 'Nama toko/customer wajib diisi.' });
     const customerAddress = String(body?.customer?.address || '').trim();
     const customerPhone = String(body?.customer?.phone || '').trim();
@@ -339,7 +393,9 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
         const qty = Math.max(0, Number(it?.qty || 0));
         const unit_price = Math.max(0, Number(it?.unit_price || 0));
         const line_total = Math.max(0, Math.round(qty * unit_price));
-        return { program_name, qty, unit_price, line_total };
+        const start_date = String(it?.start_date || '').trim();
+        const tempo_date = String(it?.tempo_date || '').trim();
+        return { program_name, qty, unit_price, line_total, start_date, tempo_date };
       })
       .filter((it) => it.program_name && it.qty > 0);
 
@@ -350,13 +406,17 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     const subtotalCalculated = sanitizedItems.reduce((acc, it) => acc + it.line_total, 0);
     const discountPercentInput = Math.max(0, Math.min(100, Number(body?.discount_percent || 0)));
     const discountRpInput = Math.max(0, Number(body?.discount_rp || 0));
+    const extraDeductionRp = Math.min(
+      subtotalCalculated,
+      Math.max(0, Number(body?.extra_deduction_rp || 0))
+    );
     const discountRp =
       discountRpInput > 0
         ? Math.min(subtotalCalculated, Math.floor(discountRpInput))
         : Math.min(subtotalCalculated, Math.floor((subtotalCalculated * discountPercentInput) / 100));
     const discountPercent =
       subtotalCalculated > 0 ? Math.round((discountRp / subtotalCalculated) * 10000) / 100 : 0;
-    const grandTotal = Math.max(0, subtotalCalculated - discountRp);
+    const grandTotal = Math.max(0, subtotalCalculated - discountRp - extraDeductionRp);
 
     const invoiceNumber = await generateDailyInvoiceNumber();
     const now = new Date();
@@ -364,7 +424,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       ? String(body.display_date)
       : formatYMD(now);
 
-    item.invoice_meta = {
+    const sharedInvoiceMeta = {
       invoice_number: invoiceNumber,
       generated_at: now,
       generated_by: userTag,
@@ -378,28 +438,46 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       subtotal: subtotalCalculated,
       discount_percent: discountPercent,
       discount_rp: discountRp,
+      extra_deduction_rp: extraDeductionRp,
       grand_total: grandTotal,
       notes: (body?.notes || '').toString().trim(),
       display_date: displayDate,
     };
-    item.status = 'PROCESS';
-    item.tgl_lunas = undefined;
-    item.update_date = now;
-    item.update_by = userTag;
-    await item.save();
 
-    await recalcAggregateForPeriode(periode, (req as any).user);
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      for (const doc of sortedDocs) {
+        doc.invoice_meta = sharedInvoiceMeta as any;
+        doc.status = 'PROCESS';
+        doc.tgl_lunas = undefined;
+        doc.update_date = now;
+        doc.update_by = userTag;
+        await doc.save({ session });
+      }
+    });
+
+    const affectedPeriodes = Array.from(new Set(sortedDocs.map((doc) => doc.periode)));
+    for (const affectedPeriode of affectedPeriodes) {
+      await recalcAggregateForPeriode(affectedPeriode, (req as any).user);
+    }
 
     return res.json({
       message: 'invoice generated',
-      status: item.status,
-      invoice: item.invoice_meta,
-      item_id: item._id,
-      periode: item.periode,
+      status: 'PROCESS',
+      invoice: sharedInvoiceMeta,
+      item_id: firstItem._id,
+      periode: firstItem.periode,
+      affected_items: sortedDocs.map((doc) => ({
+        item_id: doc._id,
+        periode: doc.periode,
+      })),
+      affected_periodes: affectedPeriodes,
     });
   } catch (err: any) {
     console.error(err);
     return res.status(500).json({ message: 'internal error', error: err?.message });
+  } finally {
+    if (session) await session.endSession();
   }
 };
 

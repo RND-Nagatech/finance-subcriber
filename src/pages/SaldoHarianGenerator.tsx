@@ -23,14 +23,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 interface RekeningOption {
   _id: string;
@@ -141,12 +133,20 @@ export default function SaldoHarianGenerator() {
 
   const summary = useMemo(() => {
     const rows = previewRows || [];
+    const totalDebitInput = rows.reduce((sum, r) => sum + Number((r as any).debit_input || 0), 0);
+    const totalCreditInput = rows.reduce((sum, r) => sum + Number((r as any).credit_input || 0), 0);
     const totalInput = rows.reduce((sum, r) => sum + Number(r.total_transaksi_input || 0), 0);
+    const totalDebitValidated = rows.reduce((sum, r) => sum + Number((r as any).debit_validated || 0), 0);
+    const totalCreditValidated = rows.reduce((sum, r) => sum + Number((r as any).credit_validated || 0), 0);
     const totalValidated = rows.reduce((sum, r) => sum + Number(r.total_transaksi_validated || 0), 0);
     const finalGap = rows.length ? Number(rows[rows.length - 1].gap_kumulatif || 0) : 0;
     return {
       days: rows.length,
+      totalDebitInput,
+      totalCreditInput,
       totalInput,
+      totalDebitValidated,
+      totalCreditValidated,
       totalValidated,
       finalGap,
     };
@@ -281,13 +281,37 @@ export default function SaldoHarianGenerator() {
               </Card>
               <Card className="bg-white/70 border-blue-100">
                 <CardHeader className="pb-2">
-                  <CardDescription>Total Transaksi Input</CardDescription>
+                  <CardDescription>Total Debit Input</CardDescription>
+                  <CardTitle className="text-base text-emerald-700">{formatCurrency(summary.totalDebitInput)}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-white/70 border-blue-100">
+                <CardHeader className="pb-2">
+                  <CardDescription>Total Credit Input</CardDescription>
+                  <CardTitle className="text-base text-rose-700">{formatCurrency(summary.totalCreditInput)}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-white/70 border-blue-100">
+                <CardHeader className="pb-2">
+                  <CardDescription>Net Input</CardDescription>
                   <CardTitle className="text-base">{formatCurrency(summary.totalInput)}</CardTitle>
                 </CardHeader>
               </Card>
               <Card className="bg-white/70 border-blue-100">
                 <CardHeader className="pb-2">
-                  <CardDescription>Total Transaksi Validated</CardDescription>
+                  <CardDescription>Total Debit Validated</CardDescription>
+                  <CardTitle className="text-base text-emerald-700">{formatCurrency(summary.totalDebitValidated)}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-white/70 border-blue-100">
+                <CardHeader className="pb-2">
+                  <CardDescription>Total Credit Validated</CardDescription>
+                  <CardTitle className="text-base text-rose-700">{formatCurrency(summary.totalCreditValidated)}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card className="bg-white/70 border-blue-100">
+                <CardHeader className="pb-2">
+                  <CardDescription>Net Validated</CardDescription>
                   <CardTitle className="text-base">{formatCurrency(summary.totalValidated)}</CardTitle>
                 </CardHeader>
               </Card>
@@ -315,45 +339,53 @@ export default function SaldoHarianGenerator() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="overflow-auto rounded-lg border border-slate-200 max-h-[65vh]">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-slate-50 z-10">
-                      <TableRow>
-                        <TableHead className="min-w-[120px]">Tanggal</TableHead>
-                        <TableHead className="min-w-[180px] text-right">Saldo Awal Input</TableHead>
-                        <TableHead className="min-w-[200px] text-right">Saldo Awal Validated</TableHead>
-                        <TableHead className="min-w-[170px] text-right">Total Input</TableHead>
-                        <TableHead className="min-w-[180px] text-right">Total Validated</TableHead>
-                        <TableHead className="min-w-[180px] text-right">Saldo Akhir Input</TableHead>
-                        <TableHead className="min-w-[200px] text-right">Saldo Akhir Validated</TableHead>
-                        <TableHead className="min-w-[140px] text-right">Gap Harian</TableHead>
-                        <TableHead className="min-w-[160px] text-right">Gap Kumulatif</TableHead>
-                        <TableHead className="min-w-[120px] text-right">Count Input</TableHead>
-                        <TableHead className="min-w-[140px] text-right">Count Validated</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                <div className="overflow-auto rounded-lg border border-slate-200 max-h-[calc(100vh-260px)]">
+                  <table className="w-full min-w-[2100px] border-collapse text-sm">
+                    <thead className="sticky top-0 z-40 bg-slate-50 shadow-sm">
+                      <tr className="border-b border-slate-200">
+                        <th className="min-w-[120px] px-4 py-3 text-left font-semibold">Tanggal</th>
+                        <th className="min-w-[180px] px-4 py-3 text-right font-semibold">Saldo Awal Input</th>
+                        <th className="min-w-[170px] px-4 py-3 text-right font-semibold">Debit Input</th>
+                        <th className="min-w-[170px] px-4 py-3 text-right font-semibold">Credit Input</th>
+                        <th className="min-w-[170px] px-4 py-3 text-right font-semibold">Net Input</th>
+                        <th className="min-w-[180px] px-4 py-3 text-right font-semibold">Saldo Akhir Input</th>
+                        <th className="min-w-[200px] px-4 py-3 text-right font-semibold">Saldo Awal Validated</th>
+                        <th className="min-w-[180px] px-4 py-3 text-right font-semibold">Debit Validated</th>
+                        <th className="min-w-[180px] px-4 py-3 text-right font-semibold">Credit Validated</th>
+                        <th className="min-w-[180px] px-4 py-3 text-right font-semibold">Net Validated</th>
+                        <th className="min-w-[200px] px-4 py-3 text-right font-semibold">Saldo Akhir Validated</th>
+                        <th className="min-w-[140px] px-4 py-3 text-right font-semibold">Gap Harian</th>
+                        <th className="min-w-[160px] px-4 py-3 text-right font-semibold">Gap Kumulatif</th>
+                        <th className="min-w-[120px] px-4 py-3 text-right font-semibold">Count Input</th>
+                        <th className="min-w-[140px] px-4 py-3 text-right font-semibold">Count Validated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {previewRows.map((row) => (
-                        <TableRow key={row.tanggal}>
-                          <TableCell className="font-medium">{row.tanggal}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.saldo_awal_input)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.saldo_awal_validated)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.total_transaksi_input)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.total_transaksi_validated)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.saldo_akhir_input)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.saldo_akhir_validated)}</TableCell>
-                          <TableCell className={`text-right ${row.gap_harian >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
+                        <tr key={row.tanggal} className="border-b border-slate-100 last:border-b-0">
+                          <td className="px-4 py-3 font-medium">{row.tanggal}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(row.saldo_awal_input)}</td>
+                          <td className="px-4 py-3 text-right text-emerald-700">{formatCurrency((row as any).debit_input || 0)}</td>
+                          <td className="px-4 py-3 text-right text-rose-700">{formatCurrency((row as any).credit_input || 0)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(row.total_transaksi_input)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(row.saldo_akhir_input)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(row.saldo_awal_validated)}</td>
+                          <td className="px-4 py-3 text-right text-emerald-700">{formatCurrency((row as any).debit_validated || 0)}</td>
+                          <td className="px-4 py-3 text-right text-rose-700">{formatCurrency((row as any).credit_validated || 0)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(row.total_transaksi_validated)}</td>
+                          <td className="px-4 py-3 text-right">{formatCurrency(row.saldo_akhir_validated)}</td>
+                          <td className={`px-4 py-3 text-right ${row.gap_harian >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
                             {formatCurrency(row.gap_harian)}
-                          </TableCell>
-                          <TableCell className={`text-right font-semibold ${row.gap_kumulatif >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
+                          </td>
+                          <td className={`px-4 py-3 text-right font-semibold ${row.gap_kumulatif >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
                             {formatCurrency(row.gap_kumulatif)}
-                          </TableCell>
-                          <TableCell className="text-right">{row.count_transaksi_input}</TableCell>
-                          <TableCell className="text-right">{row.count_transaksi_validated}</TableCell>
-                        </TableRow>
+                          </td>
+                          <td className="px-4 py-3 text-right">{row.count_transaksi_input}</td>
+                          <td className="px-4 py-3 text-right">{row.count_transaksi_validated}</td>
+                        </tr>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               </CardContent>
             </Card>

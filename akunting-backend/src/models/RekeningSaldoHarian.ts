@@ -5,9 +5,13 @@ export interface IRekeningSaldoHarian extends Document {
   no_rekening: string;
   tanggal: string; // YYYY-MM-DD
   saldo_awal_input: number;
+  debit_input: number;
+  credit_input: number;
   total_transaksi_input: number;
   saldo_akhir_input: number;
   saldo_awal_validated: number;
+  debit_validated: number;
+  credit_validated: number;
   total_transaksi_validated: number;
   saldo_akhir_validated: number;
   count_transaksi_input: number;
@@ -21,9 +25,13 @@ const RekeningSaldoHarianSchema = new Schema<IRekeningSaldoHarian>(
     no_rekening: { type: String, required: true, index: true },
     tanggal: { type: String, required: true, index: true },
     saldo_awal_input: { type: Number, required: true, default: 0 },
+    debit_input: { type: Number, required: true, default: 0 },
+    credit_input: { type: Number, required: true, default: 0 },
     total_transaksi_input: { type: Number, required: true, default: 0 },
     saldo_akhir_input: { type: Number, required: true, default: 0 },
     saldo_awal_validated: { type: Number, required: true, default: 0 },
+    debit_validated: { type: Number, required: true, default: 0 },
+    credit_validated: { type: Number, required: true, default: 0 },
     total_transaksi_validated: { type: Number, required: true, default: 0 },
     saldo_akhir_validated: { type: Number, required: true, default: 0 },
     count_transaksi_input: { type: Number, required: true, default: 0 },
@@ -37,4 +45,3 @@ RekeningSaldoHarianSchema.index({ kode_bank: 1, no_rekening: 1, tanggal: 1 }, { 
 RekeningSaldoHarianSchema.index({ kode_bank: 1, no_rekening: 1, tanggal: -1 });
 
 export default mongoose.model<IRekeningSaldoHarian>('RekeningSaldoHarian', RekeningSaldoHarianSchema);
-

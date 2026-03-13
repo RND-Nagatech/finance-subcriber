@@ -67,7 +67,11 @@ export const previewSaldoHarianRekening = async (req: Request, res: Response, ne
       summary: {
         first_day: first,
         last_day: last,
+        total_debit_input: rows.reduce((s, r) => s + Number((r as any).debit_input || 0), 0),
+        total_credit_input: rows.reduce((s, r) => s + Number((r as any).credit_input || 0), 0),
         total_input: rows.reduce((s, r) => s + Number(r.total_transaksi_input || 0), 0),
+        total_debit_validated: rows.reduce((s, r) => s + Number((r as any).debit_validated || 0), 0),
+        total_credit_validated: rows.reduce((s, r) => s + Number((r as any).credit_validated || 0), 0),
         total_validated: rows.reduce((s, r) => s + Number(r.total_transaksi_validated || 0), 0),
         final_gap: last ? Number(last.gap_kumulatif || 0) : 0,
       },
@@ -117,9 +121,13 @@ export const commitSaldoHarianRekening = async (req: Request, res: Response, nex
             no_rekening: payload.no_rekening,
             tanggal: r.tanggal,
             saldo_awal_input: r.saldo_awal_input,
+            debit_input: (r as any).debit_input || 0,
+            credit_input: (r as any).credit_input || 0,
             total_transaksi_input: r.total_transaksi_input,
             saldo_akhir_input: r.saldo_akhir_input,
             saldo_awal_validated: r.saldo_awal_validated,
+            debit_validated: (r as any).debit_validated || 0,
+            credit_validated: (r as any).credit_validated || 0,
             total_transaksi_validated: r.total_transaksi_validated,
             saldo_akhir_validated: r.saldo_akhir_validated,
             count_transaksi_input: r.count_transaksi_input,
@@ -144,7 +152,11 @@ export const commitSaldoHarianRekening = async (req: Request, res: Response, nex
       end_date: today,
       affected_days: rows.length,
       summary: {
+        total_debit_input: rows.reduce((s, r) => s + Number((r as any).debit_input || 0), 0),
+        total_credit_input: rows.reduce((s, r) => s + Number((r as any).credit_input || 0), 0),
         total_input: rows.reduce((s, r) => s + Number(r.total_transaksi_input || 0), 0),
+        total_debit_validated: rows.reduce((s, r) => s + Number((r as any).debit_validated || 0), 0),
+        total_credit_validated: rows.reduce((s, r) => s + Number((r as any).credit_validated || 0), 0),
         total_validated: rows.reduce((s, r) => s + Number(r.total_transaksi_validated || 0), 0),
         final_saldo_input: last ? Number(last.saldo_akhir_input || 0) : payload.start_balance_input,
         final_saldo_validated: last ? Number(last.saldo_akhir_validated || 0) : payload.start_balance_validated,
@@ -161,4 +173,3 @@ export const commitSaldoHarianRekening = async (req: Request, res: Response, nex
     session.endSession();
   }
 };
-

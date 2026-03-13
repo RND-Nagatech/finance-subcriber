@@ -8,7 +8,7 @@ export interface IRiwayatSaldoRekening extends Document {
   saldo_keluar: number;
   saldo_akhir: number;
   transaksi_id?: mongoose.Types.ObjectId; // legacy reference ke TtFinanceDetail
-  ref_type?: 'TT_FINANCE_DETAIL' | 'PERJALANAN_DANA';
+  ref_type?: 'TT_FINANCE_DETAIL' | 'PERJALANAN_DANA' | 'TRANSFER_REKENING';
   ref_id?: mongoose.Types.ObjectId;
   tanggal: Date;
   keterangan: string;
@@ -23,7 +23,7 @@ const RiwayatSaldoRekeningSchema: Schema = new Schema({
   saldo_keluar: { type: Number, required: true, default: 0 },
   saldo_akhir: { type: Number, required: true, default: 0 },
   transaksi_id: { type: Schema.Types.ObjectId, ref: 'TtFinanceDetail', required: false },
-  ref_type: { type: String, enum: ['TT_FINANCE_DETAIL', 'PERJALANAN_DANA'], required: false },
+  ref_type: { type: String, enum: ['TT_FINANCE_DETAIL', 'PERJALANAN_DANA', 'TRANSFER_REKENING'], required: false },
   ref_id: { type: Schema.Types.ObjectId, required: false },
   tanggal: { type: Date, required: true },
   keterangan: { type: String, required: true },

@@ -38,10 +38,13 @@ export interface TTVpsDetailItemDTO {
       qty: number;
       unit_price: number;
       line_total: number;
+      start_date?: string;
+      tempo_date?: string;
     }>;
     subtotal: number;
     discount_percent: number;
     discount_rp: number;
+    extra_deduction_rp?: number;
     grand_total: number;
     notes?: string;
     display_date: string;
@@ -151,6 +154,10 @@ export async function getGenerateStatus(jobId: string): Promise<{ status: 'runni
 }
 
 export interface GenerateInvoiceVpsPayload {
+  target_items?: Array<{
+    periode: string;
+    item_id: string;
+  }>;
   customer: {
     name: string;
     address: string;
@@ -164,6 +171,7 @@ export interface GenerateInvoiceVpsPayload {
   }>;
   discount_percent: number;
   discount_rp: number;
+  extra_deduction_rp?: number;
   subtotal: number;
   grand_total: number;
   notes?: string;
@@ -175,12 +183,20 @@ export interface GenerateInvoiceVpsResponse {
   status: TTVpsStatus;
   periode: string;
   item_id: string;
+  affected_items?: Array<{
+    periode: string;
+    item_id: string;
+  }>;
+  affected_periodes?: string[];
   invoice: NonNullable<TTVpsDetailItemDTO['invoice_meta']>;
 }
 
-export async function generateInvoiceVps(params: { periode: string; itemId: string; payload: GenerateInvoiceVpsPayload }): Promise<GenerateInvoiceVpsResponse> {
-  const { periode, itemId, payload } = params;
-  const { data } = await axiosInstance.post(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/invoice/generate`, payload);
+export async function generateInvoiceVps(params: { payload: GenerateInvoiceVpsPayload; periode?: string; itemId?: string }): Promise<GenerateInvoiceVpsResponse> {
+  const { payload, periode, itemId } = params;
+  const endpoint = periode && itemId
+    ? `/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/invoice/generate`
+    : '/tt-vps/invoice/generate';
+  const { data } = await axiosInstance.post(endpoint, payload);
   return data;
 }
 

@@ -31,6 +31,7 @@ export interface ITtFinanceDetail extends Document {
   kode_bank?: string;
   no_rekening?: string;
   perjalanan_dinas_id?: mongoose.Types.ObjectId | string;
+  is_special_transaction?: boolean;
 }
 
 const TtFinanceDetailSchema: Schema = new Schema({
@@ -59,6 +60,7 @@ const TtFinanceDetailSchema: Schema = new Schema({
   kode_bank: { type: String },
   no_rekening: { type: String },
   perjalanan_dinas_id: { type: Schema.Types.ObjectId, ref: 'PerjalananDinas', index: true },
+  is_special_transaction: { type: Boolean, default: false, index: true },
   attachments: { type: [{ path: { type: String, required: true } }], default: [] },
 });
 

@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import Rekening from '../models/Rekening';
 import Bank from '../models/Bank';
 import RiwayatSaldoRekening from '../models/RiwayatSaldoRekening';
+import RekeningTransfer from '../models/RekeningTransfer';
+import { applyTransferToDailyBalance } from '../services/rekeningDailyBalanceService';
 
 export const getAllRekenings = async (req: Request, res: Response) => {
   try {
@@ -137,6 +139,21 @@ export const transferSaldoAntarRekening = async (req: Request, res: Response) =>
       const noteOut = `TRANSFER KELUAR KE ${toRekening.kode_bank}/${toRekening.no_rekening}${noteSuffix}`;
       const noteIn = `TRANSFER MASUK DARI ${fromRekening.kode_bank}/${fromRekening.no_rekening}${noteSuffix}`;
 
+      const transferDoc = await RekeningTransfer.create([{
+        from_rekening_id: fromRekening._id,
+        to_rekening_id: toRekening._id,
+        from_kode_bank: fromRekening.kode_bank,
+        from_no_rekening: fromRekening.no_rekening,
+        to_kode_bank: toRekening.kode_bank,
+        to_no_rekening: toRekening.no_rekening,
+        nominal: amount,
+        tanggal: transferDate,
+        keterangan: String(keterangan || '').trim(),
+        created_by: String((req as any)?.user?.username || (req as any)?.user?.name || (req as any)?.user?.email || 'SYSTEM'),
+        created_at: new Date(),
+      }], { session });
+      const transferId = transferDoc?.[0]?._id;
+
       await RiwayatSaldoRekening.insertMany([
         {
           kode_bank: fromRekening.kode_bank,
@@ -147,7 +164,8 @@ export const transferSaldoAntarRekening = async (req: Request, res: Response) =>
           saldo_akhir: fromAfter,
           tanggal: transferDate,
           keterangan: noteOut,
-          ref_type: 'PERJALANAN_DANA',
+          ref_type: 'TRANSFER_REKENING',
+          ref_id: transferId,
           created_at: new Date(),
         },
         {
@@ -159,10 +177,21 @@ export const transferSaldoAntarRekening = async (req: Request, res: Response) =>
           saldo_akhir: toAfter,
           tanggal: transferDate,
           keterangan: noteIn,
-          ref_type: 'PERJALANAN_DANA',
+          ref_type: 'TRANSFER_REKENING',
+          ref_id: transferId,
           created_at: new Date(),
         },
       ], { session });
+
+      await applyTransferToDailyBalance({
+        from_kode_bank: fromRekening.kode_bank,
+        from_no_rekening: fromRekening.no_rekening,
+        to_kode_bank: toRekening.kode_bank,
+        to_no_rekening: toRekening.no_rekening,
+        tanggal: transferDate.toISOString().slice(0, 10),
+        nominal: amount,
+        session,
+      });
     });
 
     return res.status(200).json({
