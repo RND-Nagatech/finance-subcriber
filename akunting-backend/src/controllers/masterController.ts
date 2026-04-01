@@ -771,6 +771,7 @@ export const listSubscriber = async (req: Request, res: Response) => {
 
 export const getSubscriberYears = async (req: Request, res: Response) => {
   try {
+    const tz = 'Asia/Jakarta';
     // Get distinct years from subscriber tanggal field
     const yearsResult = await Subscriber.aggregate([
   {
@@ -802,7 +803,7 @@ export const getSubscriberYears = async (req: Request, res: Response) => {
   },
   {
     $group: {
-      _id: { $year: "$tanggalDate" }
+      _id: { $year: { date: "$tanggalDate", timezone: tz } }
     }
   },
   {
@@ -821,6 +822,7 @@ export const getSubscriberYears = async (req: Request, res: Response) => {
 
 const buildTanggalPipeline = (month?: string, year?: string) => {
   const pipeline: any[] = [];
+  const tz = 'Asia/Jakarta';
 
   if (
     (month && month !== 'ALL') ||
@@ -846,11 +848,21 @@ const buildTanggalPipeline = (month?: string, year?: string) => {
     const expr: any[] = [];
 
     if (year && year !== 'ALL') {
-      expr.push({ $eq: [{ $year: "$tanggalDate" }, parseInt(year, 10)] });
+      expr.push({
+        $eq: [
+          { $year: { date: "$tanggalDate", timezone: tz } },
+          parseInt(year, 10)
+        ]
+      });
     }
 
     if (month && month !== 'ALL') {
-      expr.push({ $eq: [{ $month: "$tanggalDate" }, parseInt(month, 10)] });
+      expr.push({
+        $eq: [
+          { $month: { date: "$tanggalDate", timezone: tz } },
+          parseInt(month, 10)
+        ]
+      });
     }
 
     pipeline.push({
