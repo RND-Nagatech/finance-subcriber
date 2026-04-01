@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox, ComboboxOption } from '@/components/ui/Combobox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck } from 'lucide-react';
+import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import axiosInstance from '@/api/axiosInstance';
 
@@ -143,6 +143,7 @@ export default function VPS() {
   const [openEdit, setOpenEdit] = useState(false);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<VpsInvoiceItem[]>([]);
+  const [invoiceDialogMode, setInvoiceDialogMode] = useState<'generate' | 'download'>('generate');
   const [selectedInvoiceItems, setSelectedInvoiceItems] = useState<Record<string, VpsInvoiceItem>>({});
 
   // Filters: period (from/to month), status, and search term
@@ -322,6 +323,16 @@ export default function VPS() {
   const startCreate = () => { setEditItem(null); setOpen(true); };
   const startEdit = (item: VpsInvoiceItem) => { setEditItem(item); setOpenEdit(true); };
   const startGenerateInvoice = (item: VpsInvoiceItem) => {
+    setInvoiceDialogMode('generate');
+    setInvoiceItems([item]);
+    setInvoiceDialogOpen(true);
+  };
+  const startDownloadInvoice = (item: VpsInvoiceItem) => {
+    if (!item.invoice_meta) {
+      toast.error('Data invoice belum tersedia untuk item ini.');
+      return;
+    }
+    setInvoiceDialogMode('download');
     setInvoiceItems([item]);
     setInvoiceDialogOpen(true);
   };
@@ -330,6 +341,7 @@ export default function VPS() {
       toast.warn('Pilih minimal 1 data OPEN & aktif untuk generate invoice gabungan.');
       return;
     }
+    setInvoiceDialogMode('generate');
     setInvoiceItems(selectedVisibleItems);
     setInvoiceDialogOpen(true);
   };
@@ -380,6 +392,7 @@ export default function VPS() {
       payload: {
         target_items?: Array<{ periode: string; item_id: string }>;
         customer: { name: string; address: string; phone: string };
+        payment_accounts?: Array<{ kode_bank?: string; no_rekening?: string; nama_rekening?: string }>;
         items: Array<{ program_name: string; qty: number; unit_price: number; line_total?: number; start_date?: string; tempo_date?: string }>;
         discount_percent: number;
         discount_rp: number;
@@ -668,6 +681,15 @@ export default function VPS() {
                         )}
                         {item.status === 'PROCESS' && (
                           <>
+                            <Button
+                              size="icon"
+                              aria-label="Download invoice"
+                              title="Download ulang invoice"
+                              className="rounded-full bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                              onClick={() => startDownloadInvoice(item)}
+                            >
+                              <FileDown className="h-5 w-5" />
+                            </Button>
                             <ConfirmAction
                               title="Selesaikan VPS?"
                               description="Status akan diubah menjadi DONE. Pilih tanggal lunas:"
@@ -705,22 +727,33 @@ export default function VPS() {
                           </>
                         )}
                         {item.status === 'DONE' && (
-                          <ConfirmAction
-                            title="Batal Pelunasan?"
-                            description="Status akan dikembalikan ke PROCESS dan realisasi di periode tgl lunas akan dikurangi."
-                            actionText="Ya, Batalkan"
-                            onConfirm={() => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'PROCESS' })}
-                          >
+                          <>
                             <Button
                               size="icon"
-                              aria-label="Batal pelunasan"
-                              title="Batal pelunasan"
-                              className="rounded-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                              disabled={updateStatusMut.isPending}
+                              aria-label="Download invoice"
+                              title="Download ulang invoice"
+                              className="rounded-full bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                              onClick={() => startDownloadInvoice(item)}
                             >
-                              <RotateCcw className="h-5 w-5" />
+                              <FileDown className="h-5 w-5" />
                             </Button>
-                          </ConfirmAction>
+                            <ConfirmAction
+                              title="Batal Pelunasan?"
+                              description="Status akan dikembalikan ke PROCESS dan realisasi di periode tgl lunas akan dikurangi."
+                              actionText="Ya, Batalkan"
+                              onConfirm={() => updateStatusMut.mutate({ periode: item.__periode, itemId: item._id, status: 'PROCESS' })}
+                            >
+                              <Button
+                                size="icon"
+                                aria-label="Batal pelunasan"
+                                title="Batal pelunasan"
+                                className="rounded-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                                disabled={updateStatusMut.isPending}
+                              >
+                                <RotateCcw className="h-5 w-5" />
+                              </Button>
+                            </ConfirmAction>
+                          </>
                         )}
                         <Button
                           size="icon"
@@ -818,6 +851,7 @@ export default function VPS() {
           setInvoiceDialogOpen(v);
           if (!v) setInvoiceItems([]);
         }}
+        mode={invoiceDialogMode}
         items={invoiceItems}
         subscribers={subsAll || []}
         paymentAccounts={rekeningInvoiceList || []}
@@ -831,6 +865,49 @@ export default function VPS() {
             periode: item.__periode,
             item_id: item._id,
           }));
+
+          if (invoiceDialogMode === 'download') {
+            const meta = firstItem.invoice_meta;
+            if (!meta) throw new Error('Snapshot invoice tidak ditemukan.');
+            const displayDate = payload.display_date || meta.display_date || new Date().toISOString().slice(0, 10);
+            return {
+              invoice_number: String(meta.invoice_number || generateLocalInvoiceNumber(displayDate)),
+              generated_at: String(meta.generated_at || new Date().toISOString()),
+              generated_by: String(meta.generated_by || 'RE-DOWNLOAD'),
+              sender: meta.sender || {
+                name: 'PT. GRAHA INTEGRA APLIKASI',
+                address: '',
+                phone: '',
+              },
+              customer: {
+                name: payload.customer.name,
+                address: payload.customer.address || '',
+                phone: payload.customer.phone || '',
+              },
+              payment_accounts: Array.isArray(payload.payment_accounts)
+                ? payload.payment_accounts.map((acc) => ({
+                    kode_bank: String(acc?.kode_bank || '').trim(),
+                    no_rekening: String(acc?.no_rekening || '').trim(),
+                    nama_rekening: String(acc?.nama_rekening || '').trim(),
+                  })).filter((acc) => acc.no_rekening)
+                : (Array.isArray(meta.payment_accounts) ? meta.payment_accounts : []),
+              items: payload.items.map((it) => ({
+                program_name: it.program_name,
+                qty: Number(it.qty) || 0,
+                unit_price: Number(it.unit_price) || 0,
+                line_total: Number(it.line_total ?? (Number(it.qty) || 0) * (Number(it.unit_price) || 0)),
+                start_date: resolveInvoiceStartDate(it),
+                tempo_date: resolveInvoiceTempoDate(it),
+              })),
+              subtotal: Number(payload.subtotal) || 0,
+              discount_percent: Number(payload.discount_percent) || 0,
+              discount_rp: Number(payload.discount_rp) || 0,
+              extra_deduction_rp: Number(payload.extra_deduction_rp) || 0,
+              grand_total: Number(payload.grand_total) || 0,
+              notes: payload.notes || '',
+              display_date: displayDate,
+            };
+          }
 
           if (VPS_INVOICE_PRINT_ONLY) {
             const displayDate = payload.display_date || new Date().toISOString().slice(0, 10);
@@ -848,6 +925,13 @@ export default function VPS() {
                 address: payload.customer.address || '',
                 phone: payload.customer.phone || '',
               },
+              payment_accounts: Array.isArray(payload.payment_accounts)
+                ? payload.payment_accounts.map((acc) => ({
+                    kode_bank: String(acc?.kode_bank || '').trim(),
+                    no_rekening: String(acc?.no_rekening || '').trim(),
+                    nama_rekening: String(acc?.nama_rekening || '').trim(),
+                  })).filter((acc) => acc.no_rekening)
+                : [],
               items: payload.items.map((it) => ({
                 program_name: it.program_name,
                 qty: Number(it.qty) || 0,
@@ -871,6 +955,13 @@ export default function VPS() {
             itemId: invoiceItems.length === 1 ? firstItem._id : undefined,
             payload: {
               ...payload,
+              payment_accounts: Array.isArray(payload.payment_accounts)
+                ? payload.payment_accounts.map((acc) => ({
+                    kode_bank: String(acc?.kode_bank || '').trim(),
+                    no_rekening: String(acc?.no_rekening || '').trim(),
+                    nama_rekening: String(acc?.nama_rekening || '').trim(),
+                  })).filter((acc) => acc.no_rekening)
+                : [],
               target_items: targetItems,
             },
           });
@@ -1271,6 +1362,11 @@ type InvoiceSnapshot = {
     address: string;
     phone: string;
   };
+  payment_accounts?: Array<{
+    kode_bank?: string;
+    no_rekening?: string;
+    nama_rekening?: string;
+  }>;
   items: Array<{
     program_name: string;
     qty: number;
@@ -1291,6 +1387,7 @@ type InvoiceSnapshot = {
 function InvoiceGenerateDialog({
   open,
   onOpenChange,
+  mode,
   items,
   subscribers,
   paymentAccounts,
@@ -1299,12 +1396,14 @@ function InvoiceGenerateDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  mode: 'generate' | 'download';
   items: Array<TTVpsDetailItemDTO & { __periode: string }>;
   subscribers: Array<{ kode?: string; toko: string; alamat?: string | null; no_ok?: string | null; nomor_telepon?: string | null }>;
   paymentAccounts: Array<{ kode_bank?: string; no_rekening?: string; nama_rekening?: string }>;
   onAutoSavePhone: (params: { kode: string; nomor_telepon: string }) => Promise<unknown>;
   onGenerate: (payload: {
     customer: { name: string; address: string; phone: string };
+    payment_accounts?: Array<{ kode_bank?: string; no_rekening?: string; nama_rekening?: string }>;
     items: Array<{ program_name: string; qty: number; unit_price: number; line_total?: number; start_date?: string; tempo_date?: string }>;
     discount_percent: number;
     discount_rp: number;
@@ -1335,39 +1434,72 @@ function InvoiceGenerateDialog({
 
   const getPaymentAccountKey = (acc: { _id?: string; kode_bank?: string; no_rekening?: string }, idx: number) =>
     acc?._id || `${acc?.kode_bank || '-'}-${acc?.no_rekening || '-'}-${idx}`;
+  const getPaymentAccountLookupKey = (acc: { kode_bank?: string; no_rekening?: string }) =>
+    `${String(acc?.kode_bank || '').trim()}::${String(acc?.no_rekening || '').trim()}`;
 
   useEffect(() => {
     if (!open || !items.length) return;
     const firstItem = items[0];
     const sub = subscribers.find((s) => (s.toko || '').trim() === (firstItem.toko || '').trim());
-    setCustomerName(firstItem.toko || '');
-    setCustomerAddress((sub?.alamat || '').toString());
-    const defaultPhone = (sub?.nomor_telepon || sub?.no_ok || '').toString();
+    const meta = (firstItem as any)?.invoice_meta;
+    const isDownloadMode = mode === 'download' && !!meta;
+    setCustomerName(isDownloadMode ? String(meta.customer?.name || firstItem.toko || '') : (firstItem.toko || ''));
+    setCustomerAddress(isDownloadMode ? String(meta.customer?.address || '') : (sub?.alamat || '').toString());
+    const defaultPhone = isDownloadMode
+      ? String(meta.customer?.phone || '')
+      : (sub?.nomor_telepon || sub?.no_ok || '').toString();
     setCustomerPhone(defaultPhone);
     setInitialPhone(defaultPhone);
     setSubscriberKode((sub?.kode || '').toString());
-    setDisplayDate(new Date().toISOString().slice(0, 10));
-    setNotes((firstItem as any)?.keterangan && (firstItem as any)?.keterangan !== '-' ? String((firstItem as any)?.keterangan) : '');
-    setLines(
-      items.map((it, idx) => ({
-        id: `${it._id}-${idx}`,
-        program_name: it.program || '',
-        qty: String(it.bulan || 1),
-        unit_price: String(it.harga || 0),
-        store_name: (it.toko || '').toUpperCase(),
-        include_store_suffix: true,
-        start_date: resolveInvoiceStartDate(it as any),
-        tempo_date: resolveInvoiceTempoDate(it as any),
-      }))
+    setDisplayDate(isDownloadMode ? String(meta.display_date || new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10));
+    setNotes(
+      isDownloadMode
+        ? String(meta.notes || '')
+        : ((firstItem as any)?.keterangan && (firstItem as any)?.keterangan !== '-' ? String((firstItem as any)?.keterangan) : '')
     );
-    setDiscountPercentText(String(firstItem.diskon_percent || 0));
-    setDiscountRpText(String(firstItem.diskon || 0));
-    setExtraDeductionRpText(String((firstItem as any)?.invoice_meta?.extra_deduction_rp || 0));
+    setLines(
+      isDownloadMode && Array.isArray(meta.items) && meta.items.length > 0
+        ? meta.items.map((it: any, idx: number) => ({
+            id: `${firstItem._id}-saved-${idx}`,
+            program_name: String(it.program_name || ''),
+            qty: String(Math.max(0, Number(it.qty) || 0)),
+            unit_price: String(Math.max(0, Number(it.unit_price) || 0)),
+            store_name: (firstItem.toko || '').toUpperCase(),
+            include_store_suffix: false,
+            start_date: resolveInvoiceStartDate(it as any),
+            tempo_date: resolveInvoiceTempoDate(it as any),
+          }))
+        : items.map((it, idx) => ({
+            id: `${it._id}-${idx}`,
+            program_name: it.program || '',
+            qty: String(it.bulan || 1),
+            unit_price: String(it.harga || 0),
+            store_name: (it.toko || '').toUpperCase(),
+            include_store_suffix: true,
+            start_date: resolveInvoiceStartDate(it as any),
+            tempo_date: resolveInvoiceTempoDate(it as any),
+          }))
+    );
+    setDiscountPercentText(String(isDownloadMode ? (meta.discount_percent || 0) : (firstItem.diskon_percent || 0)));
+    setDiscountRpText(String(isDownloadMode ? (meta.discount_rp || 0) : (firstItem.diskon || 0)));
+    setExtraDeductionRpText(String(isDownloadMode ? (meta.extra_deduction_rp || 0) : ((firstItem as any)?.invoice_meta?.extra_deduction_rp || 0)));
     setLastDiscountEdit('percent');
     setPdfSnapshot(null);
-    setSelectedPaymentAccountKeys([]);
+    const paymentAccountMap = new Map(
+      (paymentAccounts || []).map((acc: any, idx: number) => [
+        getPaymentAccountLookupKey(acc),
+        getPaymentAccountKey(acc, idx),
+      ])
+    );
+    const metaPaymentAccounts = isDownloadMode && Array.isArray(meta.payment_accounts)
+      ? meta.payment_accounts
+      : [];
+    const preselectedKeys = metaPaymentAccounts
+      .map((acc: any) => paymentAccountMap.get(getPaymentAccountLookupKey(acc)))
+      .filter((key: any): key is string => Boolean(key));
+    setSelectedPaymentAccountKeys(preselectedKeys);
     setPaymentAccountPicker('');
-  }, [open, items, subscribers]);
+  }, [open, items, subscribers, mode, paymentAccounts]);
 
   useEffect(() => {
     if (!open || !subscriberKode) return;
@@ -1450,10 +1582,26 @@ function InvoiceGenerateDialog({
 
   const selectedPaymentAccounts = useMemo(() => {
     const selectedSet = new Set(selectedPaymentAccountKeys);
-    return (paymentAccounts || [])
+    const selectedFromMaster = (paymentAccounts || [])
       .map((acc: any, idx: number) => ({ ...acc, __key: getPaymentAccountKey(acc as any, idx) }))
       .filter((acc: any) => selectedSet.has(acc.__key));
-  }, [paymentAccounts, selectedPaymentAccountKeys]);
+
+    if (selectedFromMaster.length > 0) return selectedFromMaster;
+
+    const firstItemMetaAccounts = (items?.[0] as any)?.invoice_meta?.payment_accounts;
+    if (mode === 'download' && Array.isArray(firstItemMetaAccounts) && firstItemMetaAccounts.length > 0) {
+      return firstItemMetaAccounts
+        .map((acc: any, idx: number) => ({
+          kode_bank: String(acc?.kode_bank || '').trim(),
+          no_rekening: String(acc?.no_rekening || '').trim(),
+          nama_rekening: String(acc?.nama_rekening || '').trim(),
+          __key: `meta-${idx}`,
+        }))
+        .filter((acc: any) => acc.no_rekening);
+    }
+
+    return [];
+  }, [paymentAccounts, selectedPaymentAccountKeys, items, mode]);
 
   const handleGeneratePdf = async (
     snapshot: InvoiceSnapshot,
@@ -1744,6 +1892,11 @@ function InvoiceGenerateDialog({
           address: customerAddress.trim(),
           phone: customerPhone.trim(),
         },
+        payment_accounts: selectedPaymentAccounts.map((acc) => ({
+          kode_bank: String(acc?.kode_bank || '').trim(),
+          no_rekening: String(acc?.no_rekening || '').trim(),
+          nama_rekening: String(acc?.nama_rekening || '').trim(),
+        })).filter((acc) => acc.no_rekening),
         items: validLines.map((line) => ({
           program_name: formatInvoiceProgramName(line.program_name, {
             includeStoreSuffix: line.include_store_suffix,
@@ -1779,7 +1932,7 @@ function InvoiceGenerateDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[1100px] w-[96vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Generate Invoice VPS</DialogTitle>
+            <DialogTitle>{mode === 'download' ? 'Download Ulang Invoice VPS' : 'Generate Invoice VPS'}</DialogTitle>
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1984,7 +2137,7 @@ function InvoiceGenerateDialog({
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Batal</Button>
             <Button type="button" onClick={handleSubmit} disabled={creating}>
-              {creating ? 'Generating...' : 'Generate Invoice'}
+              {creating ? 'Generating...' : mode === 'download' ? 'Download Invoice' : 'Generate Invoice'}
             </Button>
           </div>
         </DialogContent>

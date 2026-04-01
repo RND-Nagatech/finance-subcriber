@@ -310,6 +310,11 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     const body = req.body as {
       target_items?: Array<{ periode?: string; item_id?: string }>;
       customer?: { name?: string; address?: string; phone?: string };
+      payment_accounts?: Array<{
+        kode_bank?: string;
+        no_rekening?: string;
+        nama_rekening?: string;
+      }>;
       items?: Array<{
         program_name?: string;
         qty?: number;
@@ -385,6 +390,14 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     if (!customerName) return res.status(400).json({ message: 'Nama toko/customer wajib diisi.' });
     const customerAddress = String(body?.customer?.address || '').trim();
     const customerPhone = String(body?.customer?.phone || '').trim();
+    const paymentAccountsRaw = Array.isArray(body?.payment_accounts) ? body.payment_accounts : [];
+    const sanitizedPaymentAccounts = paymentAccountsRaw
+      .map((acc) => ({
+        kode_bank: String(acc?.kode_bank || '').trim(),
+        no_rekening: String(acc?.no_rekening || '').trim(),
+        nama_rekening: String(acc?.nama_rekening || '').trim(),
+      }))
+      .filter((acc) => acc.no_rekening.length > 0);
 
     const rawItems = Array.isArray(body?.items) ? body.items : [];
     const sanitizedItems = rawItems
@@ -434,6 +447,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
         address: customerAddress,
         phone: customerPhone,
       },
+      payment_accounts: sanitizedPaymentAccounts,
       items: sanitizedItems,
       subtotal: subtotalCalculated,
       discount_percent: discountPercent,

@@ -35,6 +35,11 @@ export interface ITTVpsDetail extends Document {
       address: string;
       phone: string;
     };
+    payment_accounts?: Array<{
+      kode_bank?: string;
+      no_rekening?: string;
+      nama_rekening?: string;
+    }>;
     items: Array<{
       program_name: string;
       qty: number;
@@ -90,6 +95,13 @@ const TTVpsDetailSchema: Schema = new Schema(
         address: { type: String, required: false },
         phone: { type: String, required: false },
       },
+      payment_accounts: [
+        {
+          kode_bank: { type: String, required: false },
+          no_rekening: { type: String, required: false },
+          nama_rekening: { type: String, required: false },
+        },
+      ],
       items: [
         {
           program_name: { type: String, required: false },

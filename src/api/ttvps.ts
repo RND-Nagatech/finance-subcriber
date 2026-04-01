@@ -33,6 +33,11 @@ export interface TTVpsDetailItemDTO {
       address: string;
       phone: string;
     };
+    payment_accounts?: Array<{
+      kode_bank?: string;
+      no_rekening?: string;
+      nama_rekening?: string;
+    }>;
     items: Array<{
       program_name: string;
       qty: number;
@@ -163,6 +168,11 @@ export interface GenerateInvoiceVpsPayload {
     address: string;
     phone: string;
   };
+  payment_accounts?: Array<{
+    kode_bank?: string;
+    no_rekening?: string;
+    nama_rekening?: string;
+  }>;
   items: Array<{
     program_name: string;
     qty: number;
