@@ -21,10 +21,18 @@ function getDateKeyYYMMDD(date = new Date()): string {
   return `${yy}${mm}${dd}`;
 }
 
-async function generateDailyInvoiceNumber(): Promise<string> {
-  const dateKey = getDateKeyYYMMDD(new Date());
+function getMonthKeyYYMM(date = new Date()): string {
+  const yy = String(date.getFullYear()).slice(-2);
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  return `${yy}${mm}`;
+}
+
+async function generateMonthlyInvoiceNumber(): Promise<string> {
+  const now = new Date();
+  const dateKey = getDateKeyYYMMDD(now);
+  const monthKey = getMonthKeyYYMM(now);
   const counter = await InvoiceCounter.findOneAndUpdate(
-    { date_key: dateKey },
+    { date_key: monthKey },
     { $inc: { last_seq: 1 } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
@@ -431,7 +439,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       subtotalCalculated > 0 ? Math.round((discountRp / subtotalCalculated) * 10000) / 100 : 0;
     const grandTotal = Math.max(0, subtotalCalculated - discountRp - extraDeductionRp);
 
-    const invoiceNumber = await generateDailyInvoiceNumber();
+    const invoiceNumber = await generateMonthlyInvoiceNumber();
     const now = new Date();
     const displayDate = body?.display_date && /^\d{4}-\d{2}-\d{2}$/.test(String(body.display_date))
       ? String(body.display_date)

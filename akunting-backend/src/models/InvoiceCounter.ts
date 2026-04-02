@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IInvoiceCounter extends Document {
-  date_key: string; // YYMMDD
+  date_key: string; // YYMM (monthly counter reset)
   last_seq: number;
   createdAt: Date;
   updatedAt: Date;
