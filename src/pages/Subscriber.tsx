@@ -42,6 +42,8 @@ interface Subscriber {
   no_ok: string | null;
   sales: string | null;
   toko: string;
+  grup: string | null;
+  domain: string | null;
   alamat: string | null;
   daerah: string;
   program: string;
@@ -81,6 +83,8 @@ export default function Subscriber() {
     no_ok: null,
     sales: null,
     toko: '',
+    grup: null,
+    domain: null,
     alamat: null,
     daerah: '',
     internal_kode: '',
@@ -213,6 +217,8 @@ export default function Subscriber() {
           no_ok: payload.no_ok,
           sales: payload.sales,
           toko: payload.toko,
+          grup: payload.grup,
+          domain: payload.domain,
           alamat: payload.alamat,
           daerah: payload.daerah,
           internal_kode: payload.internal_kode,
@@ -229,6 +235,8 @@ export default function Subscriber() {
         no_ok: payload.no_ok,
         sales: payload.sales,
         toko: payload.toko,
+        grup: payload.grup,
+        domain: payload.domain,
         alamat: payload.alamat,
         daerah: payload.daerah,
         internal_kode: payload.internal_kode,
@@ -455,6 +463,8 @@ export default function Subscriber() {
       no_ok: null,
       sales: null,
       toko: '',
+      grup: null,
+      domain: null,
       alamat: null,
       daerah: '',
       internal_kode: '',
@@ -536,6 +546,8 @@ export default function Subscriber() {
                 no_ok: null,
                 sales: null,
                 toko: '',
+                grup: null,
+                domain: null,
                 alamat: null,
                 daerah: '',
                 internal_kode: '',
@@ -620,6 +632,8 @@ export default function Subscriber() {
                     <SelectItem value="internal_kode">Internal Kode</SelectItem>
                     <SelectItem value="kode">Kode</SelectItem>
                     <SelectItem value="sales">Sales</SelectItem>
+                    <SelectItem value="grup">Grup</SelectItem>
+                    <SelectItem value="domain">Domain</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="relative flex-1">
@@ -770,6 +784,14 @@ export default function Subscriber() {
                                 <span className="text-gray-900">{item.daerah}</span>
                               </div>
                               <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Grup:</span>
+                                <span className="text-gray-900">{item.grup || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Domain:</span>
+                                <span className="text-gray-900">{item.domain || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
                                 <span className="font-medium text-gray-600">Prev Subscriber:</span>
                                 <span className="text-gray-900">{item.prev_subscriber}</span>
                               </div>
@@ -910,6 +932,28 @@ export default function Subscriber() {
                   value={formData.alamat || ''}
                   onChange={(e) => setFormData({ ...formData, alamat: e.target.value || null })}
                   placeholder="Masukkan alamat"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="grup" className="text-sm font-semibold text-gray-700">Grup</Label>
+                <Input
+                  id="grup"
+                  value={formData.grup || ''}
+                  onChange={(e) => setFormData({ ...formData, grup: e.target.value || null })}
+                  placeholder="Masukkan grup"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="domain" className="text-sm font-semibold text-gray-700">Domain</Label>
+                <Input
+                  id="domain"
+                  value={formData.domain || ''}
+                  onChange={(e) => setFormData({ ...formData, domain: e.target.value || null })}
+                  placeholder="Masukkan domain"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
               </div>

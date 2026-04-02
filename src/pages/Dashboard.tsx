@@ -44,6 +44,7 @@ const MONTH_OPTIONS = [
   { value: 'OCT', label: 'October' },
   { value: 'NOV', label: 'November' },
 ];
+const FISCAL_MONTH_ORDER = ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV'];
 
 export default function Dashboard() {
   const { user } = useAppStore();
@@ -257,6 +258,27 @@ export default function Dashboard() {
     },
     enabled: !!year && month !== 'ANNUAL',
   });
+
+  const subscriberAverageAddition = (() => {
+    if (!subscriberCombinedData || subscriberCombinedData.length === 0) {
+      return { avg: 0, divisor: 0, totalGrowth: 0, endMonth: '-' };
+    }
+    const currentMonthLabel = new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase();
+    const cutoffIdx = FISCAL_MONTH_ORDER.indexOf(currentMonthLabel);
+    const safeCutoffIdx = cutoffIdx >= 0 ? cutoffIdx : FISCAL_MONTH_ORDER.length - 1;
+    const effectiveRows = subscriberCombinedData.filter((row: any) =>
+      FISCAL_MONTH_ORDER.indexOf(String(row?.bulan || '').toUpperCase()) <= safeCutoffIdx
+    );
+    const totalGrowth = effectiveRows.reduce((sum: number, row: any) => sum + Number(row?.count || 0), 0);
+    const divisor = safeCutoffIdx + 1;
+    const avg = divisor > 0 ? totalGrowth / divisor : 0;
+    return {
+      avg,
+      divisor,
+      totalGrowth,
+      endMonth: FISCAL_MONTH_ORDER[safeCutoffIdx] || '-',
+    };
+  })();
 
   // Mapping backend response to chartData dan tableData
   const rekapData = data?.data || [];
@@ -773,6 +795,9 @@ export default function Dashboard() {
                         <div className="flex flex-col items-end space-y-1">
                           <span className="font-semibold text-blue-600">
                             Total Growth: {subscriberCombinedData.reduce((sum, item) => sum + item.count, 0).toLocaleString('id-ID')} subscribers
+                          </span>
+                          <span className="font-semibold text-indigo-600">
+                            Rata-rata Penambahan (DEC-{subscriberAverageAddition.endMonth}): {subscriberAverageAddition.avg.toLocaleString('id-ID', { maximumFractionDigits: 2 })} / bulan
                           </span>
                           <span className="font-semibold text-green-600">
                             Total Subscribers: {subscriberCombinedData[subscriberCombinedData.length - 1]?.total.toLocaleString('id-ID') || 0}

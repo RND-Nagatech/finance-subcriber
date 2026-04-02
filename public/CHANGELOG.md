@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-04-02
+
+### Added
+- **Subscriber Master: Grup & Domain**
+  - Ditambahkan field `grup` dan `domain` di data subscriber (backend model + create/update API).
+  - Form Subscriber (tambah/edit) sekarang mendukung input `grup` dan `domain`.
+  - Detail tabel Subscriber (expanded row) menampilkan `grup` dan `domain`.
+  - Opsi pencarian Subscriber ditambah untuk `grup` dan `domain`.
+
+- **Dashboard Subscriber Analytics: Rata-rata Penambahan**
+  - Ditambahkan metrik rata-rata penambahan subscriber per bulan fiskal berjalan.
+  - Perhitungan menggunakan periode `DEC` sampai bulan saat ini (mis. jika sekarang April, maka DEC..APR), lalu dibagi jumlah bulan yang sudah berjalan.
+
 ## [1.6.2] - 2026-04-02
 
 ### Added

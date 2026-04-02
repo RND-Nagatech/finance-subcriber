@@ -884,6 +884,8 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       nomor_telepon,
       sales,
       toko,
+      grup,
+      domain,
       alamat,
       daerah,
       program: programName,
@@ -930,6 +932,8 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       nomor_telepon,
       sales,
       toko,
+      grup: grup || null,
+      domain: domain || null,
       alamat,
       daerah,
       program: program.nama,
@@ -967,6 +971,8 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       nomor_telepon,
       sales,
       toko,
+      grup,
+      domain,
       alamat,
       daerah,
       program: programName,
@@ -1040,6 +1046,8 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     old.nomor_telepon = nomor_telepon ?? old.nomor_telepon;
     old.sales = sales ?? old.sales;
     old.toko = toko ?? old.toko;
+    old.grup = grup ?? old.grup;
+    old.domain = domain ?? old.domain;
     old.alamat = alamat ?? old.alamat;
     old.daerah = daerah ?? old.daerah;
     old.program = programName ?? old.program;
@@ -1064,6 +1072,8 @@ export const updateSubscriber = async (req: Request, res: Response) => {
         nomor_telepon: old.nomor_telepon,
         sales: old.sales,
         toko: old.toko,
+        grup: old.grup,
+        domain: old.domain,
         alamat: old.alamat,
         daerah: old.daerah,
         program: old.program,

@@ -6,6 +6,8 @@ export interface ISubscriber extends Document {
   nomor_telepon: string | null;
   sales: string | null;
   toko: string;
+  grup: string | null;
+  domain: string | null;
   alamat: string | null;
   daerah: string;
   program: string;
@@ -34,6 +36,8 @@ const SubscriberSchema: Schema = new Schema({
   nomor_telepon: { type: String, required: false, default: null },
   sales: { type: String, required: false, default: null },
   toko: { type: String, required: true },
+  grup: { type: String, required: false, default: null },
+  domain: { type: String, required: false, default: null },
   alamat: { type: String, required: false, default: null },
   daerah: { type: String, required: true },
   program: { type: String, required: true },
