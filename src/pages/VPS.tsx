@@ -1898,10 +1898,13 @@ function InvoiceGenerateDialog({
           nama_rekening: String(acc?.nama_rekening || '').trim(),
         })).filter((acc) => acc.no_rekening),
         items: validLines.map((line) => ({
-          program_name: formatInvoiceProgramName(line.program_name, {
-            includeStoreSuffix: line.include_store_suffix,
-            storeName: line.store_name,
-          }),
+          // Reprint/download should keep stored program name as-is to avoid double prefix.
+          program_name: mode === 'download'
+            ? String(line.program_name || '').trim().replace(/\s{2,}/g, ' ')
+            : formatInvoiceProgramName(line.program_name, {
+                includeStoreSuffix: line.include_store_suffix,
+                storeName: line.store_name,
+              }),
           qty: line.qty,
           unit_price: line.unit_price,
           line_total: line.line_total,
