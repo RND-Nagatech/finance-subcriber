@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-04-02
+
+### Added
+- **VPS Invoice Re-download Consistency**
+  - `payment_accounts` sekarang ikut disimpan ke `invoice_meta` saat generate invoice.
+  - Re-download invoice menggunakan snapshot rekening footer yang tersimpan agar hasil PDF konsisten dengan invoice awal.
+
+### Changed
+- **VPS Invoice Counter Reset Rule**
+  - Counter invoice VPS diubah menjadi **reset per bulan** (key `YYMM`), bukan per hari.
+  - Format nomor invoice tetap `FJYYMMDD-####`, namun urutan `####` akan lanjut sepanjang bulan yang sama.
+
+### Fixed
+- **Subscriber Filter Bulan/Tahun**
+  - Filter data subscriber berdasarkan bulan/tahun sekarang memakai timezone `Asia/Jakarta` di backend.
+  - Kasus data tanggal batas (mis. `1 April`) yang kadang masuk filter `Maret` sudah diperbaiki.
+
+- **VPS Invoice Reprint Prefix**
+  - Reprint/download invoice tidak lagi menambahkan prefix nama program dua kali.
+  - Mode download sekarang menjaga `program_name` sesuai snapshot invoice yang sudah tersimpan.
+
 ## [1.6.1] - 2026-03-10
 
 ### Fixed
