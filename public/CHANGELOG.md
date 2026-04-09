@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.5] - 2026-04-09
+
+### Fixed
+- **Transaksi Search: Simbol Karakter Tidak Lagi Error**
+  - Query pencarian transaksi sekarang meng-escape karakter regex khusus (`+`, `?`, `(`, `)`, `[`, `]`, dll) sehingga input dengan simbol tidak lagi memicu error backend.
+  - Berlaku untuk endpoint detail transaksi (`/transaksi/tt-finance-detail`) dan rekap transaksi (`/transaksi`).
+
+### Added
+- **Transaksi Search: Dukungan Pencarian Nominal Rupiah**
+  - Kolom pencarian `q` sekarang bisa mencari nilai nominal angka/rupiah.
+  - Format input yang didukung antara lain:
+    - `10000000`
+    - `10.000.000`
+    - `Rp 10.000.000`
+    - `-500.000`
+  - Diterapkan pada pencarian detail transaksi dan rekap transaksi.
+
 ## [1.6.4] - 2026-04-09
 
 ### Added

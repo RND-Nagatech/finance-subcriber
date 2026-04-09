@@ -1,6 +1,34 @@
 import { Request, Response } from 'express';
 import TtFinanceDetail from '../models/TtFinanceDetail';
 
+function escapeRegex(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseRupiahSearch(input: string): number | null {
+  if (!input) return null;
+  const normalized = input
+    .replace(/\s+/g, '')
+    .replace(/^rp\.?/i, '')
+    .replace(/[^0-9,.\-]/g, '');
+  if (!normalized) return null;
+
+  // Indonesian-style: 1.234.567,89 -> 1234567.89
+  const hasComma = normalized.includes(',');
+  const hasDot = normalized.includes('.');
+  let numericStr = normalized;
+  if (hasComma && hasDot) {
+    numericStr = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma && !hasDot) {
+    numericStr = normalized.replace(',', '.');
+  } else {
+    numericStr = normalized.replace(/\./g, '');
+  }
+
+  const value = Number(numericStr);
+  return Number.isFinite(value) ? value : null;
+}
+
 // GET /tt-finance-detail?from=YYYY-MM-DD&to=YYYY-MM-DD&kategori=...&sub_kategori=...&nama_perusahaan=...&page=1&limit=10&aggregate=1
 export const listTtFinanceDetail = async (req: Request, res: Response) => {
   try {
@@ -27,8 +55,9 @@ export const listTtFinanceDetail = async (req: Request, res: Response) => {
 
     // Apply free-text search (q) across common fields
     if (q && String(q).trim() !== '') {
-      const rx = new RegExp(String(q).trim(), 'i');
-      filter.$or = [
+      const qText = String(q).trim();
+      const rx = new RegExp(escapeRegex(qText), 'i');
+      const orFilters: any[] = [
         { kategori: rx },
         { sub_kategori: rx },
         { akun: rx },
@@ -38,6 +67,11 @@ export const listTtFinanceDetail = async (req: Request, res: Response) => {
         { no_rekening: rx },
         { bulan: rx },
       ];
+      const nilaiSearch = parseRupiahSearch(qText);
+      if (nilaiSearch !== null) {
+        orFilters.push({ nilai: nilaiSearch });
+      }
+      filter.$or = orFilters;
     }
 
     if (doAggregate) {

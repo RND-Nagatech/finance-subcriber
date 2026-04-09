@@ -19,6 +19,33 @@ import {
   rollbackBudgetUsageFromValidatedTransaksi,
 } from '../services/budgetUsageFromTransaksiService';
 
+function escapeRegex(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseRupiahSearch(input: string): number | null {
+  if (!input) return null;
+  const normalized = input
+    .replace(/\s+/g, '')
+    .replace(/^rp\.?/i, '')
+    .replace(/[^0-9,.\-]/g, '');
+  if (!normalized) return null;
+
+  let numericStr = normalized;
+  const hasComma = normalized.includes(',');
+  const hasDot = normalized.includes('.');
+  if (hasComma && hasDot) {
+    numericStr = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    numericStr = normalized.replace(',', '.');
+  } else {
+    numericStr = normalized.replace(/\./g, '');
+  }
+
+  const value = Number(numericStr);
+  return Number.isFinite(value) ? value : null;
+}
+
 function isSpecialTransaction(doc: any): boolean {
   return Boolean(doc?.is_special_transaction);
 }
@@ -636,6 +663,22 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
       sortStage.sub_kategori = 1;
       sortStage.bulan = 1;
       const bulanStr = bulan ? String(bulan) : null;
+      const qText = q && String(q).trim() !== '' ? String(q).trim() : '';
+      const qRegex = qText ? escapeRegex(qText) : '';
+      const qAmount = qText ? parseRupiahSearch(qText) : null;
+      const searchMatchStage = qText
+        ? [{
+            $match: {
+              $or: [
+                { kategori: { $regex: qRegex, $options: 'i' } },
+                { sub_kategori: { $regex: qRegex, $options: 'i' } },
+                { akun: { $regex: qRegex, $options: 'i' } },
+                { 'data_bulanan.bulan': { $regex: qRegex, $options: 'i' } },
+                ...(qAmount !== null ? [{ 'data_bulanan.nilai': qAmount }] : []),
+              ],
+            },
+          }]
+        : [];
       const pipeline: any[] = [
         ...matchStage,
         { $unwind: '$data_bulanan' },
@@ -644,12 +687,7 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
           { 'data_bulanan.bulan': bulanStr.replace(/\s*-\s*/, '-') },
           { 'data_bulanan.bulan': bulanStr.replace(/\s*-\s*/, ' - ') }
         ] } }] : []),
-        ...(q && String(q).trim() !== '' ? [{ $match: { $or: [
-          { kategori: { $regex: String(q).trim(), $options: 'i' } },
-          { sub_kategori: { $regex: String(q).trim(), $options: 'i' } },
-          { akun: { $regex: String(q).trim(), $options: 'i' } },
-          { 'data_bulanan.bulan': { $regex: String(q).trim(), $options: 'i' } },
-        ] } }] : []),
+        ...searchMatchStage,
         {
           $project: {
             kategori: 1,
@@ -691,11 +729,14 @@ export const listTransaksi = async (req: Request, res: Response, next: NextFunct
     // Apply free-text search (q) on top-level fields for grouped results
     const searchFilter = (() => {
       if (q && String(q).trim() !== '') {
-        const rx = new RegExp(String(q).trim(), 'i');
+        const qText = String(q).trim();
+        const rx = new RegExp(escapeRegex(qText), 'i');
+        const amount = parseRupiahSearch(qText);
         return { $or: [
           { kategori: rx },
           { sub_kategori: rx },
           { akun: rx },
+          ...(amount !== null ? [{ total_tahunan: amount }] : []),
         ] };
       }
       return {};
