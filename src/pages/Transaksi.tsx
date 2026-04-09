@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 // import * as XLSX from 'xlsx';
 // Helper: extract year from fiscal month string (e.g. 'JAN-25' or 'JAN - 25')
 function getFiscalMonthYear(bulanFiskal: string): number | null {
@@ -46,7 +46,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Plus } from 'lucide-react';
-import { log } from 'console';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -1026,6 +1025,36 @@ export default function Transaksi() {
   const totalPages = (transaksiResp as any)?.totalPages || 1;
   // Rows to display: backend already paginates Detail and Rekap
   const displayRows = sortedTransaksiList;
+  const expandableRowIds = useMemo(
+    () => (Array.isArray(displayRows) ? displayRows.map((row: any, idx: number) => row._id || String(idx)) : []),
+    [displayRows]
+  );
+  const areAllRowsExpanded = useMemo(
+    () => typeData === 'Detail' && expandableRowIds.length > 0 && expandableRowIds.every((id: string) => expandedRows[id]),
+    [typeData, expandableRowIds, expandedRows]
+  );
+  const handleExpandAllRows = () => {
+    setExpandedRows(
+      expandableRowIds.reduce((acc: Record<string, boolean>, id: string) => {
+        acc[id] = true;
+        return acc;
+      }, {})
+    );
+  };
+  const handleCollapseAllRows = () => {
+    setExpandedRows({});
+  };
+  useEffect(() => {
+    if (typeData !== 'Detail') return;
+    const validIds = new Set(expandableRowIds);
+    setExpandedRows((prev) => {
+      const next: Record<string, boolean> = {};
+      Object.entries(prev).forEach(([id, value]) => {
+        if (value && validIds.has(id)) next[id] = true;
+      });
+      return next;
+    });
+  }, [typeData, expandableRowIds]);
   // Totals based on currently displayed rows
   const totalDataDisplayed = Array.isArray(displayRows) ? displayRows.length : 0;
   const totalNilaiDisplayed = Array.isArray(displayRows)
@@ -1769,6 +1798,26 @@ export default function Transaksi() {
 
         {/* Daftar Transaksi */}
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
+          {typeData === 'Detail' && (
+            <div className="flex items-center justify-end gap-2 border-b border-blue-200/50 bg-gradient-to-r from-blue-50/60 to-indigo-50/60 px-4 py-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExpandAllRows}
+                disabled={expandableRowIds.length === 0 || areAllRowsExpanded}
+              >
+                Expand All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCollapseAllRows}
+                disabled={expandableRowIds.length === 0 || !Object.keys(expandedRows).length}
+              >
+                Collapse All
+              </Button>
+            </div>
+          )}
           <Table className="table-fixed w-full">
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-50 hover:to-indigo-50 border-b border-blue-200/50">

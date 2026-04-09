@@ -47,6 +47,7 @@ export interface TTVpsDetailItemDTO {
       tempo_date?: string;
     }>;
     subtotal: number;
+    discount_label?: string;
     discount_percent: number;
     discount_rp: number;
     extra_deduction_rp?: number;
@@ -179,6 +180,7 @@ export interface GenerateInvoiceVpsPayload {
     unit_price: number;
     line_total?: number;
   }>;
+  discount_label?: string;
   discount_percent: number;
   discount_rp: number;
   extra_deduction_rp?: number;

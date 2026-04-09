@@ -271,7 +271,7 @@ export default function Dashboard() {
     );
     const totalGrowth = effectiveRows.reduce((sum: number, row: any) => sum + Number(row?.count || 0), 0);
     const divisor = safeCutoffIdx + 1;
-    const avg = divisor > 0 ? totalGrowth / divisor : 0;
+    const avg = divisor > 0 ? Math.floor(totalGrowth / divisor) : 0;
     return {
       avg,
       divisor,
@@ -696,7 +696,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Line chart untuk Gross Margin per bulan */}
+            {/* Line chart untuk Margin per bulan */}
             {grossMarginTahunanLineData.length > 0 && (
               <div className="mb-8">
                 <div className="relative">
@@ -704,7 +704,7 @@ export default function Dashboard() {
                     <CardContent className='pt-6'>
                       <LineChartKategori 
                         data={grossMarginTahunanLineData} 
-                        title={`Gross Margin - ${year}`}
+                        title={`Margin - ${year}`}
                         description="Monthly gross margin trend (Omzet - Biaya - Pembelian)"
                       />
                     </CardContent>
@@ -797,7 +797,7 @@ export default function Dashboard() {
                             Total Growth: {subscriberCombinedData.reduce((sum, item) => sum + item.count, 0).toLocaleString('id-ID')} subscribers
                           </span>
                           <span className="font-semibold text-indigo-600">
-                            Rata-rata Penambahan (DEC-{subscriberAverageAddition.endMonth}): {subscriberAverageAddition.avg.toLocaleString('id-ID', { maximumFractionDigits: 2 })} / bulan
+                            Rata-rata Penambahan (DEC-{subscriberAverageAddition.endMonth}): {subscriberAverageAddition.avg.toLocaleString('id-ID')} / bulan
                           </span>
                           <span className="font-semibold text-green-600">
                             Total Subscribers: {subscriberCombinedData[subscriberCombinedData.length - 1]?.total.toLocaleString('id-ID') || 0}

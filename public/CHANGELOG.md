@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4] - 2026-04-09
+
+### Added
+- **VPS Invoice: Discount Label Dinamis**
+  - Ditambahkan field `discount_label` pada payload/API, penyimpanan `invoice_meta`, dan render PDF invoice VPS.
+  - Dialog Generate Invoice VPS sekarang menyediakan input nama label diskon (default: `DISC`).
+
+- **Transaksi Detail: Expand/Collapse Cepat**
+  - Ditambahkan tombol `Expand All` dan `Collapse All` pada tabel `Type Data = Detail` untuk membuka/menutup semua baris detail sekaligus.
+
+### Changed
+- **Dashboard Margin Label**
+  - Penamaan chart `Gross Margin` di dashboard diubah menjadi `Margin`.
+
+- **Dashboard Subscriber Average**
+  - `Rata-rata Penambahan` subscriber sekarang dibulatkan ke bawah (`floor`) agar tampil dalam angka bulat tanpa desimal.
+
+### Fixed
+- **Menu Transaksi Tidak Bisa Dibuka**
+  - Memperbaiki runtime error pada halaman Transaksi dengan menambahkan import `useMemo` yang digunakan oleh fitur expand/collapse.
+
 ## [1.6.3] - 2026-04-02
 
 ### Added

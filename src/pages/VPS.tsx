@@ -394,6 +394,7 @@ export default function VPS() {
         customer: { name: string; address: string; phone: string };
         payment_accounts?: Array<{ kode_bank?: string; no_rekening?: string; nama_rekening?: string }>;
         items: Array<{ program_name: string; qty: number; unit_price: number; line_total?: number; start_date?: string; tempo_date?: string }>;
+        discount_label?: string;
         discount_percent: number;
         discount_rp: number;
         extra_deduction_rp?: number;
@@ -900,6 +901,7 @@ export default function VPS() {
                 tempo_date: resolveInvoiceTempoDate(it),
               })),
               subtotal: Number(payload.subtotal) || 0,
+              discount_label: String(payload.discount_label || meta.discount_label || 'DISC').trim() || 'DISC',
               discount_percent: Number(payload.discount_percent) || 0,
               discount_rp: Number(payload.discount_rp) || 0,
               extra_deduction_rp: Number(payload.extra_deduction_rp) || 0,
@@ -941,6 +943,7 @@ export default function VPS() {
                 tempo_date: resolveInvoiceTempoDate(it),
               })),
               subtotal: Number(payload.subtotal) || 0,
+              discount_label: String(payload.discount_label || 'DISC').trim() || 'DISC',
               discount_percent: Number(payload.discount_percent) || 0,
               discount_rp: Number(payload.discount_rp) || 0,
               extra_deduction_rp: Number(payload.extra_deduction_rp) || 0,
@@ -1376,6 +1379,7 @@ type InvoiceSnapshot = {
     tempo_date?: string;
   }>;
   subtotal: number;
+  discount_label?: string;
   discount_percent: number;
   discount_rp: number;
   extra_deduction_rp?: number;
@@ -1405,6 +1409,7 @@ function InvoiceGenerateDialog({
     customer: { name: string; address: string; phone: string };
     payment_accounts?: Array<{ kode_bank?: string; no_rekening?: string; nama_rekening?: string }>;
     items: Array<{ program_name: string; qty: number; unit_price: number; line_total?: number; start_date?: string; tempo_date?: string }>;
+    discount_label?: string;
     discount_percent: number;
     discount_rp: number;
     extra_deduction_rp?: number;
@@ -1425,6 +1430,7 @@ function InvoiceGenerateDialog({
   const [lines, setLines] = useState<InvoiceLineInput[]>([]);
   const [discountPercentText, setDiscountPercentText] = useState('0');
   const [discountRpText, setDiscountRpText] = useState('0');
+  const [discountLabelText, setDiscountLabelText] = useState('DISC');
   const [extraDeductionRpText, setExtraDeductionRpText] = useState('0');
   const [lastDiscountEdit, setLastDiscountEdit] = useState<'percent' | 'rp'>('percent');
   const [creating, setCreating] = useState(false);
@@ -1482,6 +1488,7 @@ function InvoiceGenerateDialog({
     );
     setDiscountPercentText(String(isDownloadMode ? (meta.discount_percent || 0) : (firstItem.diskon_percent || 0)));
     setDiscountRpText(String(isDownloadMode ? (meta.discount_rp || 0) : (firstItem.diskon || 0)));
+    setDiscountLabelText(String(isDownloadMode ? (meta.discount_label || 'DISC') : 'DISC').trim() || 'DISC');
     setExtraDeductionRpText(String(isDownloadMode ? (meta.extra_deduction_rp || 0) : ((firstItem as any)?.invoice_meta?.extra_deduction_rp || 0)));
     setLastDiscountEdit('percent');
     setPdfSnapshot(null);
@@ -1774,13 +1781,14 @@ function InvoiceGenerateDialog({
               const w = data.cell.width;
               const hasDiscount = Number(snapshot.discount_rp || 0) > 0 || Number(snapshot.discount_percent || 0) > 0;
               const hasExtraDeduction = Number(snapshot.extra_deduction_rp || 0) > 0;
+              const discountLabel = String(snapshot.discount_label || 'DISC').trim() || 'DISC';
               pdf.setFont('helvetica', 'bold');
               pdf.setFontSize(10);
               pdf.text('GRAND TOTAL', x + 10, yCell + 24);
               pdf.text(currency(snapshot.subtotal), x + w - 10, yCell + 24, { align: 'right' });
               let summaryY = yCell + 46;
               if (hasDiscount) {
-                pdf.text(`DISC ${snapshot.discount_percent}%`, x + 10, summaryY);
+                pdf.text(`${discountLabel} ${snapshot.discount_percent}%`, x + 10, summaryY);
                 pdf.text(currency(snapshot.discount_rp), x + w - 10, summaryY, { align: 'right' });
                 summaryY += 20;
               }
@@ -1911,6 +1919,7 @@ function InvoiceGenerateDialog({
           start_date: resolveInvoiceStartDate(line as any),
           tempo_date: resolveInvoiceTempoDate(line as any),
         })),
+        discount_label: String(discountLabelText || 'DISC').trim() || 'DISC',
         discount_percent: discountComputed.percent,
         discount_rp: discountComputed.rp,
         extra_deduction_rp: extraDeductionComputed,
@@ -2089,6 +2098,14 @@ function InvoiceGenerateDialog({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1">
+                <Label>Nama Diskon</Label>
+                <Input
+                  value={discountLabelText}
+                  onChange={(e) => setDiscountLabelText(e.target.value.toUpperCase())}
+                  placeholder="DISC"
+                />
+              </div>
+              <div className="space-y-1">
                 <Label>Diskon (%)</Label>
                 <Input
                   inputMode="numeric"
@@ -2239,7 +2256,7 @@ function InvoicePdfTemplate({ invoice }: { invoice: InvoiceSnapshot }) {
           <div className="p-3 border-l border-slate-500">
             <div className="flex justify-between font-semibold"><span>GRAND TOTAL</span><span>{currency(invoice.subtotal)}</span></div>
             {(Number(invoice.discount_rp || 0) > 0 || Number(invoice.discount_percent || 0) > 0) ? (
-              <div className="flex justify-between font-semibold"><span>DISC {invoice.discount_percent}%</span><span>{currency(invoice.discount_rp)}</span></div>
+              <div className="flex justify-between font-semibold"><span>{(String(invoice.discount_label || 'DISC').trim() || 'DISC')} {invoice.discount_percent}%</span><span>{currency(invoice.discount_rp)}</span></div>
             ) : null}
             {Number(invoice.extra_deduction_rp || 0) > 0 ? (
               <div className="flex justify-between font-semibold"><span>DISC TAMBAHAN</span><span>{currency(invoice.extra_deduction_rp || 0)}</span></div>

@@ -331,6 +331,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
         start_date?: string;
         tempo_date?: string;
       }>;
+      discount_label?: string;
       discount_percent?: number;
       discount_rp?: number;
       extra_deduction_rp?: number;
@@ -425,6 +426,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     }
 
     const subtotalCalculated = sanitizedItems.reduce((acc, it) => acc + it.line_total, 0);
+    const discountLabel = String(body?.discount_label || 'DISC').trim() || 'DISC';
     const discountPercentInput = Math.max(0, Math.min(100, Number(body?.discount_percent || 0)));
     const discountRpInput = Math.max(0, Number(body?.discount_rp || 0));
     const extraDeductionRp = Math.min(
@@ -458,6 +460,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       payment_accounts: sanitizedPaymentAccounts,
       items: sanitizedItems,
       subtotal: subtotalCalculated,
+      discount_label: discountLabel,
       discount_percent: discountPercent,
       discount_rp: discountRp,
       extra_deduction_rp: extraDeductionRp,

@@ -49,6 +49,7 @@ export interface ITTVpsDetail extends Document {
       tempo_date?: string;
     }>;
     subtotal: number;
+    discount_label?: string;
     discount_percent: number;
     discount_rp: number;
     extra_deduction_rp?: number;
@@ -113,6 +114,7 @@ const TTVpsDetailSchema: Schema = new Schema(
         },
       ],
       subtotal: { type: Number, required: false, min: 0 },
+      discount_label: { type: String, required: false, default: 'DISC' },
       discount_percent: { type: Number, required: false, min: 0, max: 100 },
       discount_rp: { type: Number, required: false, min: 0 },
       extra_deduction_rp: { type: Number, required: false, min: 0, default: 0 },
