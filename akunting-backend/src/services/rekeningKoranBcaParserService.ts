@@ -45,6 +45,9 @@ function extractTransactionType(chunk: string): 'DB' | 'CR' | null {
   if (/SETORAN\s+TUNAI/i.test(chunk)) return 'CR';
   if (/\bDB\b/.test(chunk) || /\d(?:\.\d{2})?DB\d/.test(chunk)) return 'DB';
   if (/\bCR\b/.test(chunk)) return 'CR';
+  // Some BCA rows encode markers without separator, e.g. CRBIF / DBBIF
+  if (/\bDB(?=[A-Z])/.test(chunk)) return 'DB';
+  if (/\bCR(?=[A-Z])/.test(chunk)) return 'CR';
   return null;
 }
 

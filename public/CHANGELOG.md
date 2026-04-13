@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.6] - 2026-04-13
+
+### Fixed
+- **Saldo Harian Generator: Rekonsiliasi PDF BCA (Mapping DB/CR)**
+  - Perbandingan rekonsiliasi rekening koran diperbaiki agar mengikuti mapping operasional:
+    - `DB` pada rekening koran dibandingkan ke `Credit Input`.
+    - `CR` pada rekening koran dibandingkan ke `Debit Input`.
+  - Memperbaiki kasus tanggal yang nominalnya sebenarnya sama namun tetap terbaca `Belum Cocok`.
+
+- **Saldo Harian Generator: Tanggal Tidak Ada di PDF Dianggap 0/0**
+  - Untuk bulan yang sudah di-upload, tanggal yang tidak muncul di PDF sekarang diperlakukan sebagai `pdf_debit=0` dan `pdf_credit=0`.
+  - Jika nilai tabel input pada tanggal tersebut juga `0/0`, status akan `Cocok`.
+
+- **Saldo Harian Generator: Parser BCA Menangani Marker `CRBIF/DBBIF`**
+  - Parser rekening koran BCA diperluas agar mengenali format marker gabungan (contoh: `CRBIF`, `DBBIF`).
+  - Transaksi yang sebelumnya terlewat di tanggal tertentu (mis. `BI-FAST`) sekarang ikut terakumulasi ke total harian.
+
 ## [1.6.5] - 2026-04-09
 
 ### Fixed

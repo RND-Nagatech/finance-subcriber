@@ -411,8 +411,9 @@ export const getReconcileComparison = async (req: Request, res: Response, next: 
       // - Mutasi CR di rekening koran diperlakukan sebagai DEBIT pada tabel internal
       const diff_debit = Math.abs(input_credit - pdf_debit);
       const diff_credit = Math.abs(input_debit - pdf_credit);
-      const hasPdfRow = Boolean(pdf);
-      const status = hasPdfRow && diff_debit <= RECONCILE_TOLERANCE && diff_credit <= RECONCILE_TOLERANCE ? 'matched' : 'unmatched';
+      // Jika bulan sudah ter-cover upload PDF namun tanggal tidak muncul di PDF,
+      // anggap mutasi tanggal tersebut 0/0 agar bisa tetap matched terhadap tabel 0/0.
+      const status = diff_debit <= RECONCILE_TOLERANCE && diff_credit <= RECONCILE_TOLERANCE ? 'matched' : 'unmatched';
 
       statuses.push({
         tanggal,
