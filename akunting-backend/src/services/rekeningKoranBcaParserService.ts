@@ -47,7 +47,7 @@ function extractAmounts(chunk: string): number[] {
 
 function extractTransactionType(chunk: string): 'DB' | 'CR' | null {
   if (/SETORAN\s+TUNAI/i.test(chunk)) return 'CR';
-  if (/\bDB\b/.test(chunk) || /\d(?:\.\d{2})?DB\d/.test(chunk)) return 'DB';
+  if (/\bDB\b/.test(chunk) || /\d[\d,]*\.\d{2}\s*DB\d/.test(chunk)) return 'DB';
   if (/\bCR\b/.test(chunk)) return 'CR';
   // Some BCA rows encode markers without separator, e.g. CRBIF / DBBIF
   if (/\bDB(?=[A-Z])/.test(chunk)) return 'DB';
@@ -58,7 +58,8 @@ function extractTransactionType(chunk: string): 'DB' | 'CR' | null {
 function extractMutationAmount(chunk: string, type: 'DB' | 'CR'): number | null {
   const normalizedChunk = chunk.replace(/\s+/g, ' ').trim();
   if (type === 'DB') {
-    const dbMatch = normalizedChunk.match(/(\d+(?:,\d{3})*\.\d{2})\s*DB(?:\D|$)/i);
+    // Handle both "... 430,680.00DB" and "... 30,000.00DB302,181,574.00"
+    const dbMatch = normalizedChunk.match(/(\d+(?:,\d{3})*\.\d{2})\s*DB/i);
     if (dbMatch?.[1]) {
       const n = normalizeAmount(dbMatch[1]);
       if (n > 0) return n;
@@ -87,7 +88,9 @@ function parseTransactionChunk(acuanBulan: string, chunkLines: string[]): Parsed
   const ddmmMatch = start.match(/^(\d{2}\/\d{2})/);
   if (!ddmmMatch) return null;
 
-  if (/SALDO AWAL/i.test(joined) || /MUTASI\s+CR/i.test(joined) || /MUTASI\s+DB/i.test(joined)) {
+  // Skip pure summary lines, but keep valid transaction rows that might also include
+  // summary text in trailing lines (common on month-end statement tails).
+  if (/^SALDO AWAL/i.test(start) || /^MUTASI\s+CR/i.test(start) || /^MUTASI\s+DB/i.test(start)) {
     return null;
   }
 
