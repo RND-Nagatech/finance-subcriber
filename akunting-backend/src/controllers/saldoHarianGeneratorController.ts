@@ -406,8 +406,11 @@ export const getReconcileComparison = async (req: Request, res: Response, next: 
 
       const pdf_debit = Number(pdf?.debit || 0);
       const pdf_credit = Number(pdf?.credit || 0);
-      const diff_debit = Math.abs(input_debit - pdf_debit);
-      const diff_credit = Math.abs(input_credit - pdf_credit);
+      // Mapping rekonsiliasi rekening koran BCA:
+      // - Mutasi DB di rekening koran diperlakukan sebagai CREDIT pada tabel internal
+      // - Mutasi CR di rekening koran diperlakukan sebagai DEBIT pada tabel internal
+      const diff_debit = Math.abs(input_credit - pdf_debit);
+      const diff_credit = Math.abs(input_debit - pdf_credit);
       const hasPdfRow = Boolean(pdf);
       const status = hasPdfRow && diff_debit <= RECONCILE_TOLERANCE && diff_credit <= RECONCILE_TOLERANCE ? 'matched' : 'unmatched';
 
