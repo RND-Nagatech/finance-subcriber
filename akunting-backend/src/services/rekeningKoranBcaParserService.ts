@@ -14,9 +14,13 @@ export interface ParsedBcaStatementResult {
 function normalizeAmount(raw: string): number {
   let cleaned = String(raw || '').replace(/[^0-9.,-]/g, '');
   if (!cleaned) return 0;
-  // Handle merged CBG+amount artifact from some BCA e-statement lines, e.g. "01048,160,000.00" => "48,160,000.00"
+  // Handle merged CBG+amount artifact from some BCA e-statement lines.
+  // Example: "01048,160,000.00" often means CBG "0104" + amount "8,160,000.00".
   if (/^0\d{4},\d{3},\d{3}\.\d{2}$/.test(cleaned)) {
-    cleaned = cleaned.slice(2);
+    cleaned = cleaned.slice(4);
+  } else if (/^0\d{3},\d{3},\d{3}\.\d{2}$/.test(cleaned)) {
+    // Fallback variant where only 3-digit CBG is merged.
+    cleaned = cleaned.slice(3);
   }
   // BCA statement generally uses 1,234,567.89
   const num = Number(cleaned.replace(/,/g, ''));
