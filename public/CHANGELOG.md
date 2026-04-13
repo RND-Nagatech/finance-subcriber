@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.7] - 2026-04-13
+
+### Added
+- **Saldo Harian Generator: Dukungan Rekonsiliasi PDF Bank Mandiri**
+  - Ditambahkan parser rekening koran Mandiri untuk format `Account Statement` (Kopra/Mandiri) dengan grouping mutasi per hari.
+  - Endpoint upload rekonsiliasi sekarang auto-pilih parser berdasarkan `kode_bank`:
+    - `BCA` -> parser BCA
+    - `MANDIRI`/`BMRI` -> parser Mandiri
+  - Hasil agregasi harian Mandiri (`debit`, `credit`, `tx_count`) sudah siap dipakai overlay status cocok/tidak cocok pada tabel preview.
+
+### Changed
+- **Rekonsiliasi Upload: Metadata Parser Dinamis**
+  - Metadata `bank_template` dan `parser_version` pada data upload rekonsiliasi kini mengikuti parser yang dipakai saat proses upload (tidak hardcoded).
+
 ## [1.6.6] - 2026-04-13
 
 ### Fixed

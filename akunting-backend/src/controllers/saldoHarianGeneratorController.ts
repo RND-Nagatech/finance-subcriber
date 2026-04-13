@@ -6,9 +6,29 @@ import RekeningSaldoHarian from '../models/RekeningSaldoHarian';
 import { buildDailyProjectionFromTransactions } from '../services/rekeningDailyProjectionService';
 import RekeningKoranReconcile from '../models/RekeningKoranReconcile';
 import { parseBcaStatementPdf } from '../services/rekeningKoranBcaParserService';
+import { parseMandiriStatementPdf } from '../services/rekeningKoranMandiriParserService';
 import { buildDailyInputMovementMap } from '../services/rekeningDailyMovementService';
 
 const RECONCILE_TOLERANCE = 100;
+
+function resolveReconcileParserByBank(kodeBank: string) {
+  const key = String(kodeBank || '').trim().toUpperCase();
+  if (key.includes('BCA')) {
+    return {
+      bankTemplate: 'BCA',
+      parserVersion: 'bca-v1',
+      parse: parseBcaStatementPdf,
+    };
+  }
+  if (key.includes('MANDIRI') || key.includes('BMRI')) {
+    return {
+      bankTemplate: 'MANDIRI',
+      parserVersion: 'mandiri-v1',
+      parse: parseMandiriStatementPdf,
+    };
+  }
+  return null;
+}
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -245,10 +265,15 @@ export const uploadRekeningKoranReconcile = async (req: Request, res: Response, 
     const rekening = await Rekening.findOne({ kode_bank, no_rekening }).lean();
     if (!rekening) return res.status(404).json({ message: 'Rekening tidak ditemukan' });
 
+    const parser = resolveReconcileParserByBank(kode_bank);
+    if (!parser) {
+      return res.status(400).json({ message: `Bank ${kode_bank} belum didukung untuk parser rekonsiliasi PDF.` });
+    }
+
     const fileBuffer = file.buffer && file.buffer.length > 0
       ? file.buffer
       : fs.readFileSync(file.path);
-    const parsed = await parseBcaStatementPdf(fileBuffer, acuan_bulan, pdf_password || undefined);
+    const parsed = await parser.parse(fileBuffer, acuan_bulan, pdf_password || undefined);
     const total_debit = parsed.groupedDaily.reduce((s, r) => s + Number(r.debit || 0), 0);
     const total_credit = parsed.groupedDaily.reduce((s, r) => s + Number(r.credit || 0), 0);
     const total_tx_count = parsed.groupedDaily.reduce((s, r) => s + Number(r.tx_count || 0), 0);
@@ -258,12 +283,12 @@ export const uploadRekeningKoranReconcile = async (req: Request, res: Response, 
       { kode_bank, no_rekening, acuan_bulan },
       {
         $set: {
-          bank_template: 'BCA',
-          parser_version: 'bca-v1',
           source_file_name: file.originalname || file.filename,
           source_file_path: file.path,
           uploaded_by: actor,
           uploaded_at: new Date(),
+          bank_template: parser.bankTemplate,
+          parser_version: parser.parserVersion,
           daily_rows: parsed.groupedDaily,
           total_debit,
           total_credit,
