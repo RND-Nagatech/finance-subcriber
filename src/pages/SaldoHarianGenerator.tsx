@@ -1,10 +1,19 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Calculator, Database, Save } from 'lucide-react';
+import { Activity, Calculator, CheckCircle2, Database, Save, Upload } from 'lucide-react';
 import axiosInstance from '@/api/axiosInstance';
-import { commitSaldoHarian, previewSaldoHarian, type SaldoHarianPreviewRow } from '@/api/saldoHarian';
+import {
+  commitSaldoHarian,
+  getReconcileComparison,
+  getReconcileMonths,
+  previewSaldoHarian,
+  type ReconcileMonthItem,
+  type ReconcileStatusRow,
+  type SaldoHarianPreviewRow,
+  uploadReconcilePdf,
+} from '@/api/saldoHarian';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -65,6 +74,10 @@ export default function SaldoHarianGenerator() {
 
   const [previewRows, setPreviewRows] = useState<SaldoHarianPreviewRow[]>([]);
   const [previewMeta, setPreviewMeta] = useState<any>(null);
+  const [reconcileMonth, setReconcileMonth] = useState('');
+  const [reconcilePassword, setReconcilePassword] = useState('');
+  const [reconcileFile, setReconcileFile] = useState<File | null>(null);
+  const [reconcileStatusMap, setReconcileStatusMap] = useState<Record<string, ReconcileStatusRow>>({});
 
   const { data: rekeningList = [], isLoading: rekeningLoading } = useQuery<RekeningOption[]>({
     queryKey: ['rekening-generator-all'],
@@ -84,6 +97,45 @@ export default function SaldoHarianGenerator() {
     };
   }, [rekeningKey]);
 
+  useEffect(() => {
+    setPreviewRows([]);
+    setPreviewMeta(null);
+    setReconcileStatusMap({});
+    setReconcileMonth('');
+    setReconcilePassword('');
+    setReconcileFile(null);
+  }, [rekeningKey]);
+
+  const { data: reconcileMonthsResp, refetch: refetchReconcileMonths } = useQuery({
+    queryKey: ['saldo-harian-reconcile-months', selectedRekening?.kode_bank, selectedRekening?.no_rekening],
+    queryFn: async () => {
+      if (!selectedRekening) return { success: true, data: [] as ReconcileMonthItem[] };
+      return getReconcileMonths({
+        kode_bank: selectedRekening.kode_bank,
+        no_rekening: selectedRekening.no_rekening,
+      });
+    },
+    enabled: !!selectedRekening,
+  });
+
+  const uploadedMonths = reconcileMonthsResp?.data || [];
+
+  const loadReconcileStatuses = async (start: string, end: string) => {
+    if (!selectedRekening || !start || !end) return;
+    const res = await getReconcileComparison({
+      kode_bank: selectedRekening.kode_bank,
+      no_rekening: selectedRekening.no_rekening,
+      start_date: start,
+      end_date: end,
+      basis: 'input',
+    });
+    const map: Record<string, ReconcileStatusRow> = {};
+    (res.statuses || []).forEach((s) => {
+      map[s.tanggal] = s;
+    });
+    setReconcileStatusMap(map);
+  };
+
   const previewMutation = useMutation({
     mutationFn: async () => {
       if (!selectedRekening) throw new Error('Pilih rekening terlebih dahulu');
@@ -102,6 +154,10 @@ export default function SaldoHarianGenerator() {
     onSuccess: (data) => {
       setPreviewRows(data.rows || []);
       setPreviewMeta(data);
+      setReconcileStatusMap({});
+      loadReconcileStatuses(data.start_date, data.end_date).catch(() => {
+        // no-op: status reconcile optional
+      });
       toast.success(`Preview berhasil digenerate (${data.affected_days} hari).`);
     },
     onError: (error: any) => {
@@ -130,6 +186,46 @@ export default function SaldoHarianGenerator() {
       toast.error(error?.response?.data?.message || error?.message || 'Gagal menyimpan saldo harian.');
     },
   });
+
+  const uploadReconcileMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedRekening) throw new Error('Pilih rekening terlebih dahulu');
+      if (!reconcileMonth) throw new Error('Pilih bulan acuan rekening koran');
+      if (!reconcileFile) throw new Error('Pilih file PDF rekening koran');
+      return uploadReconcilePdf({
+        kode_bank: selectedRekening.kode_bank,
+        no_rekening: selectedRekening.no_rekening,
+        acuan_bulan: reconcileMonth,
+        pdf_password: reconcilePassword || undefined,
+        file: reconcileFile,
+      });
+    },
+    onSuccess: async (data) => {
+      toast.success(`${data.message} (${data.summary.total_days} hari ditemukan).`);
+      await refetchReconcileMonths();
+      if (previewMeta?.start_date && previewMeta?.end_date) {
+        await loadReconcileStatuses(previewMeta.start_date, previewMeta.end_date);
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || error?.message || 'Gagal upload rekening koran PDF.');
+    },
+  });
+
+  const monthOptions = useMemo(() => {
+    const options: string[] = [];
+    const start = startDate || previewMeta?.start_date;
+    const end = previewMeta?.end_date || new Date().toISOString().slice(0, 10);
+    if (!start || !end) return options;
+    const s = new Date(`${start}T00:00:00`);
+    const e = new Date(`${end}T00:00:00`);
+    const d = new Date(s.getFullYear(), s.getMonth(), 1);
+    while (d <= e) {
+      options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      d.setMonth(d.getMonth() + 1);
+    }
+    return options;
+  }, [startDate, previewMeta]);
 
   const summary = useMemo(() => {
     const rows = previewRows || [];
@@ -270,6 +366,101 @@ export default function SaldoHarianGenerator() {
           </CardContent>
         </Card>
 
+        <Card className="bg-white/70 border-2 border-dashed border-emerald-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-gray-900">
+              <Upload className="w-5 h-5 text-emerald-700" />
+              Validator Rekening Koran (PDF)
+            </CardTitle>
+            <CardDescription>
+              Upload PDF rekening koran per bulan acuan untuk mencocokkan debit/credit harian (basis Input, toleransi Rp100).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Bulan Acuan</Label>
+                <Select value={reconcileMonth} onValueChange={setReconcileMonth}>
+                  <SelectTrigger className="border-2 border-gray-200">
+                    <SelectValue placeholder="Pilih bulan (YYYY-MM)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Password PDF (Opsional)</Label>
+                <Input
+                  type="password"
+                  value={reconcilePassword}
+                  onChange={(e) => setReconcilePassword(e.target.value)}
+                  placeholder="Isi jika PDF berpassword"
+                  className="border-2 border-gray-200"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>File PDF Rekening Koran</Label>
+                <Input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(e) => setReconcileFile(e.target.files?.[0] || null)}
+                  className="border-2 border-gray-200"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                onClick={() => uploadReconcileMutation.mutate()}
+                disabled={uploadReconcileMutation.isPending}
+                className="bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {uploadReconcileMutation.isPending ? 'Uploading...' : 'Upload & Cocokkan'}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (previewMeta?.start_date && previewMeta?.end_date) {
+                    loadReconcileStatuses(previewMeta.start_date, previewMeta.end_date).catch(() => {
+                      toast.error('Gagal refresh status rekonsiliasi.');
+                    });
+                  }
+                }}
+                disabled={!previewMeta?.start_date || !previewMeta?.end_date}
+              >
+                Refresh Status
+              </Button>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="text-sm font-semibold text-slate-700 mb-2">Bulan Terupload</div>
+              {uploadedMonths.length === 0 ? (
+                <div className="text-sm text-slate-500">Belum ada data rekening koran terupload untuk rekening ini.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {uploadedMonths.map((m) => (
+                    <span
+                      key={m.acuan_bulan}
+                      className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800"
+                    >
+                      {m.acuan_bulan} • Tx {m.total_tx_count}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         {previewRows.length > 0 && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -343,7 +534,8 @@ export default function SaldoHarianGenerator() {
                   <table className="w-full min-w-[2100px] border-collapse text-sm">
                     <thead className="sticky top-0 z-40 bg-slate-50 shadow-sm">
                       <tr className="border-b border-slate-200">
-                        <th className="min-w-[120px] px-4 py-3 text-left font-semibold">Tanggal</th>
+                        <th className="min-w-[160px] px-4 py-3 text-left font-semibold">Tanggal</th>
+                        <th className="min-w-[180px] px-4 py-3 text-left font-semibold">Status Rekonsiliasi</th>
                         <th className="min-w-[180px] px-4 py-3 text-right font-semibold">Saldo Awal Input</th>
                         <th className="min-w-[170px] px-4 py-3 text-right font-semibold">Debit Input</th>
                         <th className="min-w-[170px] px-4 py-3 text-right font-semibold">Credit Input</th>
@@ -361,9 +553,28 @@ export default function SaldoHarianGenerator() {
                       </tr>
                     </thead>
                     <tbody>
-                      {previewRows.map((row) => (
-                        <tr key={row.tanggal} className="border-b border-slate-100 last:border-b-0">
+                      {previewRows.map((row) => {
+                        const reconcile = reconcileStatusMap[row.tanggal];
+                        const isMatched = reconcile?.status === 'matched';
+                        return (
+                        <tr key={row.tanggal} className={`border-b border-slate-100 last:border-b-0 ${isMatched ? 'bg-emerald-50/70' : ''}`}>
                           <td className="px-4 py-3 font-medium">{row.tanggal}</td>
+                          <td className="px-4 py-3">
+                            {reconcile?.status === 'matched' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                Cocok
+                              </span>
+                            ) : reconcile?.status === 'unmatched' ? (
+                              <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                                Belum Cocok
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500">
+                                Belum Ada PDF
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right">{formatCurrency(row.saldo_awal_input)}</td>
                           <td className="px-4 py-3 text-right text-emerald-700">{formatCurrency((row as any).debit_input || 0)}</td>
                           <td className="px-4 py-3 text-right text-rose-700">{formatCurrency((row as any).credit_input || 0)}</td>
@@ -383,7 +594,7 @@ export default function SaldoHarianGenerator() {
                           <td className="px-4 py-3 text-right">{row.count_transaksi_input}</td>
                           <td className="px-4 py-3 text-right">{row.count_transaksi_validated}</td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>

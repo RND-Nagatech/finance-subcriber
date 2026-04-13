@@ -1,8 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
+import fs from 'fs';
 import Rekening from '../models/Rekening';
 import RekeningSaldoHarian from '../models/RekeningSaldoHarian';
 import { buildDailyProjectionFromTransactions } from '../services/rekeningDailyProjectionService';
+import RekeningKoranReconcile from '../models/RekeningKoranReconcile';
+import { parseBcaStatementPdf } from '../services/rekeningKoranBcaParserService';
+import { buildDailyInputMovementMap } from '../services/rekeningDailyMovementService';
+
+const RECONCILE_TOLERANCE = 100;
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -35,6 +41,51 @@ function validatePayload(body: any) {
     start_balance_input,
     start_balance_validated,
   };
+}
+
+function validateReconcileRangePayload(query: any) {
+  const kode_bank = String(query?.kode_bank || '').trim();
+  const no_rekening = String(query?.no_rekening || '').trim();
+  const start_date = String(query?.start_date || '').trim();
+  const end_date = String(query?.end_date || '').trim();
+  const basis = String(query?.basis || 'input').trim().toLowerCase();
+
+  if (!kode_bank || !no_rekening || !start_date || !end_date) {
+    throw new Error('kode_bank, no_rekening, start_date, end_date wajib diisi');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date) || !/^\d{4}-\d{2}-\d{2}$/.test(end_date)) {
+    throw new Error('start_date dan end_date harus format YYYY-MM-DD');
+  }
+  if (start_date > end_date) {
+    throw new Error('start_date tidak boleh lebih besar dari end_date');
+  }
+  if (basis !== 'input') {
+    throw new Error('basis yang didukung saat ini hanya input');
+  }
+
+  return { kode_bank, no_rekening, start_date, end_date, basis };
+}
+
+function getMonthList(startDate: string, endDate: string): string[] {
+  const out: string[] = [];
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const d = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (d <= end) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    out.push(`${y}-${m}`);
+    d.setMonth(d.getMonth() + 1);
+  }
+  return out;
+}
+
+function toMonthStartEnd(month: string) {
+  const [y, m] = month.split('-').map(Number);
+  const start = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-01`;
+  const d = new Date(y, m, 0);
+  const end = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { start, end };
 }
 
 export const previewSaldoHarianRekening = async (req: Request, res: Response, next: NextFunction) => {
@@ -171,5 +222,222 @@ export const commitSaldoHarianRekening = async (req: Request, res: Response, nex
     next(error);
   } finally {
     session.endSession();
+  }
+};
+
+export const uploadRekeningKoranReconcile = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!isSuperuser(req)) return res.status(403).json({ message: 'Unauthorized' });
+    const file = (req as any).file as Express.Multer.File | undefined;
+    const kode_bank = String(req.body?.kode_bank || '').trim();
+    const no_rekening = String(req.body?.no_rekening || '').trim();
+    const acuan_bulan = String(req.body?.acuan_bulan || '').trim();
+    const pdf_password = String(req.body?.pdf_password || '').trim();
+
+    if (!file) return res.status(400).json({ message: 'File PDF wajib diupload' });
+    if (!kode_bank || !no_rekening || !acuan_bulan) {
+      return res.status(400).json({ message: 'kode_bank, no_rekening, dan acuan_bulan wajib diisi' });
+    }
+    if (!/^\d{4}-\d{2}$/.test(acuan_bulan)) {
+      return res.status(400).json({ message: 'acuan_bulan harus format YYYY-MM' });
+    }
+
+    const rekening = await Rekening.findOne({ kode_bank, no_rekening }).lean();
+    if (!rekening) return res.status(404).json({ message: 'Rekening tidak ditemukan' });
+
+    const fileBuffer = file.buffer && file.buffer.length > 0
+      ? file.buffer
+      : fs.readFileSync(file.path);
+    const parsed = await parseBcaStatementPdf(fileBuffer, acuan_bulan, pdf_password || undefined);
+    const total_debit = parsed.groupedDaily.reduce((s, r) => s + Number(r.debit || 0), 0);
+    const total_credit = parsed.groupedDaily.reduce((s, r) => s + Number(r.credit || 0), 0);
+    const total_tx_count = parsed.groupedDaily.reduce((s, r) => s + Number(r.tx_count || 0), 0);
+    const actor = String((req as any)?.user?.username || (req as any)?.user?.name || (req as any)?.user?.email || 'SYSTEM');
+
+    await RekeningKoranReconcile.findOneAndUpdate(
+      { kode_bank, no_rekening, acuan_bulan },
+      {
+        $set: {
+          bank_template: 'BCA',
+          parser_version: 'bca-v1',
+          source_file_name: file.originalname || file.filename,
+          source_file_path: file.path,
+          uploaded_by: actor,
+          uploaded_at: new Date(),
+          daily_rows: parsed.groupedDaily,
+          total_debit,
+          total_credit,
+          total_tx_count,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Rekening koran berhasil diupload dan diproses',
+      rekening: { kode_bank, no_rekening },
+      acuan_bulan,
+      summary: {
+        total_days: parsed.groupedDaily.length,
+        total_tx_count,
+        total_debit,
+        total_credit,
+      },
+    });
+  } catch (error) {
+    const msg = getErrorMessage(error);
+    if (
+      msg.includes('wajib') ||
+      msg.includes('format') ||
+      msg.includes('Password') ||
+      msg.includes('terenkripsi') ||
+      msg.includes('tidak dikenali') ||
+      msg.includes('Tidak ada transaksi') ||
+      msg.includes('Gagal membaca PDF')
+    ) {
+      return res.status(400).json({ message: msg });
+    }
+    next(error);
+  }
+};
+
+export const listReconcileMonths = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!isSuperuser(req)) return res.status(403).json({ message: 'Unauthorized' });
+    const kode_bank = String(req.query?.kode_bank || '').trim();
+    const no_rekening = String(req.query?.no_rekening || '').trim();
+    if (!kode_bank || !no_rekening) {
+      return res.status(400).json({ message: 'kode_bank dan no_rekening wajib diisi' });
+    }
+
+    const docs = await RekeningKoranReconcile.find({ kode_bank, no_rekening })
+      .select('acuan_bulan uploaded_at uploaded_by total_tx_count total_debit total_credit')
+      .sort({ acuan_bulan: 1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      data: docs.map((d: any) => ({
+        acuan_bulan: d.acuan_bulan,
+        uploaded_at: d.uploaded_at,
+        uploaded_by: d.uploaded_by,
+        total_tx_count: d.total_tx_count || 0,
+        total_debit: d.total_debit || 0,
+        total_credit: d.total_credit || 0,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getReconcileComparison = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!isSuperuser(req)) return res.status(403).json({ message: 'Unauthorized' });
+    const payload = validateReconcileRangePayload(req.query || {});
+    const neededMonths = getMonthList(payload.start_date, payload.end_date);
+
+    const uploads = await RekeningKoranReconcile.find({
+      kode_bank: payload.kode_bank,
+      no_rekening: payload.no_rekening,
+      acuan_bulan: { $in: neededMonths },
+    }).lean();
+
+    const coveredMonths = new Set<string>(uploads.map((u: any) => String(u.acuan_bulan)));
+    const pdfDailyMap = new Map<string, { debit: number; credit: number; tx_count: number }>();
+    for (const up of uploads as any[]) {
+      for (const row of (up.daily_rows || [])) {
+        pdfDailyMap.set(String(row.tanggal), {
+          debit: Number(row.debit || 0),
+          credit: Number(row.credit || 0),
+          tx_count: Number(row.tx_count || 0),
+        });
+      }
+    }
+
+    const inputMovementMap = await buildDailyInputMovementMap({
+      kode_bank: payload.kode_bank,
+      no_rekening: payload.no_rekening,
+      start_date: payload.start_date,
+      end_date: payload.end_date,
+    });
+
+    const statuses: Array<{
+      tanggal: string;
+      status: 'matched' | 'unmatched' | 'not_covered';
+      input_debit: number;
+      input_credit: number;
+      pdf_debit: number;
+      pdf_credit: number;
+      diff_debit: number;
+      diff_credit: number;
+      tolerance: number;
+    }> = [];
+
+    const start = new Date(`${payload.start_date}T00:00:00`);
+    const end = new Date(`${payload.end_date}T00:00:00`);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const tanggal = `${y}-${m}-${day}`;
+      const month = `${y}-${m}`;
+
+      const input = inputMovementMap.get(tanggal);
+      const input_debit = Number(input?.debitInput || 0);
+      const input_credit = Number(input?.creditInput || 0);
+      const pdf = pdfDailyMap.get(tanggal);
+
+      if (!coveredMonths.has(month)) {
+        statuses.push({
+          tanggal,
+          status: 'not_covered',
+          input_debit,
+          input_credit,
+          pdf_debit: 0,
+          pdf_credit: 0,
+          diff_debit: 0,
+          diff_credit: 0,
+          tolerance: RECONCILE_TOLERANCE,
+        });
+        continue;
+      }
+
+      const pdf_debit = Number(pdf?.debit || 0);
+      const pdf_credit = Number(pdf?.credit || 0);
+      const diff_debit = Math.abs(input_debit - pdf_debit);
+      const diff_credit = Math.abs(input_credit - pdf_credit);
+      const hasPdfRow = Boolean(pdf);
+      const status = hasPdfRow && diff_debit <= RECONCILE_TOLERANCE && diff_credit <= RECONCILE_TOLERANCE ? 'matched' : 'unmatched';
+
+      statuses.push({
+        tanggal,
+        status,
+        input_debit,
+        input_credit,
+        pdf_debit,
+        pdf_credit,
+        diff_debit,
+        diff_credit,
+        tolerance: RECONCILE_TOLERANCE,
+      });
+    }
+
+    return res.json({
+      success: true,
+      rekening: { kode_bank: payload.kode_bank, no_rekening: payload.no_rekening },
+      range: { start_date: payload.start_date, end_date: payload.end_date },
+      basis: payload.basis,
+      tolerance: RECONCILE_TOLERANCE,
+      uploaded_months: neededMonths.filter((m) => coveredMonths.has(m)),
+      statuses,
+    });
+  } catch (error) {
+    const msg = getErrorMessage(error);
+    if (msg.includes('wajib') || msg.includes('format') || msg.includes('basis') || msg.includes('tidak boleh')) {
+      return res.status(400).json({ message: msg });
+    }
+    next(error);
   }
 };
