@@ -50,8 +50,18 @@ export const listTtFinanceDetail = async (req: Request, res: Response) => {
     if (nama_perusahaan && nama_perusahaan !== 'ALL') filter.nama_perusahaan = nama_perusahaan;
     if (akun && akun !== 'ALL') filter.akun = akun;
     if (input_by && input_by !== 'ALL') filter.created_by = input_by;
-    if (special_type === 'SPECIAL') filter.is_special_transaction = true;
-    if (special_type === 'NORMAL') filter.is_special_transaction = { $ne: true };
+    if (special_type === 'SPECIAL') filter.transaction_mode = 'SPECIAL';
+    if (special_type === 'FINANCE_ONLY') filter.transaction_mode = 'FINANCE_ONLY';
+    if (special_type === 'NORMAL') {
+      filter.$and = [
+        {
+          $or: [
+            { transaction_mode: 'NORMAL' },
+            { transaction_mode: { $exists: false }, is_special_transaction: { $ne: true } },
+          ],
+        },
+      ];
+    }
 
     // Apply free-text search (q) across common fields
     if (q && String(q).trim() !== '') {

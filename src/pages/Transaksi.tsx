@@ -77,6 +77,7 @@ interface Transaksi {
   validator_notes?: string;
   perjalanan_dinas_id?: string;
   is_special_transaction?: boolean;
+  transaction_mode?: 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY';
 }
 
 
@@ -468,7 +469,7 @@ export default function Transaksi() {
   const [filterSubKategori, setFilterSubKategori] = useState('');
   const [filterAkun, setFilterAkun] = useState('');
   const [filterInputBy, setFilterInputBy] = useState('');
-  const [filterSpecialType, setFilterSpecialType] = useState<'ALL' | 'NORMAL' | 'SPECIAL'>('ALL');
+  const [filterSpecialType, setFilterSpecialType] = useState<'ALL' | 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
     // Helper untuk menentukan bulan fiskal dari tanggal (calendar month)
     function getFiscalMonthFromDate(dateStr: string): string {
@@ -569,6 +570,7 @@ export default function Transaksi() {
             tanggal: detail.tanggal || '',
             keterangan: detail.keterangan || '',
             is_special_transaction: Boolean(detail.is_special_transaction),
+            transaction_mode: detail.transaction_mode || (detail.is_special_transaction ? 'SPECIAL' : 'NORMAL'),
             perusahaan_id: perusahaanList.find((p) => p.nama_perusahaan === detail.nama_perusahaan)?._id || '',
             rekening_id: rekeningList.find((r) => r.no_rekening === detail.no_rekening && r.kode_bank === detail.kode_bank)?._id || '',
           });
@@ -620,6 +622,7 @@ export default function Transaksi() {
             tanggal: editData.tanggal,
             keterangan: editData.keterangan,
             is_special_transaction: Boolean(editData.is_special_transaction),
+            transaction_mode: editData.transaction_mode || (editData.is_special_transaction ? 'SPECIAL' : 'NORMAL'),
             kode_perusahaan: perusahaanObj?.kode_perusahaan || '',
             nama_perusahaan: perusahaanObj?.nama_perusahaan || '',
             kode_bank: rekeningObj?.kode_bank || '',
@@ -734,6 +737,7 @@ export default function Transaksi() {
     perusahaan_id: '', // new
     rekening_id: '',   // new
     is_special_transaction: false,
+    transaction_mode: 'NORMAL' as 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY',
   });
   const [createAttachments, setCreateAttachments] = useState<File[]>([]);
   const [creatingWithAttachments, setCreatingWithAttachments] = useState(false);
@@ -1179,6 +1183,7 @@ export default function Transaksi() {
       tanggal: formData.tanggal,
       keterangan: formData.keterangan || '',
       is_special_transaction: Boolean(formData.is_special_transaction),
+      transaction_mode: formData.transaction_mode || (formData.is_special_transaction ? 'SPECIAL' : 'NORMAL'),
       // Properti perusahaan
       kode_perusahaan: perusahaanObj?.kode_perusahaan || '',
       nama_perusahaan: perusahaanObj?.nama_perusahaan || '',
@@ -1224,6 +1229,7 @@ export default function Transaksi() {
         perusahaan_id: '',
         rekening_id: '',
         is_special_transaction: false,
+        transaction_mode: 'NORMAL',
       });
       setFormattedNilai('');
       setCreateAttachments([]);
@@ -1258,6 +1264,7 @@ export default function Transaksi() {
       perusahaan_id: '',
       rekening_id: '',
       is_special_transaction: false,
+      transaction_mode: 'NORMAL',
     });
     setFormattedNilai('');
   };
@@ -1269,7 +1276,25 @@ export default function Transaksi() {
     }).format(value);
   };
 
-  const getTransactionTypeLabel = (isSpecial?: boolean) => isSpecial ? 'Khusus' : 'Normal';
+  const resolveTransactionMode = (row: any): 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY' => {
+    const mode = String(row?.transaction_mode || '').toUpperCase();
+    if (mode === 'SPECIAL' || mode === 'FINANCE_ONLY' || mode === 'NORMAL') return mode as any;
+    return row?.is_special_transaction ? 'SPECIAL' : 'NORMAL';
+  };
+
+  const getTransactionTypeLabel = (modeOrRow: any) => {
+    const mode = typeof modeOrRow === 'string' ? modeOrRow : resolveTransactionMode(modeOrRow);
+    if (mode === 'SPECIAL') return 'Khusus (Rekening Only)';
+    if (mode === 'FINANCE_ONLY') return 'Khusus (Dashboard Only)';
+    return 'Normal';
+  };
+
+  const getTransactionTypeBadgeClass = (modeOrRow: any) => {
+    const mode = typeof modeOrRow === 'string' ? modeOrRow : resolveTransactionMode(modeOrRow);
+    if (mode === 'SPECIAL') return 'border-amber-300 bg-amber-100 text-amber-800';
+    if (mode === 'FINANCE_ONLY') return 'border-blue-300 bg-blue-100 text-blue-800';
+    return 'border-slate-200 bg-slate-100 text-slate-700';
+  };
 
   // Format number for input display (Indonesian format: 100.000)
   const formatNumberInput = (value: string) => {
@@ -1510,14 +1535,15 @@ export default function Transaksi() {
           {typeData === 'Detail' && (
             <div className="flex flex-col">
               <Label htmlFor="filterSpecialType" className="text-sm font-semibold text-gray-700 mb-1">Jenis Transaksi</Label>
-              <Select value={filterSpecialType} onValueChange={v => setFilterSpecialType(v as 'ALL' | 'NORMAL' | 'SPECIAL')}>
+              <Select value={filterSpecialType} onValueChange={v => setFilterSpecialType(v as 'ALL' | 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY')}>
                 <SelectTrigger className="w-40 border-2 border-gray-200">
                   <SelectValue placeholder="Semua" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Semua</SelectItem>
                   <SelectItem value="NORMAL">Normal</SelectItem>
-                  <SelectItem value="SPECIAL">Khusus</SelectItem>
+                  <SelectItem value="SPECIAL">Khusus (Rekening Only)</SelectItem>
+                  <SelectItem value="FINANCE_ONLY">Khusus (Dashboard Only)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1736,22 +1762,28 @@ export default function Transaksi() {
                             {/* Keterangan */}
                             <div className="grid gap-2 mt-2">
                               <Label className="text-sm font-semibold text-gray-700">Jenis Transaksi</Label>
-                              <label className="flex items-center justify-between rounded-lg border-2 border-amber-200 bg-amber-50 px-4 py-3">
-                                <div>
-                                  <div className="text-sm font-semibold text-gray-900">
-                                    {formData.is_special_transaction ? 'Transaksi Khusus' : 'Transaksi Normal'}
-                                  </div>
-                                  <div className="text-xs text-gray-600">
-                                    Transaksi khusus tetap memengaruhi rekening, tetapi dikeluarkan dari dashboard dan agregasi keuangan.
-                                  </div>
-                                </div>
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(formData.is_special_transaction)}
-                                  onChange={(e) => setFormData({ ...formData, is_special_transaction: e.target.checked })}
-                                  className="h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                                />
-                              </label>
+                              <Select
+                                value={formData.transaction_mode || (formData.is_special_transaction ? 'SPECIAL' : 'NORMAL')}
+                                onValueChange={(value: 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY') =>
+                                  setFormData({
+                                    ...formData,
+                                    transaction_mode: value,
+                                    is_special_transaction: value === 'SPECIAL',
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="border-2 border-amber-200 bg-amber-50">
+                                  <SelectValue placeholder="Pilih jenis transaksi" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="NORMAL">Normal (Dashboard + Rekening)</SelectItem>
+                                  <SelectItem value="SPECIAL">Khusus (Rekening Only)</SelectItem>
+                                  <SelectItem value="FINANCE_ONLY">Khusus (Dashboard Only)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-gray-600">
+                                Normal: memengaruhi dashboard dan rekening. Rekening Only: hanya rekening. Dashboard Only: hanya dashboard/agregasi.
+                              </p>
                             </div>
                             <div className="grid gap-2 mt-2">
                               <Label htmlFor="keterangan" className="text-sm font-semibold text-gray-700">Keterangan</Label>
@@ -1935,12 +1967,8 @@ export default function Transaksi() {
                       <div className="flex flex-col gap-1">
                         <span>{row.kategori}</span>
                         {typeData === 'Detail' && (
-                          <span className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            row.is_special_transaction
-                              ? 'border-amber-300 bg-amber-100 text-amber-800'
-                              : 'border-slate-200 bg-slate-100 text-slate-700'
-                          }`}>
-                            {getTransactionTypeLabel(row.is_special_transaction)}
+                          <span className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getTransactionTypeBadgeClass(row)}`}>
+                            {getTransactionTypeLabel(row)}
                           </span>
                         )}
                       </div>
@@ -2056,8 +2084,14 @@ export default function Transaksi() {
                         <div className="bg-white rounded-lg border border-slate-200 my-0 p-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
                           <div className="flex flex-col min-w-[120px]">
                             <span className="text-[11px] text-slate-500 leading-tight">Jenis</span>
-                            <span className={`font-medium ${row.is_special_transaction ? 'text-amber-700' : 'text-slate-700'}`}>
-                              {getTransactionTypeLabel(row.is_special_transaction)}
+                            <span className={`font-medium ${
+                              resolveTransactionMode(row) === 'SPECIAL'
+                                ? 'text-amber-700'
+                                : resolveTransactionMode(row) === 'FINANCE_ONLY'
+                                  ? 'text-blue-700'
+                                  : 'text-slate-700'
+                            }`}>
+                              {getTransactionTypeLabel(row)}
                             </span>
                           </div>
                           <div className="flex flex-col min-w-[120px]">
@@ -2344,22 +2378,28 @@ export default function Transaksi() {
                     {/* Keterangan */}
                     <div className="grid gap-2 md:col-span-2">
                       <Label className="text-sm font-semibold text-gray-700">Jenis Transaksi</Label>
-                      <label className="flex items-center justify-between rounded-lg border-2 border-amber-200 bg-amber-50 px-4 py-3">
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">
-                            {editData?.is_special_transaction ? 'Transaksi Khusus' : 'Transaksi Normal'}
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            Transaksi khusus tetap memengaruhi rekening, tetapi dikeluarkan dari dashboard dan agregasi keuangan.
-                          </div>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(editData?.is_special_transaction)}
-                          onChange={(e) => setEditData({ ...editData, is_special_transaction: e.target.checked })}
-                          className="h-5 w-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                        />
-                      </label>
+                      <Select
+                        value={editData?.transaction_mode || (editData?.is_special_transaction ? 'SPECIAL' : 'NORMAL')}
+                        onValueChange={(value: 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY') =>
+                          setEditData({
+                            ...editData,
+                            transaction_mode: value,
+                            is_special_transaction: value === 'SPECIAL',
+                          })
+                        }
+                      >
+                        <SelectTrigger className="border-2 border-amber-200 bg-amber-50">
+                          <SelectValue placeholder="Pilih jenis transaksi" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="NORMAL">Normal (Dashboard + Rekening)</SelectItem>
+                          <SelectItem value="SPECIAL">Khusus (Rekening Only)</SelectItem>
+                          <SelectItem value="FINANCE_ONLY">Khusus (Dashboard Only)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-600">
+                        Normal: memengaruhi dashboard dan rekening. Rekening Only: hanya rekening. Dashboard Only: hanya dashboard/agregasi.
+                      </p>
                     </div>
                     <div className="grid gap-2 md:col-span-2">
                       <Label htmlFor="edit-keterangan" className="text-sm font-semibold text-gray-700">Keterangan</Label>

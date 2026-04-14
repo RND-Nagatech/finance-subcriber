@@ -32,6 +32,7 @@ export interface ITtFinanceDetail extends Document {
   no_rekening?: string;
   perjalanan_dinas_id?: mongoose.Types.ObjectId | string;
   is_special_transaction?: boolean;
+  transaction_mode?: 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY';
 }
 
 const TtFinanceDetailSchema: Schema = new Schema({
@@ -61,6 +62,12 @@ const TtFinanceDetailSchema: Schema = new Schema({
   no_rekening: { type: String },
   perjalanan_dinas_id: { type: Schema.Types.ObjectId, ref: 'PerjalananDinas', index: true },
   is_special_transaction: { type: Boolean, default: false, index: true },
+  transaction_mode: {
+    type: String,
+    enum: ['NORMAL', 'SPECIAL', 'FINANCE_ONLY'],
+    default: 'NORMAL',
+    index: true,
+  },
   attachments: { type: [{ path: { type: String, required: true } }], default: [] },
 });
 
