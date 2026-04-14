@@ -76,6 +76,7 @@ export async function buildDailyProjectionFromTransactions(params: BuildProjecti
     kode_bank: kodeBank,
     no_rekening: noRekening,
     status_deleted: { $ne: true },
+    transaction_mode: { $ne: 'FINANCE_ONLY' },
     tanggal: { $gte: startDate, $lte: today },
   })
     .select('tanggal kategori nilai is_validated')

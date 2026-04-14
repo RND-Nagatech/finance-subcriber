@@ -54,6 +54,7 @@ export async function buildDailyInputMovementMap(params: {
     kode_bank: kodeBank,
     no_rekening: noRekening,
     status_deleted: { $ne: true },
+    transaction_mode: { $ne: 'FINANCE_ONLY' },
     tanggal: { $gte: startDate, $lte: endDate },
   })
     .select('tanggal kategori nilai')
