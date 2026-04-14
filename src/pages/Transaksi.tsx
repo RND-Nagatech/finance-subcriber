@@ -1150,7 +1150,14 @@ export default function Transaksi() {
       toast.error('Perusahaan wajib dipilih!');
       return;
     }
-    if (!formData.kategori_id || !formData.subkategori_id || !formData.akun_id || !formData.bulan_fiskal || !formData.nilai || !formData.tanggal) {
+    const nilaiNum = Number(formData.nilai);
+    const nilaiInvalid =
+      formData.nilai === undefined ||
+      formData.nilai === null ||
+      (formData as any).nilai === '' ||
+      Number.isNaN(nilaiNum);
+
+    if (!formData.kategori_id || !formData.subkategori_id || !formData.akun_id || !formData.bulan_fiskal || nilaiInvalid || !formData.tanggal) {
       toast.error('Pastikan semua field wajib sudah diisi!');
       return;
     }
@@ -1167,7 +1174,7 @@ export default function Transaksi() {
       sub_kategori: subKategoriObj?.sub_kategori || '',
       akun: akunObj?.akun || '',
       bulan: formData.bulan_fiskal,
-      nilai: formData.nilai,
+      nilai: nilaiNum,
       input_by: user?.name || 'Unknown',
       tanggal: formData.tanggal,
       keterangan: formData.keterangan || '',
@@ -1266,15 +1273,25 @@ export default function Transaksi() {
 
   // Format number for input display (Indonesian format: 100.000)
   const formatNumberInput = (value: string) => {
-    // Remove all non-numeric characters
+    const trimmed = value.trimStart();
+    const isNegative = trimmed.startsWith('-');
+    // Keep only numeric characters for grouping; sign is handled separately.
     const numericValue = value.replace(/[^\d]/g, '');
     // Format with dots as thousand separators
-    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const formatted = numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    if (!formatted) return isNegative ? '-' : '';
+    return isNegative ? `-${formatted}` : formatted;
   };
 
   // Parse formatted input back to number
   const parseFormattedInput = (value: string) => {
-    return parseFloat(value.replace(/\./g, '')) || 0;
+    const trimmed = value.trim();
+    const isNegative = trimmed.startsWith('-');
+    const numericValue = trimmed.replace(/[^\d]/g, '');
+    if (!numericValue) return 0;
+    const parsed = Number(numericValue);
+    if (!Number.isFinite(parsed)) return 0;
+    return isNegative ? -parsed : parsed;
   };
 
   // Export Excel handler
@@ -1713,6 +1730,7 @@ export default function Transaksi() {
                                   className="border-2 border-gray-200 transition-all duration-200"
                                   required
                                 />
+                                <p className="text-[11px] text-gray-500">Gunakan tanda minus untuk retur/koreksi.</p>
                               </div>
                             </div>
                             {/* Keterangan */}
@@ -2321,6 +2339,7 @@ export default function Transaksi() {
                         placeholder="0"
                         className="border-2 border-gray-200 transition-all duration-200"
                       />
+                      <p className="text-[11px] text-gray-500">Gunakan tanda minus untuk retur/koreksi.</p>
                     </div>
                     {/* Keterangan */}
                     <div className="grid gap-2 md:col-span-2">
