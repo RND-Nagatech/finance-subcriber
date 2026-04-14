@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.8] - 2026-04-14
+
+### Added
+- **Transaksi: 3 Varian Jenis Input**
+  - Jenis transaksi di form tambah/edit kini mendukung:
+    - `Normal (Dashboard + Rekening)`
+    - `Khusus (Rekening Only)`
+    - `Khusus (Dashboard Only)`
+  - Filter `Jenis Transaksi` pada tabel detail ditambah opsi `Khusus (Dashboard Only)`.
+
+### Changed
+- **Transaksi: Input Nilai Minus**
+  - Field nilai transaksi pada form tambah/edit sekarang mendukung nominal negatif (signed) untuk kebutuhan retur/koreksi.
+  - Ditambahkan helper text pada input nilai: *Gunakan tanda minus untuk retur/koreksi.*
+
+- **Transaksi: Perilaku Dampak Dashboard vs Rekening per Mode**
+  - `Normal`: tetap memengaruhi dashboard/agregasi dan rekening.
+  - `Khusus (Rekening Only)`: hanya memengaruhi rekening/saldo harian rekening.
+  - `Khusus (Dashboard Only)`: hanya memengaruhi dashboard/agregasi keuangan.
+
+### Fixed
+- **Transaksi: Chip Jenis Transaksi di Tabel**
+  - Label chip jenis transaksi dibuat ringkas dan satu baris (`Normal`, `Rekening Only`, `Dashboard Only`) agar tidak pecah ke beberapa baris.
+
 ## [1.6.7] - 2026-04-13
 
 ### Added

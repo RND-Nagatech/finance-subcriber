@@ -1289,6 +1289,13 @@ export default function Transaksi() {
     return 'Normal';
   };
 
+  const getTransactionTypeChipLabel = (modeOrRow: any) => {
+    const mode = typeof modeOrRow === 'string' ? modeOrRow : resolveTransactionMode(modeOrRow);
+    if (mode === 'SPECIAL') return 'Rekening Only';
+    if (mode === 'FINANCE_ONLY') return 'Dashboard Only';
+    return 'Normal';
+  };
+
   const getTransactionTypeBadgeClass = (modeOrRow: any) => {
     const mode = typeof modeOrRow === 'string' ? modeOrRow : resolveTransactionMode(modeOrRow);
     if (mode === 'SPECIAL') return 'border-amber-300 bg-amber-100 text-amber-800';
@@ -1967,8 +1974,8 @@ export default function Transaksi() {
                       <div className="flex flex-col gap-1">
                         <span>{row.kategori}</span>
                         {typeData === 'Detail' && (
-                          <span className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${getTransactionTypeBadgeClass(row)}`}>
-                            {getTransactionTypeLabel(row)}
+                          <span className={`inline-flex w-fit whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none ${getTransactionTypeBadgeClass(row)}`}>
+                            {getTransactionTypeChipLabel(row)}
                           </span>
                         )}
                       </div>
