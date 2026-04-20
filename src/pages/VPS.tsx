@@ -1710,25 +1710,12 @@ function InvoiceGenerateDialog({
         const restW = contentWidth - noColW;
         const signatureBlockH = 120;
         const terbilangBlockH = 42;
-        const signRowIndex = itemRows.length;
-        const terbilangRowIndex = signRowIndex + 1;
-
-        const bodyRows: any[] = [
-          ...itemRows,
-          [
-            { content: '', colSpan: 3, styles: { minCellHeight: signatureBlockH, valign: 'top' } },
-            { content: '', colSpan: 2, styles: { minCellHeight: signatureBlockH, valign: 'top' } },
-          ],
-          [
-            { content: '', colSpan: 5, styles: { minCellHeight: terbilangBlockH, valign: 'top' } },
-          ],
-        ];
 
         autoTable(pdf, {
           startY: tableStartY,
           margin: { left: marginX, right: marginX, top: topMargin, bottom: bottomMargin + 18 },
           head: [['No', 'NAMA BARANG', 'KUANTITI', 'HARGA/UNIT', 'TOTAL HARGA']],
-          body: bodyRows,
+          body: itemRows,
           theme: 'grid',
           headStyles: {
             fillColor: [255, 255, 255],
@@ -1752,26 +1739,69 @@ function InvoiceGenerateDialog({
             3: { cellWidth: restW * 0.19, halign: 'right' },
             4: { cellWidth: restW * 0.19, halign: 'right' },
           },
+        });
+
+        let signStartY = ((pdf as any).lastAutoTable?.finalY || tableStartY);
+        const signAndTerbilangH = signatureBlockH + terbilangBlockH + 4;
+        if (signStartY + signAndTerbilangH > contentBottom - 24) {
+          pdf.addPage();
+          signStartY = topMargin;
+        }
+
+        autoTable(pdf, {
+          startY: signStartY,
+          margin: { left: marginX, right: marginX, top: topMargin, bottom: bottomMargin + 18 },
+          rowPageBreak: 'avoid',
+          body: [
+            [
+              { content: '', colSpan: 3, styles: { minCellHeight: signatureBlockH, valign: 'top' } },
+              { content: '', colSpan: 2, styles: { minCellHeight: signatureBlockH, valign: 'top' } },
+            ],
+            [
+              { content: '', colSpan: 5, styles: { minCellHeight: terbilangBlockH, valign: 'top' } },
+            ],
+          ],
+          theme: 'grid',
+          styles: {
+            fontSize: 10,
+            cellPadding: 5,
+            lineColor: [125, 139, 158],
+            lineWidth: 0.8,
+            valign: 'top',
+          },
+          columnStyles: {
+            0: { cellWidth: noColW, halign: 'center' },
+            1: { cellWidth: restW * 0.50, halign: 'left' },
+            2: { cellWidth: restW * 0.12, halign: 'center' },
+            3: { cellWidth: restW * 0.19, halign: 'right' },
+            4: { cellWidth: restW * 0.19, halign: 'right' },
+          },
           didDrawCell: (data) => {
             if (data.section !== 'body') return;
-
+            const signRowIndex = 0;
+            const terbilangRowIndex = 1;
             if (data.row.index === signRowIndex && data.column.index === 0) {
               const x = data.cell.x;
               const yCell = data.cell.y;
               const w = data.cell.width;
+              const h = data.cell.height;
               const leftHalf = x + w / 2;
+              const topPadding = 22;
+              const signatureY = yCell + Math.max(topPadding + 10, Math.min(40, h - 74));
+              const nameY = yCell + h - 16;
               pdf.setFont('helvetica', 'normal');
               pdf.setFontSize(10);
-              pdf.text('Hormat kami', x + 14, yCell + 22);
-              pdf.text('Penerima', leftHalf + 10, yCell + 22);
+              pdf.text('Hormat kami', x + 14, yCell + topPadding);
+              pdf.text('Penerima', leftHalf + 10, yCell + topPadding);
               if (INVOICE_SIGNATURE_BASE64) {
                 try {
-                  pdf.addImage(INVOICE_SIGNATURE_BASE64, 'PNG', x + 14, yCell + 32, 90, 56);
+                  const signatureH = Math.min(56, Math.max(32, h - 62));
+                  pdf.addImage(INVOICE_SIGNATURE_BASE64, 'PNG', x + 14, signatureY, 90, signatureH);
                 } catch {}
               }
               pdf.setFont('helvetica', 'bold');
-              pdf.text('( ISMAHRIA S )', x + 14, yCell + 104);
-              pdf.text('(..........................)', leftHalf + 10, yCell + 104);
+              pdf.text('( ISMAHRIA S )', x + 14, nameY);
+              pdf.text('(..........................)', leftHalf + 10, nameY);
               return;
             }
 
@@ -1814,7 +1844,7 @@ function InvoiceGenerateDialog({
           },
         });
 
-        let y = ((pdf as any).lastAutoTable?.finalY || tableStartY) + 14;
+        let y = ((pdf as any).lastAutoTable?.finalY || signStartY) + 14;
         const rekeningRows = (chosenPaymentAccounts.length > 0
           ? chosenPaymentAccounts
               .filter((r) => (r?.no_rekening || '').toString().trim().length > 0)

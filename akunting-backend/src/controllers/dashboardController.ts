@@ -1128,7 +1128,6 @@ export const subscriberByProgram = async (req: Request, res: Response) => {
     }
 
     const Subscriber = require('../models/Subscriber').default;
-    const Program = require('../models/Program').default;
 
     // Tentukan tanggal akhir berdasarkan bulan dan tahun yang dipilih
     const bulanMap: { [key: string]: number } = {
@@ -1222,6 +1221,445 @@ export const subscriberByProgram = async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error('❌ Error in subscriberByProgram:', error);
+    res.status(500).json({ message: 'Server error', error });
+  }
+};
+
+function getISOWeekLabel(dateValue: Date): string {
+  const date = new Date(Date.UTC(dateValue.getUTCFullYear(), dateValue.getUTCMonth(), dateValue.getUTCDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+function mongoISOWeekLabelExpr(dateExpr: any) {
+  return {
+    $concat: [
+      { $toString: { $isoWeekYear: dateExpr } },
+      '-W',
+      {
+        $let: {
+          vars: { week: { $isoWeek: dateExpr } },
+          in: {
+            $cond: [
+              { $lt: ['$$week', 10] },
+              { $concat: ['0', { $toString: '$$week' }] },
+              { $toString: '$$week' }
+            ]
+          }
+        }
+      }
+    ]
+  };
+}
+
+function parseDate(input?: string): Date {
+  if (!input) return new Date();
+  const parsed = new Date(input);
+  if (!isNaN(parsed.getTime())) return parsed;
+  return new Date();
+}
+
+function formatMonthYY(date: Date): string {
+  const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  return `${monthNames[date.getUTCMonth()]}-${String(date.getUTCFullYear()).slice(-2)}`;
+}
+
+function getFiscalMonthList(tahunNum: number): string[] {
+  const months = ['DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV'];
+  return months.map((m, idx) => `${m}-${String(idx === 0 ? (tahunNum - 1) : tahunNum).slice(-2)}`);
+}
+
+async function pickFinanceCollections(tahun: string) {
+  const ThFinance = require('../models/ThFinance').default;
+  const Transaksi = require('../models/Transaksi').default;
+  const TtFinanceDaily = require('../models/TtFinanceDaily').default;
+  const ThFinanceDaily = require('../models/ThFinanceDaily').default;
+  const FiscalConfig = require('../models/FiscalConfig').default;
+  const active = await FiscalConfig.findOne({ key: 'fiscal' });
+  const activeYear = Number(active?.active_year || new Date().getFullYear());
+  const targetYear = Number(tahun);
+  const useArchive = Number.isFinite(targetYear) && targetYear < activeYear;
+  return {
+    summaryCollection: useArchive ? ThFinance : Transaksi,
+    dailyCollection: useArchive ? ThFinanceDaily : TtFinanceDaily,
+    source: useArchive ? 'th_finance' : 'tt_finance',
+  };
+}
+
+export const dashboardV2CardData = async (req: Request, res: Response) => {
+  try {
+    const cardKey = String(req.query.card_key || '').trim();
+    const periodMode = String(req.query.period_mode || 'monthly').toLowerCase();
+    const fiscalYear = String(req.query.fiscal_year || new Date().getFullYear());
+    const reference = String(req.query.reference || new Date().toISOString().slice(0, 10));
+    const refDate = parseDate(reference);
+
+    if (!cardKey) return res.status(400).json({ message: 'card_key is required' });
+    if (!['daily', 'weekly', 'monthly', 'yearly'].includes(periodMode)) {
+      return res.status(400).json({ message: 'period_mode must be daily|weekly|monthly|yearly' });
+    }
+
+    const { summaryCollection: SummaryModel, dailyCollection: DailyModel, source } = await pickFinanceCollections(fiscalYear);
+    const Subscriber = require('../models/Subscriber').default;
+    const TTVps = require('../models/TTVps').default;
+    const Program = require('../models/Program').default;
+
+    const tahunNum = Number(fiscalYear);
+    const fiscalMonths = getFiscalMonthList(tahunNum);
+    const targetMonthYY = formatMonthYY(refDate);
+
+    const financialBuildPipeline = (match: any, mode: string) => {
+      if (mode === 'daily') {
+        return [
+          { $match: { ...match, bulan_fiskal: targetMonthYY } },
+          { $group: { _id: '$tanggal', total: { $sum: '$total_nilai' } } },
+          { $sort: { _id: 1 } },
+          { $project: { label: '$_id', value: '$total', _id: 0 } },
+        ];
+      }
+      if (mode === 'weekly') {
+        return [
+          { $match: match },
+          {
+            $group: {
+              _id: {
+                $let: {
+                  vars: { dateObj: { $dateFromString: { dateString: '$tanggal' } } },
+                  in: mongoISOWeekLabelExpr('$$dateObj')
+                }
+              },
+              total: { $sum: '$total_nilai' }
+            }
+          },
+          { $sort: { _id: 1 } },
+          { $project: { label: '$_id', value: '$total', _id: 0 } },
+        ];
+      }
+      if (mode === 'yearly') {
+        return [
+          { $match: match },
+          { $group: { _id: '$tahun_fiskal', total: { $sum: '$total_tahunan' } } },
+          { $project: { label: '$_id', value: '$total', _id: 0 } },
+        ];
+      }
+      return [
+        { $match: match },
+        { $unwind: '$data_bulanan' },
+        { $group: { _id: '$data_bulanan.bulan', total: { $sum: '$data_bulanan.nilai' } } },
+        { $sort: { _id: 1 } },
+        { $project: { label: '$_id', value: '$total', _id: 0 } },
+      ];
+    };
+
+    const send = (payload: any) =>
+      res.json({
+        success: true,
+        card_key: cardKey,
+        period_mode: periodMode,
+        reference,
+        fiscal_year: fiscalYear,
+        ...payload,
+      });
+
+    if (
+      [
+        'pembelian_trend',
+        'margin_trend',
+        'aset_gaji_breakdown',
+        'implementasi_marketing_lainnya_breakdown',
+        'biaya_biaya_breakdown',
+        'pendapatan_breakdown'
+      ].includes(cardKey)
+    ) {
+      const baseSummaryMatch: any = { tahun_fiskal: fiscalYear };
+      const baseDailyMatch: any = { tahun_fiskal: fiscalYear };
+
+      if (cardKey === 'pembelian_trend') {
+        const match = { ...baseSummaryMatch, kategori: 'PEMBELIAN' };
+        const matchDaily = { ...baseDailyMatch, kategori: 'PEMBELIAN' };
+        const pipeline = periodMode === 'daily' || periodMode === 'weekly'
+          ? financialBuildPipeline(matchDaily, periodMode)
+          : financialBuildPipeline(match, periodMode);
+        const rows = await (periodMode === 'daily' || periodMode === 'weekly' ? DailyModel : SummaryModel).aggregate(pipeline);
+        return send({
+          source_info: { domain: 'financial', collection: source, fiscal_switch_applied: true },
+          points: rows.map((r: any) => ({ bulan: r.label, nominal: Number(r.value || 0) })),
+          totals: { total: rows.reduce((s: number, r: any) => s + Number(r.value || 0), 0) },
+        });
+      }
+
+      if (cardKey === 'margin_trend') {
+        const model = periodMode === 'daily' || periodMode === 'weekly' ? DailyModel : SummaryModel;
+        if (periodMode === 'daily') {
+          const rows = await model.aggregate([
+            { $match: { ...baseDailyMatch, bulan_fiskal: targetMonthYY, kategori: { $in: ['PENDAPATAN', 'BIAYA', 'PEMBELIAN'] } } },
+            { $group: { _id: { label: '$tanggal', kategori: '$kategori' }, total: { $sum: '$total_nilai' } } },
+          ]);
+          const map: Record<string, any> = {};
+          rows.forEach((r: any) => {
+            const key = r._id.label;
+            map[key] = map[key] || { pendapatan: 0, biaya: 0, pembelian: 0 };
+            map[key][String(r._id.kategori).toLowerCase()] = Number(r.total || 0);
+          });
+          const points = Object.keys(map).sort().map((k) => ({
+            bulan: k,
+            nominal: map[k].pendapatan - map[k].biaya - map[k].pembelian,
+          }));
+          return send({
+            source_info: { domain: 'financial', collection: source, fiscal_switch_applied: true },
+            points,
+            totals: { total: points.reduce((s, r) => s + r.nominal, 0) },
+          });
+        }
+        if (periodMode === 'weekly') {
+          const rows = await model.aggregate([
+            { $match: { ...baseDailyMatch, kategori: { $in: ['PENDAPATAN', 'BIAYA', 'PEMBELIAN'] } } },
+            {
+              $group: {
+                _id: {
+                  label: {
+                    $let: {
+                      vars: { dateObj: { $dateFromString: { dateString: '$tanggal' } } },
+                      in: mongoISOWeekLabelExpr('$$dateObj')
+                    }
+                  },
+                  kategori: '$kategori'
+                },
+                total: { $sum: '$total_nilai' }
+              }
+            },
+          ]);
+          const map: Record<string, any> = {};
+          rows.forEach((r: any) => {
+            const key = r._id.label;
+            map[key] = map[key] || { pendapatan: 0, biaya: 0, pembelian: 0 };
+            map[key][String(r._id.kategori).toLowerCase()] = Number(r.total || 0);
+          });
+          const points = Object.keys(map).sort().map((k) => ({
+            bulan: k,
+            nominal: map[k].pendapatan - map[k].biaya - map[k].pembelian,
+          }));
+          return send({
+            source_info: { domain: 'financial', collection: source, fiscal_switch_applied: true },
+            points,
+            totals: { total: points.reduce((s, r) => s + r.nominal, 0) },
+          });
+        }
+        const rows = await model.aggregate([
+          { $match: { ...baseSummaryMatch, kategori: { $in: ['PENDAPATAN', 'BIAYA', 'PEMBELIAN'] } } },
+          ...(periodMode === 'monthly' ? [{ $unwind: '$data_bulanan' }] : []),
+          {
+            $group: {
+              _id: periodMode === 'monthly'
+                ? { label: '$data_bulanan.bulan', kategori: '$kategori' }
+                : { label: '$tahun_fiskal', kategori: '$kategori' },
+              total: { $sum: periodMode === 'monthly' ? '$data_bulanan.nilai' : '$total_tahunan' }
+            }
+          },
+        ]);
+        const map: Record<string, any> = {};
+        rows.forEach((r: any) => {
+          const key = r._id.label;
+          map[key] = map[key] || { pendapatan: 0, biaya: 0, pembelian: 0 };
+          map[key][String(r._id.kategori).toLowerCase()] = Number(r.total || 0);
+        });
+        const points = Object.keys(map).sort().map((k) => ({
+          bulan: k,
+          nominal: map[k].pendapatan - map[k].biaya - map[k].pembelian,
+        }));
+        return send({
+          source_info: { domain: 'financial', collection: source, fiscal_switch_applied: true },
+          points,
+          totals: { total: points.reduce((s, r) => s + r.nominal, 0) },
+        });
+      }
+
+      const subGroups: Record<string, string[]> = {
+        aset_gaji_breakdown: ['ASET', 'ASET INVESTASI', 'CICILAN GEDUNG', 'CICILAN KENDARAAN', 'GAJI'],
+        implementasi_marketing_lainnya_breakdown: ['IMPLEMENTASI', 'MARKETING', 'LAIN LAIN'],
+        biaya_biaya_breakdown: ['PPH21', 'PAJAK PPH 21', 'VPS', 'BIAYA VPS', 'RND', 'BIAYA RND', 'BPJS', 'BIAYA BPJS', 'RETUR PENJUALAN'],
+        pendapatan_breakdown: [],
+      };
+      const subList = subGroups[cardKey] || [];
+      const model = periodMode === 'daily' || periodMode === 'weekly' ? DailyModel : SummaryModel;
+      const category = cardKey === 'pendapatan_breakdown' ? 'PENDAPATAN' : 'BIAYA';
+      const useSubFilter = cardKey !== 'pendapatan_breakdown';
+
+      const groupingField = periodMode === 'daily'
+        ? '$tanggal'
+        : periodMode === 'weekly'
+          ? {
+              $let: {
+                vars: { dateObj: { $dateFromString: { dateString: '$tanggal' } } },
+                in: mongoISOWeekLabelExpr('$$dateObj')
+              }
+            }
+          : periodMode === 'monthly'
+            ? '$data_bulanan.bulan'
+            : '$tahun_fiskal';
+
+      const rows = await model.aggregate([
+        {
+          $match: {
+            ...(periodMode === 'daily' || periodMode === 'weekly' ? baseDailyMatch : baseSummaryMatch),
+            ...(periodMode === 'daily' ? { bulan_fiskal: targetMonthYY } : {}),
+            kategori: category,
+            ...(useSubFilter ? { sub_kategori: { $in: subList } } : {}),
+          }
+        },
+        ...(periodMode === 'monthly' ? [{ $unwind: '$data_bulanan' }] : []),
+        {
+          $group: {
+            _id: { label: groupingField, sub_kategori: '$sub_kategori' },
+            total: { $sum: periodMode === 'monthly' ? '$data_bulanan.nilai' : (periodMode === 'yearly' ? '$total_tahunan' : '$total_nilai') }
+          }
+        },
+      ]);
+
+      const labelMap: Record<string, Record<string, number>> = {};
+      rows.forEach((r: any) => {
+        const label = r._id.label;
+        const sub = r._id.sub_kategori;
+        labelMap[label] = labelMap[label] || {};
+        labelMap[label][sub] = Number(r.total || 0);
+      });
+      const labels = Object.keys(labelMap).sort();
+      const points = labels.map((label) => ({
+        kategori: label,
+        subs: Object.keys(labelMap[label]).map((sub) => ({ name: sub, total: labelMap[label][sub] }))
+      }));
+      return send({
+        source_info: { domain: 'financial', collection: source, fiscal_switch_applied: true },
+        points,
+        totals: { total: rows.reduce((s: number, r: any) => s + Number(r.total || 0), 0) },
+      });
+    }
+
+    if (cardKey === 'subscriber_analytics') {
+      const start = new Date(Date.UTC(tahunNum - 1, 11, 1));
+      const end = new Date(Date.UTC(tahunNum, 11, 1));
+      const mode = periodMode;
+      const match: any = { status_aktv: true, tanggal: { $gte: start, $lt: end } };
+      const rows = await Subscriber.aggregate([
+        { $match: match },
+        {
+          $project: {
+            tanggal: 1,
+            label:
+              mode === 'daily'
+                ? { $dateToString: { format: '%Y-%m-%d', date: '$tanggal' } }
+                : mode === 'weekly'
+                  ? mongoISOWeekLabelExpr('$tanggal')
+                  : mode === 'yearly'
+                    ? { $dateToString: { format: '%Y', date: '$tanggal' } }
+                    : { $dateToString: { format: '%Y-%m', date: '$tanggal' } }
+          }
+        },
+        { $group: { _id: '$label', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]);
+      const openingBalance = await Subscriber.countDocuments({ status_aktv: true, tanggal: { $lt: start } });
+      let running = openingBalance;
+      const points = rows.map((r: any) => {
+        running += Number(r.count || 0);
+        return { bulan: r._id, count: Number(r.count || 0), total: running, year: tahunNum };
+      });
+      return send({
+        source_info: { domain: 'subscriber', collection: 'tm_subscriber', fiscal_switch_applied: false },
+        points,
+        totals: {
+          total_growth: rows.reduce((s: number, r: any) => s + Number(r.count || 0), 0),
+          total_subscriber: running,
+        },
+      });
+    }
+
+    if (cardKey === 'subscriber_by_program') {
+      const mode = periodMode;
+      const cutoff =
+        mode === 'daily'
+          ? new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), refDate.getUTCDate(), 23, 59, 59))
+          : mode === 'weekly'
+            ? new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), refDate.getUTCDate() + (7 - (refDate.getUTCDay() || 7)), 23, 59, 59))
+            : mode === 'monthly'
+              ? new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 0, 23, 59, 59))
+              : new Date(Date.UTC(refDate.getUTCFullYear(), 11, 31, 23, 59, 59));
+
+      const rows = await Subscriber.aggregate([
+        { $match: { status_aktv: true, tanggal: { $lte: cutoff } } },
+        { $lookup: { from: 'tm_program', localField: 'program', foreignField: 'nama', as: 'program_info' } },
+        { $unwind: { path: '$program_info', preserveNullAndEmptyArrays: true } },
+        { $project: { program: 1, biaya: 1, group_program: { $ifNull: ['$program_info.group_program', '$program'] } } },
+        {
+          $group: {
+            _id: '$group_program',
+            programs: { $addToSet: '$program' },
+            total_subscriber: { $sum: 1 },
+            total_biaya: { $sum: '$biaya' }
+          }
+        },
+        {
+          $project: {
+            program: '$_id',
+            programs: 1,
+            total_subscriber: 1,
+            total_biaya: 1,
+            avg_biaya_per_subscriber: {
+              $cond: [{ $eq: ['$total_subscriber', 0] }, 0, { $divide: ['$total_biaya', '$total_subscriber'] }]
+            }
+          }
+        },
+        { $sort: { total_subscriber: -1 } }
+      ]);
+      return send({
+        source_info: { domain: 'subscriber', collection: 'tm_subscriber', fiscal_switch_applied: false },
+        points: rows,
+        totals: { total_subscriber: rows.reduce((s: number, r: any) => s + Number(r.total_subscriber || 0), 0) },
+      });
+    }
+
+    if (cardKey === 'vps_overview') {
+      const docs = await TTVps.find({});
+      const grouped: Record<string, { estimasi: number; realisasi: number }> = {};
+      docs.forEach((d: any) => {
+        const periode = String(d.periode || '');
+        if (!periode) return;
+        if (periodMode === 'yearly') {
+          const year = periode.slice(0, 4);
+          grouped[year] = grouped[year] || { estimasi: 0, realisasi: 0 };
+          grouped[year].estimasi += Number(d.estimasi || 0);
+          grouped[year].realisasi += Number(d.realisasi || 0);
+          return;
+        }
+        if (periodMode === 'monthly') {
+          grouped[periode] = grouped[periode] || { estimasi: 0, realisasi: 0 };
+          grouped[periode].estimasi += Number(d.estimasi || 0);
+          grouped[periode].realisasi += Number(d.realisasi || 0);
+          return;
+        }
+        const dt = new Date(`${periode}-01T00:00:00.000Z`);
+        const label = periodMode === 'weekly' ? getISOWeekLabel(dt) : `${periode}-01`;
+        grouped[label] = grouped[label] || { estimasi: 0, realisasi: 0 };
+        grouped[label].estimasi += Number(d.estimasi || 0);
+        grouped[label].realisasi += Number(d.realisasi || 0);
+      });
+      const points = Object.keys(grouped).sort().map((k) => ({ name: k, estimasi: grouped[k].estimasi, realisasi: grouped[k].realisasi }));
+      return send({
+        source_info: { domain: 'vps', collection: 'tt_vps', fiscal_switch_applied: false },
+        points,
+        totals: {
+          estimasi: points.reduce((s, p) => s + Number(p.estimasi || 0), 0),
+          realisasi: points.reduce((s, p) => s + Number(p.realisasi || 0), 0),
+        },
+      });
+    }
+
+    return res.status(400).json({ message: 'Unsupported card_key' });
+  } catch (error) {
+    console.error('❌ Error in dashboardV2CardData:', error);
     res.status(500).json({ message: 'Server error', error });
   }
 };

@@ -1329,28 +1329,32 @@ export default function Transaksi() {
   // Export Excel handler
   const handleExportExcel = async () => {
     try {
-      let params = new URLSearchParams();
+      const params = new URLSearchParams();
+      const searching = (searchQuery || '').trim().length > 0;
+      if (searching) params.append('q', searchQuery.trim());
       if (typeData === 'Detail') {
         if (filterTanggalDari) params.append('from', filterTanggalDari);
         if (filterTanggalSampai) params.append('to', filterTanggalSampai);
-        if (filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
+        if (!searching && filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
         if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
         if (filterInputBy && filterInputBy !== 'ALL') params.append('input_by', filterInputBy);
+        if (filterSpecialType !== 'ALL') params.append('special_type', filterSpecialType);
       } else {
         if (filterBulan && filterBulan !== 'ALL' && filterTahun) {
           const tahun2Digit = String(filterTahun).slice(-2);
           params.append('bulan', `${filterBulan}-${tahun2Digit}`);
         }
         if (filterTahun) params.append('tahun', filterTahun);
-        if (filterPerusahaan) params.append('nama_perusahaan', filterPerusahaan);
+        if (!searching && filterPerusahaan && filterPerusahaan !== 'ALL') params.append('nama_perusahaan', filterPerusahaan);
         if (filterKategori && filterKategori !== 'ALL') params.append('kategori', filterKategori);
         if (filterSubKategori && filterSubKategori !== 'ALL') params.append('sub_kategori', filterSubKategori);
         if (filterAkun && filterAkun !== 'ALL') params.append('akun', filterAkun);
         if (filterInputBy && filterInputBy !== 'ALL') params.append('input_by', filterInputBy);
         params.append('flatten', '1');
       }
+      if (kategoriSort) params.append('sortKategori', kategoriSort);
       // Hilangkan trailing slash jika ada di VITE_API_BASE_URL
       const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '';
       const apiUrl = `${baseUrl}/transaksi/export-excel?${params.toString()}`;

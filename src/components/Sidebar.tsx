@@ -166,6 +166,30 @@ export default function AppSidebar() {
                   </NavLink>
                 </SidebarMenuItem>
 
+                {/* DASHBOARD V2 */}
+                <SidebarMenuItem>
+                  <NavLink to="/dashboard-v2">
+                    <SidebarMenuButton
+                      isActive={location.pathname === "/dashboard-v2"}
+                      className={cn(
+                        "group relative rounded-xl px-4 py-4 text-slate-300 hover:text-white transition-all duration-300",
+                        "hover:bg-gradient-to-r hover:from-cyan-600/20 hover:to-blue-600/20",
+                        "hover:shadow-lg hover:shadow-cyan-500/10",
+                        "data-[active=true]:bg-gradient-to-r data-[active=true]:from-cyan-600/30 data-[active=true]:to-blue-600/30",
+                        "data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-cyan-500/20",
+                        "border border-transparent data-[active=true]:border-cyan-500/30",
+                        "py-5"
+                      )}
+                    >
+                      <LayoutDashboard className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                      <span className="font-medium">Dashboard V2</span>
+                      {location.pathname === "/dashboard-v2" && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-cyan-400 to-blue-500 rounded-r-full" />
+                      )}
+                    </SidebarMenuButton>
+                  </NavLink>
+                </SidebarMenuItem>
+
                 {/* MASTER DATA */}
                 <SidebarMenuItem>
                   <SidebarMenuButton

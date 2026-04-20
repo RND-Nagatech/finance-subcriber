@@ -18,6 +18,7 @@ import { MainLayout } from "./components/MainLayout";
 import Login from "./pages/Auth/Login";
 import Register from "./pages/Auth/Register";
 import Dashboard from "./pages/Dashboard";
+import DashboardV2 from "./pages/DashboardV2";
 import Kategori from "./pages/MasterData/Kategori";
 import SubKategori from "./pages/MasterData/SubKategori";
 import Akun from "./pages/MasterData/Akun";
@@ -92,6 +93,16 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <Dashboard />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard-v2"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <DashboardV2 />
                 </MainLayout>
               </ProtectedRoute>
             }
