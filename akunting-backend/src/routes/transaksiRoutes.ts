@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { Router } from 'express';
 import multer from 'multer';
-import { exportTransaksiExcel } from '../controllers/exportExcelController';
+import { exportSaldoHarianRekeningExcel, exportTransaksiExcel } from '../controllers/exportExcelController';
 import { createTransaksi, listTransaksi, updateTransaksi, deleteTransaksi, editTransaksiBulanan, deleteTransaksiBulanan, batchCreateTransaksi, uploadAttachments, deleteAttachment, validateAttachment, updateValidatorNotes, getRiwayatSaldoRekening, getSaldoRekening, getSaldoHarianRekening } from '../controllers/transaksiController';
 import {
   previewSaldoHarianRekening,
@@ -76,6 +76,7 @@ router.delete('/:id/attachments/:filename', deleteAttachment);
 router.get('/riwayat-saldo-rekening', getRiwayatSaldoRekening);
 router.get('/saldo-rekening', getSaldoRekening);
 router.get('/saldo-harian-rekening', getSaldoHarianRekening);
+router.get('/saldo-harian-rekening/export-excel', exportSaldoHarianRekeningExcel);
 router.post('/saldo-harian-rekening/preview', authenticate, previewSaldoHarianRekening);
 router.post('/saldo-harian-rekening/commit', authenticate, commitSaldoHarianRekening);
 router.post('/saldo-harian-rekening/reconcile/upload', authenticate, uploadReconcile.single('file'), uploadRekeningKoranReconcile);

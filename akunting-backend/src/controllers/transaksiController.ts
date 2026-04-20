@@ -1302,6 +1302,34 @@ export const getSaldoHarianRekening = async (req: Request, res: Response, next: 
     }
 
     const total = await RekeningSaldoHarian.countDocuments(filter);
+    const summaryAgg = await RekeningSaldoHarian.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          total_debit_input: { $sum: { $ifNull: ['$debit_input', 0] } },
+          total_credit_input: { $sum: { $ifNull: ['$credit_input', 0] } },
+          total_transaksi_input: {
+            $sum: {
+              $ifNull: [
+                '$total_transaksi_input',
+                { $subtract: [{ $ifNull: ['$debit_input', 0] }, { $ifNull: ['$credit_input', 0] }] },
+              ],
+            },
+          },
+          total_debit_validated: { $sum: { $ifNull: ['$debit_validated', 0] } },
+          total_credit_validated: { $sum: { $ifNull: ['$credit_validated', 0] } },
+          total_transaksi_validated: {
+            $sum: {
+              $ifNull: [
+                '$total_transaksi_validated',
+                { $subtract: [{ $ifNull: ['$debit_validated', 0] }, { $ifNull: ['$credit_validated', 0] }] },
+              ],
+            },
+          },
+        },
+      },
+    ]);
     const rows = await RekeningSaldoHarian.find(filter)
       .sort({ tanggal: 1 })
       .skip(skip)
@@ -1335,6 +1363,23 @@ export const getSaldoHarianRekening = async (req: Request, res: Response, next: 
       page: pageNum,
       total,
       totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      summary: summaryAgg[0]
+        ? {
+            total_debit_input: Number(summaryAgg[0].total_debit_input || 0),
+            total_credit_input: Number(summaryAgg[0].total_credit_input || 0),
+            total_net_input: Number(summaryAgg[0].total_transaksi_input || 0),
+            total_debit_validated: Number(summaryAgg[0].total_debit_validated || 0),
+            total_credit_validated: Number(summaryAgg[0].total_credit_validated || 0),
+            total_net_validated: Number(summaryAgg[0].total_transaksi_validated || 0),
+          }
+        : {
+            total_debit_input: 0,
+            total_credit_input: 0,
+            total_net_input: 0,
+            total_debit_validated: 0,
+            total_credit_validated: 0,
+            total_net_validated: 0,
+          },
     });
   } catch (error) {
     next(error);

@@ -4,6 +4,24 @@ import TtFinanceDetail from '../models/TtFinanceDetail';
 import Transaksi from '../models/Transaksi';
 import ThFinance from '../models/ThFinance';
 import FiscalConfig from '../models/FiscalConfig';
+import RekeningSaldoHarian from '../models/RekeningSaldoHarian';
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseRupiahSearch(input: string): number | null {
+  if (!input) return null;
+  const normalized = String(input)
+    .replace(/rp/gi, '')
+    .replace(/\s+/g, '')
+    .replace(/\./g, '')
+    .replace(/,/g, '');
+  if (!/^-?\d+$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
 
 function columnLetter(n: number): string {
   let s = '';
@@ -17,7 +35,7 @@ function columnLetter(n: number): string {
 
 export const exportTransaksiExcel = async (req: Request, res: Response) => {
   try {
-    const { from, to, nama_perusahaan, kategori, sub_kategori, akun, input_by, sortKategori, flatten, tahun, bulan } = req.query as any;
+    const { from, to, nama_perusahaan, kategori, sub_kategori, akun, input_by, sortKategori, flatten, tahun, bulan, special_type, q } = req.query as any;
 
     const limit = Number(req.query.limit) || 10000;
     const doFlatten = String(flatten) === '1' || String(flatten).toLowerCase() === 'true';
@@ -32,6 +50,16 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       if (sub_kategori) filterAgg.sub_kategori = sub_kategori;
       if (akun) filterAgg.akun = akun;
       if (input_by) filterAgg.input_by = input_by;
+      if (special_type === 'SPECIAL') filterAgg.transaction_mode = 'SPECIAL';
+      if (special_type === 'FINANCE_ONLY') filterAgg.transaction_mode = 'FINANCE_ONLY';
+      if (special_type === 'NORMAL') {
+        filterAgg.$or = [
+          { transaction_mode: { $exists: false } },
+          { transaction_mode: '' },
+          { transaction_mode: null },
+          { transaction_mode: 'NORMAL' },
+        ];
+      }
 
       let Model: any = Transaksi;
       if (tahun) {
@@ -73,6 +101,26 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
             nilai: '$data_bulanan.nilai'
           }
         },
+        ...(
+          q && String(q).trim() !== ''
+            ? (() => {
+                const qText = String(q).trim();
+                const qRegex = escapeRegex(qText);
+                const qAmount = parseRupiahSearch(qText);
+                return [{
+                  $match: {
+                    $or: [
+                      { kategori: { $regex: qRegex, $options: 'i' } },
+                      { sub_kategori: { $regex: qRegex, $options: 'i' } },
+                      { akun: { $regex: qRegex, $options: 'i' } },
+                      { bulan: { $regex: qRegex, $options: 'i' } },
+                      ...(qAmount !== null ? [{ nilai: qAmount }] : []),
+                    ],
+                  },
+                }];
+              })()
+            : []
+        ),
         { $sort: sortStage },
         { $limit: limit }
       ];
@@ -81,13 +129,46 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       header = ['No', 'Kategori', 'Sub Kategori', 'Akun', 'Bulan Fiskal', 'Nilai', 'Tahun Fiskal'];
     } else {
       const filter: any = { status_deleted: { $ne: true }, is_special_transaction: { $ne: true } };
+      const andFilters: any[] = [];
       if (from) filter.tanggal = { ...filter.tanggal, $gte: from };
       if (to) filter.tanggal = { ...filter.tanggal, $lte: to };
       if (nama_perusahaan) filter.nama_perusahaan = nama_perusahaan;
       if (kategori) filter.kategori = kategori;
       if (sub_kategori) filter.sub_kategori = sub_kategori;
       if (akun) filter.akun = akun;
-      if (input_by) filter.created_by = input_by;
+      if (input_by) filter.input_by = input_by;
+      if (special_type === 'SPECIAL') filter.transaction_mode = 'SPECIAL';
+      if (special_type === 'FINANCE_ONLY') filter.transaction_mode = 'FINANCE_ONLY';
+      if (special_type === 'NORMAL') {
+        andFilters.push({
+          $or: [
+          { transaction_mode: { $exists: false } },
+          { transaction_mode: '' },
+          { transaction_mode: null },
+          { transaction_mode: 'NORMAL' },
+          ],
+        });
+      }
+      if (q && String(q).trim() !== '') {
+        const qText = String(q).trim();
+        const rx = new RegExp(escapeRegex(qText), 'i');
+        const amount = parseRupiahSearch(qText);
+        andFilters.push({
+          $or: [
+          { kategori: rx },
+          { sub_kategori: rx },
+          { akun: rx },
+          { bulan: rx },
+          { keterangan: rx },
+          { input_by: rx },
+          { nama_perusahaan: rx },
+          ...(amount !== null ? [{ nilai: amount }] : []),
+          ],
+        });
+      }
+      if (andFilters.length > 0) {
+        filter.$and = andFilters;
+      }
       let sort: any = {};
       if (sortKategori === 'asc') sort.kategori = 1;
       if (sortKategori === 'desc') sort.kategori = -1;
@@ -239,5 +320,149 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
     res.end();
   } catch (err) {
     res.status(500).json({ message: 'Gagal export excel', error: err });
+  }
+};
+
+export const exportSaldoHarianRekeningExcel = async (req: Request, res: Response) => {
+  try {
+    const { kode_bank, no_rekening, start_date, end_date } = req.query as any;
+    if (!kode_bank || !no_rekening) {
+      return res.status(400).json({ message: 'kode_bank dan no_rekening diperlukan' });
+    }
+
+    const filter: any = {
+      kode_bank: String(kode_bank),
+      no_rekening: String(no_rekening),
+    };
+    if (start_date || end_date) {
+      filter.tanggal = {};
+      if (start_date) filter.tanggal.$gte = String(start_date);
+      if (end_date) filter.tanggal.$lte = String(end_date);
+    }
+
+    const rows = await RekeningSaldoHarian.find(filter).sort({ tanggal: 1 }).lean();
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Saldo Harian');
+    const header = [
+      'No',
+      'Tanggal',
+      'Saldo Awal Input',
+      'Debit Input',
+      'Credit Input',
+      'Net Input',
+      'Saldo Akhir Input',
+      'Saldo Awal Validated',
+      'Debit Validated',
+      'Credit Validated',
+      'Net Validated',
+      'Saldo Akhir Validated',
+      'Gap Harian',
+      'Gap Kumulatif',
+    ];
+
+    const lastCol = columnLetter(header.length);
+    worksheet.mergeCells(`A1:${lastCol}1`);
+    worksheet.getCell('A1').value = 'LAPORAN SALDO HARIAN REKENING';
+    worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getCell('A1').font = { name: 'Calibri', bold: true, size: 14 };
+
+    worksheet.mergeCells(`A2:${lastCol}2`);
+    worksheet.getCell('A2').value = `${String(kode_bank)} - ${String(no_rekening)}`;
+    worksheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getCell('A2').font = { name: 'Calibri', bold: true, size: 12 };
+
+    worksheet.addRow([]);
+    worksheet.addRow(header);
+
+    let idx = 1;
+    for (const r of rows) {
+      const debitInput = Number(r.debit_input || 0);
+      const creditInput = Number(r.credit_input || 0);
+      const debitValidated = Number(r.debit_validated || 0);
+      const creditValidated = Number(r.credit_validated || 0);
+      const netInput = Number((r.total_transaksi_input ?? (debitInput - creditInput)) || 0);
+      const netValidated = Number((r.total_transaksi_validated ?? (debitValidated - creditValidated)) || 0);
+      const gapHarian = netInput - netValidated;
+      const gapKumulatif = Number(r.saldo_akhir_input || 0) - Number(r.saldo_akhir_validated || 0);
+
+      const added = worksheet.addRow([
+        idx,
+        r.tanggal,
+        Number(r.saldo_awal_input || 0),
+        debitInput,
+        creditInput,
+        netInput,
+        Number(r.saldo_akhir_input || 0),
+        Number(r.saldo_awal_validated || 0),
+        debitValidated,
+        creditValidated,
+        netValidated,
+        Number(r.saldo_akhir_validated || 0),
+        gapHarian,
+        gapKumulatif,
+      ]);
+      for (let c = 3; c <= 14; c += 1) {
+        added.getCell(c).numFmt = '"Rp" \\ #,##0;[Red]-"Rp" \\ #,##0';
+      }
+      idx += 1;
+    }
+
+    const totalDebitInput = rows.reduce((sum, r: any) => sum + Number(r.debit_input || 0), 0);
+    const totalCreditInput = rows.reduce((sum, r: any) => sum + Number(r.credit_input || 0), 0);
+    const totalNetInput = rows.reduce((sum, r: any) => sum + Number((r.total_transaksi_input ?? (Number(r.debit_input || 0) - Number(r.credit_input || 0))) || 0), 0);
+    const totalDebitValidated = rows.reduce((sum, r: any) => sum + Number(r.debit_validated || 0), 0);
+    const totalCreditValidated = rows.reduce((sum, r: any) => sum + Number(r.credit_validated || 0), 0);
+    const totalNetValidated = rows.reduce((sum, r: any) => sum + Number((r.total_transaksi_validated ?? (Number(r.debit_validated || 0) - Number(r.credit_validated || 0))) || 0), 0);
+
+    const totalRow = worksheet.addRow([
+      'TOTAL',
+      '',
+      '',
+      totalDebitInput,
+      totalCreditInput,
+      totalNetInput,
+      '',
+      '',
+      totalDebitValidated,
+      totalCreditValidated,
+      totalNetValidated,
+      '',
+      '',
+      '',
+    ]);
+    worksheet.mergeCells(`A${totalRow.number}:C${totalRow.number}`);
+    for (let c = 4; c <= 11; c += 1) {
+      totalRow.getCell(c).numFmt = '"Rp" \\ #,##0;[Red]-"Rp" \\ #,##0';
+      totalRow.getCell(c).font = { name: 'Calibri', size: 11, bold: true };
+    }
+    totalRow.getCell(1).font = { name: 'Calibri', size: 11, bold: true };
+
+    const headerRow = worksheet.getRow(4);
+    headerRow.eachCell((cell) => {
+      cell.font = { name: 'Calibri', size: 11, bold: true };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'DDEEFF' } };
+      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    });
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber >= 4) {
+        row.eachCell((cell, colNumber) => {
+          cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+          if (colNumber >= 3) cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        });
+      }
+    });
+
+    worksheet.getColumn(1).width = 7;
+    worksheet.getColumn(2).width = 14;
+    for (let c = 3; c <= 14; c += 1) worksheet.getColumn(c).width = 18;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=saldo-harian-${String(kode_bank)}-${String(no_rekening)}.xlsx`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    res.status(500).json({ message: 'Gagal export excel saldo harian rekening', error: err });
   }
 };

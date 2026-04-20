@@ -63,6 +63,14 @@ interface SaldoHarianResponse {
   page: number;
   total: number;
   totalPages: number;
+  summary?: {
+    total_debit_input: number;
+    total_credit_input: number;
+    total_net_input: number;
+    total_debit_validated: number;
+    total_credit_validated: number;
+    total_net_validated: number;
+  };
 }
 
 function formatCurrency(value: number) {
@@ -120,6 +128,14 @@ export default function SaldoHarianRekening() {
 
   const rows = data?.data || [];
   const totalPages = data?.totalPages || 1;
+  const summary = data?.summary || {
+    total_debit_input: 0,
+    total_credit_input: 0,
+    total_net_input: 0,
+    total_debit_validated: 0,
+    total_credit_validated: 0,
+    total_net_validated: 0,
+  };
 
   const handleSearch = () => {
     if (!selectedRekening) {
@@ -133,6 +149,40 @@ export default function SaldoHarianRekening() {
   const handlePageChange = (nextPage: number) => {
     if (nextPage < 1 || nextPage > totalPages) return;
     setPage(nextPage);
+  };
+
+  const handleExportExcel = async () => {
+    if (!selectedRekening) {
+      toast.error('Pilih rekening terlebih dahulu');
+      return;
+    }
+    try {
+      const params = new URLSearchParams({
+        kode_bank: selectedRekening.kode_bank,
+        no_rekening: selectedRekening.no_rekening,
+      });
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+
+      const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || '';
+      const apiUrl = `${baseUrl}/transaksi/saldo-harian-rekening/export-excel?${params.toString()}`;
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (!response.ok) throw new Error('Gagal export excel');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `saldo-harian-${selectedRekening.kode_bank}-${selectedRekening.no_rekening}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error(error?.message || 'Gagal export excel saldo harian');
+    }
   };
 
   return (
@@ -212,6 +262,9 @@ export default function SaldoHarianRekening() {
                 <Search className="w-4 h-4 mr-2" />
                 Tampilkan Saldo Harian
               </Button>
+              <Button variant="outline" onClick={handleExportExcel} disabled={!selectedRekening}>
+                Export Excel
+              </Button>
               {user?.role === 'superuser' && (
                 <Button variant="outline" onClick={() => { window.location.assign('/saldo-harian-generator'); }}>
                   <Wallet className="w-4 h-4 mr-2" />
@@ -277,7 +330,8 @@ export default function SaldoHarianRekening() {
                       <TableCell colSpan={showValidatedColumns ? 13 : 8} className="text-center py-8 text-gray-500">Belum ada data untuk filter ini.</TableCell>
                     </TableRow>
                   ) : (
-                    rows.map((row) => (
+                    <>
+                      {rows.map((row) => (
                       <TableRow key={row._id || `${row.tanggal}-${row.kode_bank}-${row.no_rekening}`}>
                         <TableCell className="font-medium">{row.tanggal}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.saldo_awal_input)}</TableCell>
@@ -301,7 +355,29 @@ export default function SaldoHarianRekening() {
                           {formatCurrency(row.gap_kumulatif)}
                         </TableCell>
                       </TableRow>
-                    ))
+                      ))}
+                      <TableRow className="bg-slate-100/80">
+                        <TableCell className="font-bold">TOTAL</TableCell>
+                        <TableCell className="text-right">-</TableCell>
+                        <TableCell className="text-right font-bold text-emerald-700">{formatCurrency(summary.total_debit_input)}</TableCell>
+                        <TableCell className="text-right font-bold text-rose-700">{formatCurrency(summary.total_credit_input)}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(summary.total_net_input)}</TableCell>
+                        <TableCell className="text-right">-</TableCell>
+                        {showValidatedColumns && (
+                          <>
+                            <TableCell className="text-right">-</TableCell>
+                            <TableCell className="text-right font-bold text-emerald-700">{formatCurrency(summary.total_debit_validated)}</TableCell>
+                            <TableCell className="text-right font-bold text-rose-700">{formatCurrency(summary.total_credit_validated)}</TableCell>
+                            <TableCell className="text-right font-bold">{formatCurrency(summary.total_net_validated)}</TableCell>
+                            <TableCell className="text-right">-</TableCell>
+                          </>
+                        )}
+                        <TableCell className={`text-right font-bold ${(summary.total_net_input - summary.total_net_validated) >= 0 ? 'text-amber-700' : 'text-red-700'}`}>
+                          {formatCurrency(summary.total_net_input - summary.total_net_validated)}
+                        </TableCell>
+                        <TableCell className="text-right">-</TableCell>
+                      </TableRow>
+                    </>
                   )}
                 </TableBody>
               </Table>

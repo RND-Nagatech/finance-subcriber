@@ -259,6 +259,20 @@ export default function Dashboard() {
     enabled: !!year && month !== 'ANNUAL',
   });
 
+  const { data: rekeningDashboardList = [], isLoading: isRekeningDashboardLoading } = useQuery({
+    queryKey: ['dashboard-rekening-saldo'],
+    queryFn: async () => {
+      const response = await axiosInstance.get('/master/rekening?all=true');
+      const list = Array.isArray(response.data) ? response.data : [];
+      return list.filter((r: any) => (r?.status_aktv ?? r?.active ?? true) !== false);
+    },
+  });
+
+  const totalAkumulasiSaldoRekening = rekeningDashboardList.reduce(
+    (sum: number, item: any) => sum + Number(item?.saldo || 0),
+    0
+  );
+
   const subscriberAverageAddition = (() => {
     if (!subscriberCombinedData || subscriberCombinedData.length === 0) {
       return { avg: 0, divisor: 0, totalGrowth: 0, endMonth: '-' };
@@ -470,6 +484,51 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        <Card className="border-2 border-dashed border-emerald-200 bg-white backdrop-blur-sm hover:border-emerald-400 transition-all duration-300">
+          <CardHeader>
+            <CardTitle>Total Akumulasi Saldo Rekening</CardTitle>
+            <CardDescription>Ringkasan saldo terkini seluruh rekening aktif dan detail per rekening.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-4">
+              <p className="text-3xl font-bold text-emerald-700">{formatCurrency(totalAkumulasiSaldoRekening)}</p>
+              <p className="text-sm text-gray-500 mt-1">Total rekening aktif: {rekeningDashboardList.length}</p>
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold">Kode Bank</th>
+                    <th className="text-left px-3 py-2 font-semibold">No Rekening</th>
+                    <th className="text-left px-3 py-2 font-semibold">Nama Rekening</th>
+                    <th className="text-right px-3 py-2 font-semibold">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {isRekeningDashboardLoading ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Memuat data rekening...</td>
+                    </tr>
+                  ) : rekeningDashboardList.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Belum ada data rekening.</td>
+                    </tr>
+                  ) : (
+                    rekeningDashboardList.map((rekening: any) => (
+                      <tr key={rekening._id} className="border-t border-slate-100">
+                        <td className="px-3 py-2">{rekening.kode_bank || '-'}</td>
+                        <td className="px-3 py-2">{rekening.no_rekening || '-'}</td>
+                        <td className="px-3 py-2">{rekening.nama_rekening || '-'}</td>
+                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(rekening.saldo || 0))}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
 
         {isLoading ? (
           <div className="h-[400px] flex items-center justify-center">

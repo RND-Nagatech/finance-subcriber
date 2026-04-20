@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.9] - 2026-04-20
+
+### Added
+- **Saldo Harian Rekening: Total Debit/Credit Input & Validated**
+  - Endpoint `GET /transaksi/saldo-harian-rekening` sekarang mengembalikan `summary` agregat:
+    - `total_debit_input`, `total_credit_input`, `total_net_input`
+    - `total_debit_validated`, `total_credit_validated`, `total_net_validated`
+  - Tabel di menu **Saldo Harian Rekening** menampilkan baris `TOTAL` untuk ringkasan debit/credit/net.
+
+- **Saldo Harian Rekening: Export Excel**
+  - Ditambahkan endpoint baru `GET /transaksi/saldo-harian-rekening/export-excel`.
+  - Menu **Saldo Harian Rekening** sekarang memiliki tombol `Export Excel` sesuai rekening + rentang tanggal yang dipilih.
+
+- **Dashboard: Ringkasan Saldo Rekening**
+  - Ditambahkan card baru di dashboard untuk:
+    - total akumulasi saldo seluruh rekening aktif,
+    - tabel detail saldo per rekening (kode bank, no rekening, nama rekening, saldo).
+
+### Fixed
+- **Invoice VPS: Blok Tanda Tangan Tidak Lagi Kepotong**
+  - Perbaikan pagination PDF agar blok tanda tangan + total + terbilang dirender utuh, tidak terpotong saat item invoice banyak.
+
+- **Transaksi Export Excel: Filter Jenis Transaksi Sudah Konsisten**
+  - Export Excel transaksi sekarang mengikuti filter `Jenis Transaksi` (`NORMAL`, `SPECIAL`, `FINANCE_ONLY`) seperti tampilan tabel.
+  - Export juga konsisten membawa filter pencarian `q` dan sorting kategori aktif.
+  - Perbaikan kombinasi filter `Jenis Transaksi + Search` agar tidak saling menimpa saat query export.
+
 ## [1.6.8] - 2026-04-14
 
 ### Added
