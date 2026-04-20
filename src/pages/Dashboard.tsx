@@ -53,6 +53,7 @@ export default function Dashboard() {
   const [month, setMonth] = useState<string>(new Date().toLocaleString('en-US', { month: 'short' }).toUpperCase());
   const [chartType, setChartType] = useState<'donut' | 'bar'>('donut');
   const [vpsMetric, setVpsMetric] = useState<'estimasi' | 'realisasi'>('estimasi');
+  const [showRekeningDetail, setShowRekeningDetail] = useState(false);
   const [exporting, setExporting] = useState<boolean>(false);
   const userSelectedYearRef = useRef(false);
   const vpsCardRef = useRef<HTMLDivElement | null>(null);
@@ -495,38 +496,49 @@ export default function Dashboard() {
               <p className="text-3xl font-bold text-emerald-700">{formatCurrency(totalAkumulasiSaldoRekening)}</p>
               <p className="text-sm text-gray-500 mt-1">Total rekening aktif: {rekeningDashboardList.length}</p>
             </div>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-semibold">Kode Bank</th>
-                    <th className="text-left px-3 py-2 font-semibold">No Rekening</th>
-                    <th className="text-left px-3 py-2 font-semibold">Nama Rekening</th>
-                    <th className="text-right px-3 py-2 font-semibold">Saldo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isRekeningDashboardLoading ? (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Memuat data rekening...</td>
-                    </tr>
-                  ) : rekeningDashboardList.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Belum ada data rekening.</td>
-                    </tr>
-                  ) : (
-                    rekeningDashboardList.map((rekening: any) => (
-                      <tr key={rekening._id} className="border-t border-slate-100">
-                        <td className="px-3 py-2">{rekening.kode_bank || '-'}</td>
-                        <td className="px-3 py-2">{rekening.no_rekening || '-'}</td>
-                        <td className="px-3 py-2">{rekening.nama_rekening || '-'}</td>
-                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(rekening.saldo || 0))}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="mb-2">
+              <button
+                type="button"
+                onClick={() => setShowRekeningDetail((prev) => !prev)}
+                className="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+              >
+                {showRekeningDetail ? 'Sembunyikan Detail' : 'Tampilkan Detail'}
+              </button>
             </div>
+            {showRekeningDetail && (
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-semibold">Kode Bank</th>
+                      <th className="text-left px-3 py-2 font-semibold">No Rekening</th>
+                      <th className="text-left px-3 py-2 font-semibold">Nama Rekening</th>
+                      <th className="text-right px-3 py-2 font-semibold">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isRekeningDashboardLoading ? (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Memuat data rekening...</td>
+                      </tr>
+                    ) : rekeningDashboardList.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Belum ada data rekening.</td>
+                      </tr>
+                    ) : (
+                      rekeningDashboardList.map((rekening: any) => (
+                        <tr key={rekening._id} className="border-t border-slate-100">
+                          <td className="px-3 py-2">{rekening.kode_bank || '-'}</td>
+                          <td className="px-3 py-2">{rekening.no_rekening || '-'}</td>
+                          <td className="px-3 py-2">{rekening.nama_rekening || '-'}</td>
+                          <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(rekening.saldo || 0))}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
 
