@@ -900,20 +900,53 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
         { $group: { _id: null, total: { $sum: "$nilai" } } }
       ]);
       const totalNilaiBaru = sumDetail[0]?.total || 0;
-      await TtFinanceDaily.findOneAndUpdate(
-        {
-          tanggal: oldTanggal,
-          bulan_fiskal: bulanFiskalOld,
-          tahun_fiskal: oldTahunFiskal,
-          kategori: oldKategori,
-          sub_kategori: oldSubKategori,
-          akun: oldAkun
-        },
-        {
-          $set: { total_nilai: totalNilaiBaru }
-        },
-        { new: true }
-      );
+      const dailyFilter = {
+        tanggal: oldTanggal,
+        bulan_fiskal: bulanFiskalOld,
+        tahun_fiskal: oldTahunFiskal,
+        kategori: oldKategori,
+        sub_kategori: oldSubKategori,
+        akun: oldAkun,
+      };
+      const existingDaily = await TtFinanceDaily.findOne(dailyFilter);
+
+      // Re-aggregate via $set must also write history delta so audit trail stays consistent.
+      if (existingDaily) {
+        const nilaiAwalDaily = Number(existingDaily.total_nilai || 0);
+        const delta = Number(totalNilaiBaru) - nilaiAwalDaily;
+        const updateObj: any = {
+          $set: { total_nilai: totalNilaiBaru },
+        };
+        if (delta !== 0) {
+          updateObj.$push = {
+            history: {
+              nilai: delta,
+              nilai_awal: nilaiAwalDaily,
+              tanggal: oldTanggal,
+              input_by: input_by || 'SYSTEM',
+              input_at: new Date(),
+              action: delta >= 0 ? 'increment' : 'decrement',
+            },
+          };
+        }
+        await TtFinanceDaily.findOneAndUpdate(dailyFilter, updateObj, { new: true });
+      } else if (totalNilaiBaru > 0) {
+        await TtFinanceDaily.create({
+          ...dailyFilter,
+          total_nilai: totalNilaiBaru,
+          created_at: new Date(),
+          history: [
+            {
+              nilai: totalNilaiBaru,
+              nilai_awal: 0,
+              tanggal: oldTanggal,
+              input_by: input_by || 'SYSTEM',
+              input_at: new Date(),
+              action: 'increment',
+            },
+          ],
+        });
+      }
     }
 
     // Hitung tahun fiskal dari bulan baru

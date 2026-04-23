@@ -782,6 +782,10 @@ export default function Transaksi() {
   // Formatted input values for display
   const [formattedNilai, setFormattedNilai] = useState('');
   const [editFormattedNilai, setEditFormattedNilai] = useState('');
+  const selectedAddRekening =
+    formData.rekening_id && formData.rekening_id !== 'none'
+      ? rekeningList.find((r) => r._id === formData.rekening_id)
+      : null;
 
   // Persist selected bulan per fiscal year in localStorage so refresh keeps selection
   const selectedMonthKey = `transaksi_selected_bulan_${fiscalYear}`;
@@ -1651,6 +1655,25 @@ export default function Transaksi() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {selectedAddRekening && (
+                      <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                              Saldo Rekening Saat Ini
+                            </p>
+                            <p className="mt-1 text-2xl font-bold text-emerald-800">
+                              {formatCurrency(Number(selectedAddRekening.saldo || 0))}
+                            </p>
+                          </div>
+                          <div className="text-right text-xs text-emerald-700">
+                            <p>{selectedAddRekening.kode_bank || '-'}</p>
+                            <p>{selectedAddRekening.no_rekening || '-'}</p>
+                            <p>{selectedAddRekening.nama_rekening || '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {/* Tanggal */}
                     <div className="grid gap-2">
                       <Label htmlFor="tanggal" className="text-sm font-semibold text-gray-700">Tanggal</Label>
@@ -1987,7 +2010,13 @@ export default function Transaksi() {
                     <TableCell className="w-40 px-6 py-4 text-gray-700">{row.sub_kategori}</TableCell>
                     <TableCell className="w-40 px-6 py-4 text-gray-700">{row.akun}</TableCell>
                     <TableCell className="w-32 px-6 py-4 text-gray-700 text-right font-medium">
-                      <span className="break-words whitespace-normal block">{formatCurrency(row.nilai)}</span>
+                      <span
+                        className={`break-words whitespace-normal block ${
+                          Number(row?.nilai || 0) < 0 ? 'text-red-600 font-semibold' : ''
+                        }`}
+                      >
+                        {formatCurrency(row.nilai)}
+                      </span>
                     </TableCell>
                     {typeData === 'Detail' && (
                       <TableCell className="w-48 px-6 py-4 text-gray-700">

@@ -585,7 +585,7 @@ export default function Dashboard() {
                     <div key={idx} className="relative">
                       <Card className="border-2 border-dashed border-purple-200 bg-white backdrop-blur-sm hover:border-purple-400 transition-all duration-300">
                         <CardHeader className="pb-3">
-                          <CardTitle className="text-lg font-bold text-gray-900">{kategoriData.kategori}</CardTitle>
+                          <CardTitle className="text-lg font-bold text-gray-900">{kategoriData.kategori == "PENDAPATAN" ? "PENJUALAN" : kategoriData.kategori}</CardTitle>
                           {month === 'ANNUAL' && (
                             <CardDescription className="text-gray-400 text-sm">
                             {month === 'ANNUAL' ? (
