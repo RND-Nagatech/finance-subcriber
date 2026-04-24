@@ -636,7 +636,57 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+            {/* Stacked bar chart untuk Pendapatan per hari (jika bulan tidak ANNUAL) */}
+            {pendapatanHarianChartData.length > 0 && month !== 'ANNUAL' && (
+              <div className="mb-8">
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-green-200 bg-white backdrop-blur-sm hover:border-green-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <StackedBarKategori
+                        data={pendapatanHarianChartData}
+                        title={`Penjualan Daily Breakdown - ${month} ${year}`}
+                        description="Daily breakdown of income transactions by subcategory"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
+            {/* Line chart untuk Margin per bulan */}
+            {grossMarginTahunanLineData.length > 0 && (
+              <div className="mb-8">
+                <div className="relative">
+                  <Card className="border-2 border-dashed border-teal-200 bg-white backdrop-blur-sm hover:border-teal-400 transition-all duration-300">
+                    <CardContent className='pt-6'>
+                      <LineChartKategori 
+                        data={grossMarginTahunanLineData} 
+                        title={`Margin - ${year}`}
+                        description="Monthly gross margin trend (Omzet - Biaya - Pembelian)"
+                      />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Line chart untuk kategori PEMBELIAN */}
             {pembelianLineData.length > 0 && (
               <div className="mb-8">
@@ -725,58 +775,6 @@ export default function Dashboard() {
                         data={biayaBiayaTahunanChartData}
                         title="Biaya Biaya Monthly Breakdown"
                         description="Monthly breakdown of PPH21, VPS, RND, BPJS, and return sales expenses"
-                      />
-                    </CardContent>
-                  </Card>
-                  {!canViewRestrictedContent() && (
-                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
-                      <div className="text-center">
-                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
-                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
-                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Stacked bar chart untuk Pendapatan per hari (jika bulan tidak ANNUAL) */}
-            {pendapatanHarianChartData.length > 0 && month !== 'ANNUAL' && (
-              <div className="mb-8">
-                <div className="relative">
-                  <Card className="border-2 border-dashed border-green-200 bg-white backdrop-blur-sm hover:border-green-400 transition-all duration-300">
-                    <CardContent className='pt-6'>
-                      <StackedBarKategori
-                        data={pendapatanHarianChartData}
-                        title={`Pendapatan Daily Breakdown - ${month} ${year}`}
-                        description="Daily breakdown of income transactions by subcategory"
-                      />
-                    </CardContent>
-                  </Card>
-                  {!canViewRestrictedContent() && (
-                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
-                      <div className="text-center">
-                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
-                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
-                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Line chart untuk Margin per bulan */}
-            {grossMarginTahunanLineData.length > 0 && (
-              <div className="mb-8">
-                <div className="relative">
-                  <Card className="border-2 border-dashed border-teal-200 bg-white backdrop-blur-sm hover:border-teal-400 transition-all duration-300">
-                    <CardContent className='pt-6'>
-                      <LineChartKategori 
-                        data={grossMarginTahunanLineData} 
-                        title={`Margin - ${year}`}
-                        description="Monthly gross margin trend (Omzet - Biaya - Pembelian)"
                       />
                     </CardContent>
                   </Card>
