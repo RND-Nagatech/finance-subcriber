@@ -595,36 +595,18 @@ function sortDataGross(arr: any) {
     ];
   }
 
+  // Gunakan basis daily aggregation agar konsisten dengan mode per-bulan (filter bulan).
   const pipelineGrossMarginTahunan: any[] = [
-    { $match: { tahun_fiskal: tahun } },
     {
       $match: {
+        tahun_fiskal: tahun,
         kategori: { $in: ["PENDAPATAN", "BIAYA", "PEMBELIAN"] }
       }
     },
-    { $unwind: '$data_bulanan' },
-  ];
-
-  // ➤ Tambahkan filter bulan hanya jika query bulan ada
-  if (filterBulan) {
-    pipelineGrossMarginTahunan.push({
-      $match: {
-        "data_bulanan.bulan": {
-          $regex: filterBulan,
-          $options: "i"
-        }
-      }
-    });
-  }
-
-  pipelineGrossMarginTahunan.push(
     {
       $group: {
-        _id: {
-          kategori: '$kategori',
-          bulan: '$data_bulanan.bulan'
-        },
-        total_bulan: { $sum: '$data_bulanan.nilai' }
+        _id: { bulan: '$bulan_fiskal', kategori: '$kategori' },
+        total_bulan: { $sum: '$total_nilai' }
       }
     },
     {
@@ -703,12 +685,8 @@ function sortDataGross(arr: any) {
         }
       }
     },
-    {
-      $sort: {
-        bulan: 1
-      }
-    }
-  );
+    { $sort: { bulan: 1 } }
+  ];
 
   // ➤ Daily pipeline for Gross Margin when month is selected
   let pipelineGrossMarginDaily: any[] | undefined;
@@ -840,7 +818,7 @@ function sortDataGross(arr: any) {
     : await Collection.aggregate(pipelineBiayaBiayaTahunan);
   const resultGrossMarginTahunan = filterBulan
     ? await (thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily).aggregate(pipelineGrossMarginDaily!)
-    : await Collection.aggregate(pipelineGrossMarginTahunan);
+    : await (thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily).aggregate(pipelineGrossMarginTahunan);
   
   res.json({
     success: true,
@@ -1392,7 +1370,9 @@ export const dashboardV2CardData = async (req: Request, res: Response) => {
       }
 
       if (cardKey === 'margin_trend') {
-        const model = periodMode === 'daily' || periodMode === 'weekly' ? DailyModel : SummaryModel;
+        // Always use daily aggregation as source of truth to keep annual/monthly consistent
+        // with detailed (daily) margin calculation.
+        const model = DailyModel;
         if (periodMode === 'daily') {
           const rows = await model.aggregate([
             { $match: { ...baseDailyMatch, bulan_fiskal: targetMonthYY, kategori: { $in: ['PENDAPATAN', 'BIAYA', 'PEMBELIAN'] } } },
@@ -1449,14 +1429,13 @@ export const dashboardV2CardData = async (req: Request, res: Response) => {
           });
         }
         const rows = await model.aggregate([
-          { $match: { ...baseSummaryMatch, kategori: { $in: ['PENDAPATAN', 'BIAYA', 'PEMBELIAN'] } } },
-          ...(periodMode === 'monthly' ? [{ $unwind: '$data_bulanan' }] : []),
+          { $match: { ...baseDailyMatch, kategori: { $in: ['PENDAPATAN', 'BIAYA', 'PEMBELIAN'] } } },
           {
             $group: {
               _id: periodMode === 'monthly'
-                ? { label: '$data_bulanan.bulan', kategori: '$kategori' }
+                ? { label: '$bulan_fiskal', kategori: '$kategori' }
                 : { label: '$tahun_fiskal', kategori: '$kategori' },
-              total: { $sum: periodMode === 'monthly' ? '$data_bulanan.nilai' : '$total_tahunan' }
+              total: { $sum: '$total_nilai' }
             }
           },
         ]);

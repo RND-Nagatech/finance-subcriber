@@ -50,14 +50,17 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       if (sub_kategori) filterAgg.sub_kategori = sub_kategori;
       if (akun) filterAgg.akun = akun;
       if (input_by) filterAgg.input_by = input_by;
-      if (special_type === 'SPECIAL') filterAgg.transaction_mode = 'SPECIAL';
+      if (special_type === 'SPECIAL') {
+        filterAgg.$or = [
+          { transaction_mode: 'SPECIAL' },
+          { transaction_mode: { $exists: false }, is_special_transaction: true }, // legacy data
+        ];
+      }
       if (special_type === 'FINANCE_ONLY') filterAgg.transaction_mode = 'FINANCE_ONLY';
       if (special_type === 'NORMAL') {
         filterAgg.$or = [
-          { transaction_mode: { $exists: false } },
-          { transaction_mode: '' },
-          { transaction_mode: null },
           { transaction_mode: 'NORMAL' },
+          { transaction_mode: { $exists: false }, is_special_transaction: { $ne: true } }, // legacy normal
         ];
       }
 
@@ -128,7 +131,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       // Rekap tidak perlu kolom Input By
       header = ['No', 'Kategori', 'Sub Kategori', 'Akun', 'Bulan Fiskal', 'Nilai', 'Tahun Fiskal'];
     } else {
-      const filter: any = { status_deleted: { $ne: true }, is_special_transaction: { $ne: true } };
+      const filter: any = { status_deleted: { $ne: true } };
       const andFilters: any[] = [];
       if (from) filter.tanggal = { ...filter.tanggal, $gte: from };
       if (to) filter.tanggal = { ...filter.tanggal, $lte: to };
@@ -137,15 +140,20 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       if (sub_kategori) filter.sub_kategori = sub_kategori;
       if (akun) filter.akun = akun;
       if (input_by) filter.input_by = input_by;
-      if (special_type === 'SPECIAL') filter.transaction_mode = 'SPECIAL';
+      if (special_type === 'SPECIAL') {
+        andFilters.push({
+          $or: [
+            { transaction_mode: 'SPECIAL' },
+            { transaction_mode: { $exists: false }, is_special_transaction: true }, // legacy data
+          ],
+        });
+      }
       if (special_type === 'FINANCE_ONLY') filter.transaction_mode = 'FINANCE_ONLY';
       if (special_type === 'NORMAL') {
         andFilters.push({
           $or: [
-          { transaction_mode: { $exists: false } },
-          { transaction_mode: '' },
-          { transaction_mode: null },
-          { transaction_mode: 'NORMAL' },
+            { transaction_mode: 'NORMAL' },
+            { transaction_mode: { $exists: false }, is_special_transaction: { $ne: true } }, // legacy normal
           ],
         });
       }
