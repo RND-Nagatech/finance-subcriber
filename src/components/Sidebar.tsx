@@ -193,7 +193,7 @@ export default function AppSidebar() {
               <SidebarMenu className="space-y-4">
 
                 {/* DASHBOARD */}
-                <SidebarMenuItem>
+                {/* <SidebarMenuItem>
                   <NavLink to="/dashboard">
                     <SidebarMenuButton
                       isActive={location.pathname === "/dashboard"}
@@ -214,7 +214,7 @@ export default function AppSidebar() {
                       )}
                     </SidebarMenuButton>
                   </NavLink>
-                </SidebarMenuItem>
+                </SidebarMenuItem> */}
 
                 {/* DASHBOARD V2 */}
                 <SidebarMenuItem>
