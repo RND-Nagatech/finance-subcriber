@@ -14,8 +14,11 @@ import {
   FileText,
   History,
   Calculator,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import axiosInstance from "@/api/axiosInstance";
+import { toast } from "react-toastify";
 import {
   SidebarProvider,
   Sidebar,
@@ -33,6 +36,10 @@ import {
   SidebarGroupContent,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,6 +58,13 @@ export default function AppSidebar() {
   const [isBudgetOpen, setIsBudgetOpen] = useState(false);
   const [isPerjalananOpen, setIsPerjalananOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    old_password: "",
+    new_password: "",
+    confirm_password: "",
+  });
   const { user, logout } = useAppStore();
   const navigate = useNavigate();
 
@@ -78,6 +92,29 @@ export default function AppSidebar() {
   const confirmLogout = () => {
     setShowLogoutDialog(false);
     handleLogout();
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.old_password || !passwordForm.new_password || !passwordForm.confirm_password) {
+      toast.error("Semua field password wajib diisi.");
+      return;
+    }
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      toast.error("Konfirmasi password baru tidak cocok.");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const response = await axiosInstance.put("/users/change-password", passwordForm);
+      toast.success(response?.data?.message || "Password berhasil diubah.");
+      setPasswordForm({ old_password: "", new_password: "", confirm_password: "" });
+      setChangePasswordOpen(false);
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || "Gagal mengubah password.";
+      toast.error(msg);
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   return (
@@ -128,8 +165,21 @@ export default function AppSidebar() {
                 shadow-inner
                 backdrop-blur-sm
               ">
-                <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Active User</p>
-                <p className="font-semibold text-white text-sm">{user.name}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Active User</p>
+                    <p className="font-semibold text-white text-sm">{user.name}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setChangePasswordOpen(true)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600/70 bg-slate-700/70 text-slate-200 hover:text-white hover:bg-slate-600 transition-colors"
+                    title="Ganti Password"
+                    aria-label="Ganti Password"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </SidebarHeader>
@@ -692,6 +742,63 @@ export default function AppSidebar() {
             </SidebarFooter>
           </div>
         </SidebarContent>
+
+        <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Ganti Password</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="old-password">Password Lama</Label>
+                <Input
+                  id="old-password"
+                  type="password"
+                  value={passwordForm.old_password}
+                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, old_password: e.target.value }))}
+                  placeholder="Masukkan password lama"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="new-password">Password Baru</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  value={passwordForm.new_password}
+                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, new_password: e.target.value }))}
+                  placeholder="Masukkan password baru"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="confirm-password">Konfirmasi Password Baru</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  value={passwordForm.confirm_password}
+                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirm_password: e.target.value }))}
+                  placeholder="Ulangi password baru"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setChangePasswordOpen(false)}
+                  disabled={changingPassword}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleChangePassword}
+                  disabled={changingPassword}
+                >
+                  {changingPassword ? "Menyimpan..." : "Simpan Password"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </Sidebar>
     </SidebarProvider>
   );

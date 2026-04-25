@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import User from '../models/User';
+import { AuthRequest } from '../middleware/authMiddleware';
 
 export const getUsers = async (req: Request, res: Response) => {
   try {
@@ -38,6 +39,46 @@ export const deleteUser = async (req: Request, res: Response) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     return res.json({ success: true, message: 'User deleted successfully' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error', err });
+  }
+};
+
+export const changeMyPassword = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { old_password, new_password, confirm_password } = req.body || {};
+
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    if (!old_password || !new_password || !confirm_password) {
+      return res.status(400).json({ message: 'Password lama, password baru, dan konfirmasi wajib diisi.' });
+    }
+
+    if (new_password !== confirm_password) {
+      return res.status(400).json({ message: 'Konfirmasi password baru tidak cocok.' });
+    }
+
+    if (String(new_password).length < 6) {
+      return res.status(400).json({ message: 'Password baru minimal 6 karakter.' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User tidak ditemukan.' });
+    }
+
+    const isOldPasswordMatch = await bcrypt.compare(String(old_password), user.password);
+    if (!isOldPasswordMatch) {
+      return res.status(400).json({ message: 'Password lama tidak valid.' });
+    }
+
+    user.password = await bcrypt.hash(String(new_password), 10);
+    await user.save();
+
+    return res.json({ success: true, message: 'Password berhasil diubah.' });
   } catch (err) {
     return res.status(500).json({ message: 'Server error', err });
   }

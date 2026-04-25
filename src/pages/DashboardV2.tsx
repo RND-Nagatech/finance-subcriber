@@ -34,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Eye, EyeOff } from 'lucide-react';
 
 const MONTH_OPTIONS = [
   { value: 'ALL_YEARS', label: 'Semua Tahun' },
@@ -107,6 +108,7 @@ export default function DashboardV2() {
   const [chartType, setChartType] = useState<'donut' | 'bar'>('donut');
   const [vpsMetric, setVpsMetric] = useState<'estimasi' | 'realisasi'>('estimasi');
   const [showRekeningDetail, setShowRekeningDetail] = useState(false);
+  const [visibleAmountKeys, setVisibleAmountKeys] = useState<Record<string, boolean>>({});
   const [exporting, setExporting] = useState<boolean>(false);
   const userSelectedYearRef = useRef(false);
   const vpsCardRef = useRef<HTMLDivElement | null>(null);
@@ -583,10 +585,75 @@ export default function DashboardV2() {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
   };
+  const maskCurrency = () => 'Rp ••••••••••';
+  const isAmountVisible = (key: string) => !!visibleAmountKeys[key];
+  const toggleAmountVisibility = (key: string) => {
+    setVisibleAmountKeys((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+  const renderCurrencyWithToggle = (
+    value: number,
+    amountKey: string,
+    options?: { className?: string; valueClassName?: string; buttonClassName?: string }
+  ) => (
+    <div className={options?.className || 'flex items-center gap-2'}>
+      <span className={options?.valueClassName}>
+        {isAmountVisible(amountKey) ? formatCurrency(value) : maskCurrency()}
+      </span>
+      <button
+        type="button"
+        onClick={() => toggleAmountVisibility(amountKey)}
+        className={options?.buttonClassName || 'inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors'}
+        title={isAmountVisible(amountKey) ? 'Sembunyikan nominal' : 'Tampilkan nominal'}
+        aria-label={isAmountVisible(amountKey) ? 'Sembunyikan nominal' : 'Tampilkan nominal'}
+      >
+        {isAmountVisible(amountKey) ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+  const renderCompactCurrencyWithToggle = (value: number, amountKey: string, valueClassName = 'font-semibold text-blue-600') =>
+    renderCurrencyWithToggle(value, amountKey, {
+      className: 'inline-flex items-center gap-1.5',
+      valueClassName,
+      buttonClassName:
+        'inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors',
+    });
   const penjualanTotal = Number(pertahunData.find((it: any) => it.kategori === 'PENDAPATAN')?.total_tahunan || 0);
   const pembelianTotal = Number(pertahunData.find((it: any) => it.kategori === 'PEMBELIAN')?.total_tahunan || 0);
   const biayaTotal = Number(pertahunData.find((it: any) => it.kategori === 'BIAYA')?.total_tahunan || 0);
   const dashboardCardClass = 'border border-slate-200 bg-white shadow-sm';
+  const categoryCardsData = [...rekapData, ...asetDanGajiData, ...biayaBiayaData].filter((a) => a.kategori != "BIAYA");
+  const allAmountKeys = [
+    'kpi-total-saldo',
+    'kpi-penjualan',
+    'kpi-pembelian',
+    'kpi-biaya',
+    ...subscriberChartData.flatMap((_: any, idx: number) => [
+      `subscriber-program-total-${idx}`,
+      `subscriber-program-avg-${idx}`,
+    ]),
+    'vps-total-estimasi',
+    'vps-total-realisasi',
+    'vps-average',
+    'line-margin-total',
+    'line-pembelian-total',
+    ...categoryCardsData.map((item: any, idx: number) => `kategori-total-${item.kategori}-${idx}`),
+  ];
+  const areAllNominalsVisible = allAmountKeys.every((key) => !!visibleAmountKeys[key]);
+  const toggleAllNominals = () => {
+    if (areAllNominalsVisible) {
+      const next: Record<string, boolean> = {};
+      allAmountKeys.forEach((key) => {
+        next[key] = false;
+      });
+      setVisibleAmountKeys(next);
+      return;
+    }
+    const next: Record<string, boolean> = {};
+    allAmountKeys.forEach((key) => {
+      next[key] = true;
+    });
+    setVisibleAmountKeys(next);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -674,6 +741,13 @@ export default function DashboardV2() {
                 >
                   Reset
                 </button>
+                <button
+                  type="button"
+                  onClick={toggleAllNominals}
+                  className="h-10 px-4 rounded-md border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                >
+                  {areAllNominalsVisible ? 'Sembunyikan Semua Nominal' : 'Tampilkan Semua Nominal'}
+                </button>
               </div>
             </CardContent>
           </Card>
@@ -683,7 +757,11 @@ export default function DashboardV2() {
           <Card className={dashboardCardClass}>
             <CardContent className="p-5">
               <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Total Saldo Rekening</p>
-              <p className="text-2xl font-bold text-emerald-700 mt-2">{formatCurrency(totalAkumulasiSaldoRekening)}</p>
+              <div className="mt-2">
+                {renderCurrencyWithToggle(totalAkumulasiSaldoRekening, 'kpi-total-saldo', {
+                  valueClassName: 'text-2xl font-bold text-emerald-700',
+                })}
+              </div>
               <p className="text-xs text-slate-500 mt-1">Rekening aktif: {rekeningDashboardList.length}</p>
               <button
                 type="button"
@@ -697,21 +775,33 @@ export default function DashboardV2() {
           <Card className={dashboardCardClass}>
             <CardContent className="p-5">
               <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Penjualan</p>
-              <p className="text-2xl font-bold text-slate-900 mt-2">{formatCurrency(penjualanTotal)}</p>
+              <div className="mt-2">
+                {renderCurrencyWithToggle(penjualanTotal, 'kpi-penjualan', {
+                  valueClassName: 'text-2xl font-bold text-slate-900',
+                })}
+              </div>
               <p className="text-xs text-slate-500 mt-1">Periode aktif</p>
             </CardContent>
           </Card>
           <Card className={dashboardCardClass}>
             <CardContent className="p-5">
               <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Pembelian</p>
-              <p className="text-2xl font-bold text-slate-900 mt-2">{formatCurrency(pembelianTotal)}</p>
+              <div className="mt-2">
+                {renderCurrencyWithToggle(pembelianTotal, 'kpi-pembelian', {
+                  valueClassName: 'text-2xl font-bold text-slate-900',
+                })}
+              </div>
               <p className="text-xs text-slate-500 mt-1">Periode aktif</p>
             </CardContent>
           </Card>
           <Card className={dashboardCardClass}>
             <CardContent className="p-5">
               <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Biaya</p>
-              <p className="text-2xl font-bold text-slate-900 mt-2">{formatCurrency(biayaTotal)}</p>
+              <div className="mt-2">
+                {renderCurrencyWithToggle(biayaTotal, 'kpi-biaya', {
+                  valueClassName: 'text-2xl font-bold text-slate-900',
+                })}
+              </div>
               <p className="text-xs text-slate-500 mt-1">Periode aktif</p>
             </CardContent>
           </Card>
@@ -747,7 +837,9 @@ export default function DashboardV2() {
                         <td className="px-3 py-2">{rekening.kode_bank || '-'}</td>
                         <td className="px-3 py-2">{rekening.no_rekening || '-'}</td>
                         <td className="px-3 py-2">{rekening.nama_rekening || '-'}</td>
-                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(rekening.saldo || 0))}</td>
+                        <td className="px-3 py-2 text-right font-medium">
+                          {isAmountVisible('kpi-total-saldo') ? formatCurrency(Number(rekening.saldo || 0)) : maskCurrency()}
+                        </td>
                       </tr>
                     ))
                   )}
@@ -822,6 +914,8 @@ export default function DashboardV2() {
                         data={grossMarginTahunanLineData}
                         title={`Margin - ${isAllYearsScope ? 'Semua Tahun' : year}`}
                         description={isAllYearsScope ? 'Yearly gross margin trend (Omzet - Biaya - Pembelian)' : `${shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} gross margin trend (Omzet - Biaya - Pembelian)`}
+                        showNominal={isAmountVisible('line-margin-total')}
+                        onToggleNominal={() => toggleAmountVisibility('line-margin-total')}
                       />
                     </CardContent>
                   </Card>
@@ -847,6 +941,8 @@ export default function DashboardV2() {
                         data={pembelianLineData}
                         title={`PEMBELIAN ${isAllYearsScope ? 'Yearly' : shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} Trend - ${isAllYearsScope ? 'Semua Tahun' : year}`}
                         description={isAllYearsScope ? 'Yearly purchasing trend across all fiscal years' : `${shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} purchasing trend`}
+                        showNominal={isAmountVisible('line-pembelian-total')}
+                        onToggleNominal={() => toggleAmountVisibility('line-pembelian-total')}
                       />
                     </CardContent>
                   </Card>
@@ -964,13 +1060,21 @@ export default function DashboardV2() {
                               </div>
                               <div className="flex justify-between items-center">
                                 <span className="text-sm text-cyan-700">Total Cost (Cumulative):</span>
-                                <span className="font-bold text-cyan-900">Rp {program.total_biaya_tahunan.toLocaleString('id-ID')}</span>
+                                {renderCompactCurrencyWithToggle(
+                                  Number(program.total_biaya_tahunan || 0),
+                                  `subscriber-program-total-${idx}`,
+                                  'font-bold text-cyan-900'
+                                )}
                               </div>
                               <div className="flex justify-between items-center">
                                 <span className="text-sm text-cyan-700">Avg Cost/Subscriber:</span>
-                                <span className="font-bold text-cyan-900">
-                                  Rp {(program.total_biaya_tahunan / program.total_subscriber_tahunan).toLocaleString('id-ID')}
-                                </span>
+                                {renderCompactCurrencyWithToggle(
+                                  Number(program.total_subscriber_tahunan || 0) > 0
+                                    ? Number(program.total_biaya_tahunan || 0) / Number(program.total_subscriber_tahunan || 1)
+                                    : 0,
+                                  `subscriber-program-avg-${idx}`,
+                                  'font-bold text-cyan-900'
+                                )}
                               </div>
                             </div>
                             {/* Monthly cumulative breakdown */}
@@ -1138,11 +1242,17 @@ export default function DashboardV2() {
                         return (
                           <div>
                             <div className="vps-total-caption mb-3 text-right">
-                              <div className={`vps-total-value text-sm font-medium ${selectedKey === 'estimasi' ? 'text-blue-600' : 'text-green-600'}`}>
-                                Total {selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'}: Rp {formatCurrency(total)}
+                              <div className={`vps-total-value text-sm font-medium ${selectedKey === 'estimasi' ? 'text-blue-600' : 'text-green-600'} flex items-center justify-end`}>
+                                <span className="mr-1">Total {selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'}:</span>
+                                {renderCompactCurrencyWithToggle(
+                                  total,
+                                  `vps-total-${selectedKey}`,
+                                  `font-medium ${selectedKey === 'estimasi' ? 'text-blue-600' : 'text-green-600'}`
+                                )}
                               </div>
-                              <div className="vps-average-value text-xs font-medium text-gray-700">
-                                Rata-Rata: Rp {average.toLocaleString('id-ID')}
+                              <div className="vps-average-value text-xs font-medium text-gray-700 flex items-center justify-end">
+                                <span className="mr-1">Rata-Rata:</span>
+                                {renderCompactCurrencyWithToggle(average, 'vps-average', 'font-medium text-gray-700')}
                               </div>
                             </div>
                             <ResponsiveContainer width="100%" height={400}>
@@ -1211,7 +1321,7 @@ export default function DashboardV2() {
                         </div>
                       </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            {[...rekapData, ...asetDanGajiData, ...biayaBiayaData].filter((a) => a.kategori != "BIAYA").map((item: any, idx: number) => {
+            {categoryCardsData.map((item: any, idx: number) => {
               const isBiaya = item.kategori === 'BIAYA';
               return (
                 <div key={idx} className="relative">
@@ -1219,7 +1329,12 @@ export default function DashboardV2() {
                     <CardHeader className="pb-4">
                       <CardTitle className="text-2xl font-bold text-gray-900">{item.kategori}</CardTitle>
                       <CardDescription className="text-gray-600 text-sm">
-                        Total : <span className="font-semibold text-blue-600">{formatCurrency(item.total_kategori)}</span>
+                        <span className="mr-1">Total :</span>
+                        {renderCompactCurrencyWithToggle(
+                          Number(item.total_kategori || 0),
+                          `kategori-total-${item.kategori}-${idx}`,
+                          'font-semibold text-blue-600'
+                        )}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

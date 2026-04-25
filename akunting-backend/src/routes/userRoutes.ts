@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getUsers, updateUser, deleteUser } from "../controllers/userController";
+import { getUsers, updateUser, deleteUser, changeMyPassword } from "../controllers/userController";
 import { authenticate } from "../middleware/authMiddleware";
 
 const router = Router();
@@ -8,6 +8,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get("/", getUsers);
+router.put("/change-password", changeMyPassword);
 router.put("/:id", updateUser);
 router.delete("/:id", deleteUser);
 

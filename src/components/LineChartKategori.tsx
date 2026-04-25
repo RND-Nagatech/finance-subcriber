@@ -1,9 +1,12 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface LineChartKategoriProps {
   data: Array<{ bulan: string; nominal: number }>;
   title?: string;
   description?: string;
+  showNominal?: boolean;
+  onToggleNominal?: () => void;
 }
 
 const CustomLabel = (props: any) => {
@@ -21,18 +24,36 @@ const CustomLabel = (props: any) => {
   );
 };
 
-export default function LineChartKategori({ data, title, description }: LineChartKategoriProps) {
+export default function LineChartKategori({
+  data,
+  title,
+  description,
+  showNominal = true,
+  onToggleNominal,
+}: LineChartKategoriProps) {
   const totalValue = data.reduce((sum, item) => {
     return sum + item.nominal
   }, 0);
+  const maskCurrency = () => 'Rp ••••••••••';
 
   return (
     <div className="bg-white">
       {title && (
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">{title}</h2>
-          <div className="text-lg font-bold text-blue-600">
-            Total: Rp {totalValue.toLocaleString('id-ID')}
+          <div className="text-lg font-bold text-blue-600 inline-flex items-center gap-2">
+            <span>Total: {showNominal ? `Rp ${totalValue.toLocaleString('id-ID')}` : maskCurrency()}</span>
+            {onToggleNominal && (
+              <button
+                type="button"
+                onClick={onToggleNominal}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                title={showNominal ? 'Sembunyikan nominal' : 'Tampilkan nominal'}
+                aria-label={showNominal ? 'Sembunyikan nominal' : 'Tampilkan nominal'}
+              >
+                {showNominal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -56,7 +77,7 @@ export default function LineChartKategori({ data, title, description }: LineChar
           <YAxis
             width={100}
             tick={{ fontSize: 11 }}
-            tickFormatter={(value) => value.toLocaleString('id-ID')}
+            tickFormatter={(value) => (showNominal ? value.toLocaleString('id-ID') : '')}
             tickCount={6}
           />
           <Tooltip
@@ -91,7 +112,7 @@ export default function LineChartKategori({ data, title, description }: LineChar
                         <span style={{ fontWeight: 500 }}>Nominal:</span>
                       </div>
                       <div style={{ fontWeight: 600, color: (data.value as number) < 0 ? '#ef4444' : '#0088FE' }}>
-                        Rp {(data.value as number).toLocaleString('id-ID')}
+                        {showNominal ? `Rp ${(data.value as number).toLocaleString('id-ID')}` : maskCurrency()}
                       </div>
                     </div>
                   </div>
