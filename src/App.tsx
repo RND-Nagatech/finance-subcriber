@@ -88,7 +88,7 @@ const App = () => (
           <Route path="/register" element={<Register />} />
           
           <Route
-            path="/dashboard"
+            path="/dashboard-v2"
             element={
               <ProtectedRoute>
                 <MainLayout>
@@ -98,7 +98,7 @@ const App = () => (
             }
           />
           <Route
-            path="/dashboard-v2"
+            path="/dashboard"
             element={
               <ProtectedRoute>
                 <MainLayout>
