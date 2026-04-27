@@ -17,6 +17,7 @@ interface ChartData {
 interface ChartDonutProps {
   data: ChartData[];
   totalKategori?: number;
+  showNominal?: boolean;
 }
 
 const COLORS = [
@@ -27,7 +28,9 @@ const COLORS = [
   'hsl(var(--chart-5))',
 ];
 
-export function ChartDonut({ data, totalKategori }: ChartDonutProps) {
+const MASK_CURRENCY = 'Rp ••••••••••';
+
+export function ChartDonut({ data, totalKategori, showNominal = true }: ChartDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const handlePieEnter = (_: any, index: number) => {
@@ -45,7 +48,12 @@ export function ChartDonut({ data, totalKategori }: ChartDonutProps) {
       return (
         <div style={{ background: 'white', border: '1px solid #eee', padding: 12, minWidth: 180, fontSize: 13 }}>
           <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{sub.name}</div>
-          <div>Nominal: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(sub.value)}</div>
+          <div>
+            Nominal:{' '}
+            {showNominal
+              ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(sub.value)
+              : MASK_CURRENCY}
+          </div>
         </div>
       );
     }
@@ -87,7 +95,7 @@ export function ChartDonut({ data, totalKategori }: ChartDonutProps) {
               <span className="truncate text-gray-700">{item.name}</span>
             </div>
             <span className="ml-3 shrink-0 font-semibold text-gray-900">
-              Rp {Number(item.value || 0).toLocaleString('id-ID')}
+              {showNominal ? `Rp ${Number(item.value || 0).toLocaleString('id-ID')}` : MASK_CURRENCY}
             </span>
           </div>
         ))}

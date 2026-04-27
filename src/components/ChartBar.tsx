@@ -15,6 +15,8 @@ interface ChartBarProps {
   data: ChartData[];
   totalKategori?: number;
   ticks?: number[]; // custom Y-axis ticks
+  showNominal?: boolean;
+  showAverageNominal?: boolean;
 }
 
 const COLORS = [
@@ -25,7 +27,15 @@ const COLORS = [
   'hsl(var(--chart-5))',
 ];
 
-export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
+const MASK_CURRENCY = 'Rp ••••••••••';
+
+export function ChartBar({
+  data,
+  totalKategori,
+  ticks,
+  showNominal = true,
+  showAverageNominal = true,
+}: ChartBarProps) {
   const averageValue = data.length > 0
     ? data.reduce((sum, item) => sum + Number(item.value || 0), 0) / data.length
     : 0;
@@ -44,7 +54,12 @@ export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
       return (
         <div style={{ background: 'white', border: '1px solid #eee', padding: 12, minWidth: 180, fontSize: 13 }}>
           <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{sub.name}</div>
-          <div>Nominal: {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(sub.value)}</div>
+          <div>
+            Nominal:{' '}
+            {showNominal
+              ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(sub.value)
+              : MASK_CURRENCY}
+          </div>
         </div>
       );
     }
@@ -60,7 +75,7 @@ export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
         <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-2 text-right">
           <div className="text-xs font-medium text-blue-700">Rata-rata (Average)</div>
           <div className="text-sm font-semibold text-blue-700">
-            Rp {Math.round(averageValue).toLocaleString('id-ID')}
+            {showAverageNominal ? `Rp ${Math.round(averageValue).toLocaleString('id-ID')}` : MASK_CURRENCY}
           </div>
         </div>
       </div>

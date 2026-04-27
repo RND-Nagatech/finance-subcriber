@@ -19,6 +19,7 @@ const COLORS = [
   '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#7B61FF', '#F95D6A', '#4CAF50', '#9C27B0', '#03A9F4', '#FF9800'
 ];
 const NEGATIVE_COLOR = '#ef4444';
+const MASK_CURRENCY = 'Rp ••••••••••';
 
 const keyFromName = (name: string) => name.replace(/[^a-zA-Z0-9]/g, '_');
 
@@ -232,7 +233,7 @@ export default function StackedBarKategori({
                           <span style={{ fontWeight: 500 }}>{item.name}:</span>
                         </div>
                         <div style={{ fontWeight: 600 }}>
-                          {formatSignedRupiah(item.value)}
+                          {showAverageNominal ? formatSignedRupiah(item.value) : MASK_CURRENCY}
                         </div>
                       </div>
                     ))}
@@ -243,7 +244,7 @@ export default function StackedBarKategori({
                       fontWeight: 700,
                       fontSize: 13
                     }}>
-                      Total: {formatSignedRupiah(netTotal)}
+                      Total: {showAverageNominal ? formatSignedRupiah(netTotal) : MASK_CURRENCY}
                     </div>
                   </div>
                 );

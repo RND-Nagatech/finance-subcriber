@@ -1306,7 +1306,11 @@ export default function DashboardV2() {
                                   fontSize={12}
                                 />
                                 <Tooltip
-                                  formatter={(value: any) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value))}
+                                  formatter={(value: any) => (
+                                    isAmountVisible(`vps-total-${selectedKey}`)
+                                      ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value))
+                                      : 'Rp ••••••••••'
+                                  )}
                                 />
                                 <Bar dataKey={selectedKey} name={selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'} fill={color} radius={[4,4,0,0]} barSize={50}>
                                   <LabelList
@@ -1395,6 +1399,7 @@ export default function DashboardV2() {
                             }))
                           }
                           totalKategori={item.total_kategori}
+                          showNominal={isAmountVisible(`kategori-total-${item.kategori}-${idx}`)}
                         />
                       ) : (
                         <ChartBar
@@ -1405,6 +1410,8 @@ export default function DashboardV2() {
                             }))
                           }
                           totalKategori={item.total_kategori}
+                          showNominal={isAmountVisible(`kategori-total-${item.kategori}-${idx}`)}
+                          showAverageNominal={isAmountVisible(`kategori-total-${item.kategori}-${idx}`)}
                         />
                       )}
                     </CardContent>
