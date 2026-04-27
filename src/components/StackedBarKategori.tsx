@@ -1,4 +1,5 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ReferenceLine, Cell } from 'recharts';
+import { Eye, EyeOff } from 'lucide-react';
 
 
 interface ISubItem {
@@ -10,6 +11,8 @@ interface IStackedBarKategoriProps {
   data: Array<{ kategori: string; subs: ISubItem[] }>;
   title?: string;
   description?: string;
+  showAverageNominal?: boolean;
+  onToggleAverageNominal?: () => void;
 }
 
 const COLORS = [
@@ -29,7 +32,13 @@ function formatSignedRupiah(value: number) {
   return formatRupiah(0);
 }
 
-export default function StackedBarKategori({ data, title, description }: IStackedBarKategoriProps) {
+export default function StackedBarKategori({
+  data,
+  title,
+  description,
+  showAverageNominal = true,
+  onToggleAverageNominal,
+}: IStackedBarKategoriProps) {
   const allSubNames: string[] = [];
   data.forEach(d => d.subs.forEach(s => { if (!allSubNames.includes(s.name)) allSubNames.push(s.name); }));
 
@@ -96,14 +105,17 @@ export default function StackedBarKategori({ data, title, description }: IStacke
   const maxValueForWidth = Math.max(Math.abs(yDomain[0]), Math.abs(yDomain[1]));
   const formattedMaxValue = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(maxValueForWidth);
   const yAxisWidth = Math.max(60, formattedMaxValue.length * 5); // ensure enough width for 'Rp'
+  const averageTotal = chartData.length > 0
+    ? chartData.reduce((sum, row) => sum + Number(row._total || 0), 0) / chartData.length
+    : 0;
   return (
     <div
       className="rounded-xl"
       style={{ background: '#fff', position: 'relative' }}
     >
       {title && <h2 className="text-xl font-bold text-foreground">{title}</h2>}
-      {description && <p className="text-sm text-muted-foreground mb-6">{description}</p>}
-      <div className="flex items-center justify-start mb-2">
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      <div className="flex items-center justify-start">
         <Legend
           layout="horizontal"
           verticalAlign="top"
@@ -111,6 +123,27 @@ export default function StackedBarKategori({ data, title, description }: IStacke
           wrapperStyle={{ fontSize: 14, marginBottom: 0, marginLeft: 8 }}
           iconSize={16}
         />
+      </div>
+      <div className="flex justify-end">
+        <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-2 text-right">
+          <div className="text-xs font-medium text-blue-700">Rata-rata (Average)</div>
+          <div className="flex items-center justify-end gap-2">
+            <div className="text-sm font-semibold text-blue-700">
+              {showAverageNominal ? formatSignedRupiah(Math.round(averageTotal)) : 'Rp ••••••••••'}
+            </div>
+            {onToggleAverageNominal ? (
+              <button
+                type="button"
+                onClick={onToggleAverageNominal}
+                className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                title={showAverageNominal ? 'Sembunyikan nominal' : 'Tampilkan nominal'}
+                aria-label={showAverageNominal ? 'Sembunyikan nominal' : 'Tampilkan nominal'}
+              >
+                {showAverageNominal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
       <ResponsiveContainer width="100%" height={320}>
         <BarChart
@@ -236,6 +269,12 @@ export default function StackedBarKategori({ data, title, description }: IStacke
               ))}
             </Bar>
           ))}
+          <ReferenceLine
+            y={averageTotal}
+            stroke="#2563eb"
+            strokeDasharray="8 6"
+            strokeWidth={2}
+          />
 
         </BarChart>
       </ResponsiveContainer>

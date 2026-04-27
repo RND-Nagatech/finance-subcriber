@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, LabelList, ReferenceLine } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChartDonut } from '@/components/ChartDonut';
 import { ChartBar } from '@/components/ChartBar';
@@ -381,15 +381,24 @@ export default function DashboardV2() {
 
   const shouldUseWeeklyGrouping = month !== 'ANNUAL' && month !== 'ALL_YEARS' && grouping === 'weekly';
   const isAllYearsScope = month === 'ALL_YEARS';
+
+  const buildRelativeWeekLabelMap = (weekKeys: string[]) => {
+    const sorted = [...weekKeys].sort();
+    const map = new Map<string, string>();
+    sorted.forEach((key, idx) => {
+      map.set(key, `W${idx + 1}`);
+    });
+    return { sorted, map };
+  };
+
   const groupLineDataByWeek = (rows: Array<{ bulan: string; nominal: number }>) => {
     const weekMap: Record<string, number> = {};
     rows.forEach((row) => {
       const weekLabel = getISOWeekLabel(row.bulan);
       weekMap[weekLabel] = (weekMap[weekLabel] || 0) + Number(row.nominal || 0);
     });
-    return Object.keys(weekMap)
-      .sort()
-      .map((label) => ({ bulan: label, nominal: weekMap[label] }));
+    const { sorted, map } = buildRelativeWeekLabelMap(Object.keys(weekMap));
+    return sorted.map((label) => ({ bulan: map.get(label) || label, nominal: weekMap[label] }));
   };
 
   const groupStackedDataByWeek = (rows: Array<{ kategori: string; subs: Array<{ name: string; total: number }> }>) => {
@@ -401,10 +410,10 @@ export default function DashboardV2() {
         map[weekLabel][sub.name] = (map[weekLabel][sub.name] || 0) + Number(sub.total || 0);
       });
     });
-    return Object.keys(map)
-      .sort()
+    const { sorted, map: weekLabelMap } = buildRelativeWeekLabelMap(Object.keys(map));
+    return sorted
       .map((weekLabel) => ({
-        kategori: weekLabel,
+        kategori: weekLabelMap.get(weekLabel) || weekLabel,
         subs: Object.keys(map[weekLabel]).map((name) => ({ name, total: map[weekLabel][name] })),
       }));
   };
@@ -634,8 +643,13 @@ export default function DashboardV2() {
     'vps-total-estimasi',
     'vps-total-realisasi',
     'vps-average',
+    'vps-bar-labels',
     'line-margin-total',
     'line-pembelian-total',
+    'stacked-avg-pendapatan',
+    'stacked-avg-aset',
+    'stacked-avg-implementasi',
+    'stacked-avg-biaya',
     ...categoryCardsData.map((item: any, idx: number) => `kategori-total-${item.kategori}-${idx}`),
   ];
   const areAllNominalsVisible = allAmountKeys.every((key) => !!visibleAmountKeys[key]);
@@ -888,6 +902,8 @@ export default function DashboardV2() {
                         data={pendapatanHarianChartData}
                         title={`Penjualan ${shouldUseWeeklyGrouping ? 'Weekly' : 'Daily'} Breakdown - ${month} ${year}`}
                         description={`${shouldUseWeeklyGrouping ? 'Weekly' : 'Daily'} breakdown of income transactions by subcategory`}
+                        showAverageNominal={isAmountVisible('stacked-avg-pendapatan')}
+                        onToggleAverageNominal={() => toggleAmountVisibility('stacked-avg-pendapatan')}
                       />
                     </CardContent>
                   </Card>
@@ -969,6 +985,8 @@ export default function DashboardV2() {
                         data={asetDanGajiTahunanChartData}
                         title={`Aset dan Gaji ${isAllYearsScope ? 'Yearly' : shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} Breakdown`}
                         description={`${isAllYearsScope ? 'Yearly' : shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} comparison of assets and salary expenses`}
+                        showAverageNominal={isAmountVisible('stacked-avg-aset')}
+                        onToggleAverageNominal={() => toggleAmountVisibility('stacked-avg-aset')}
                       />
                     </CardContent>
                   </Card>
@@ -995,6 +1013,8 @@ export default function DashboardV2() {
                         data={implementasiMarketingLainnyaTahunanChartData}
                         title={`Implementasi, Marketing & Lainnya ${isAllYearsScope ? 'Yearly' : shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} Breakdown`}
                         description={`${isAllYearsScope ? 'Yearly' : shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} breakdown of implementation, marketing, and other expenses`}
+                        showAverageNominal={isAmountVisible('stacked-avg-implementasi')}
+                        onToggleAverageNominal={() => toggleAmountVisibility('stacked-avg-implementasi')}
                       />
                     </CardContent>
                   </Card>
@@ -1021,6 +1041,8 @@ export default function DashboardV2() {
                         data={biayaBiayaTahunanChartData}
                         title={`Biaya Biaya ${isAllYearsScope ? 'Yearly' : shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} Breakdown`}
                         description={`${isAllYearsScope ? 'Yearly' : shouldUseWeeklyGrouping ? 'Weekly' : month === 'ANNUAL' ? 'Monthly' : 'Daily'} breakdown of PPH21, VPS, RND, BPJS, and return sales expenses`}
+                        showAverageNominal={isAmountVisible('stacked-avg-biaya')}
+                        onToggleAverageNominal={() => toggleAmountVisibility('stacked-avg-biaya')}
                       />
                     </CardContent>
                   </Card>
@@ -1254,6 +1276,18 @@ export default function DashboardV2() {
                                 <span className="mr-1">Rata-Rata:</span>
                                 {renderCompactCurrencyWithToggle(average, 'vps-average', 'font-medium text-gray-700')}
                               </div>
+                              <div className="mt-1 inline-flex items-center justify-end gap-2 text-xs text-gray-600">
+                                <span>Label Bar:</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleAmountVisibility('vps-bar-labels')}
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                                  title={isAmountVisible('vps-bar-labels') ? 'Sembunyikan nominal bar' : 'Tampilkan nominal bar'}
+                                  aria-label={isAmountVisible('vps-bar-labels') ? 'Sembunyikan nominal bar' : 'Tampilkan nominal bar'}
+                                >
+                                  {isAmountVisible('vps-bar-labels') ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
+                              </div>
                             </div>
                             <ResponsiveContainer width="100%" height={400}>
                               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 55, bottom: 20 }}>
@@ -1275,8 +1309,21 @@ export default function DashboardV2() {
                                   formatter={(value: any) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value))}
                                 />
                                 <Bar dataKey={selectedKey} name={selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'} fill={color} radius={[4,4,0,0]} barSize={50}>
-                                  <LabelList dataKey={selectedKey} position="top" offset={10} formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} style={{ fontSize: 11, fill: '#374151', fontWeight: 600 }} />
+                                  <LabelList
+                                    dataKey={selectedKey}
+                                    position="top"
+                                    offset={10}
+                                    formatter={(value: number) => (isAmountVisible('vps-bar-labels') ? `Rp ${value.toLocaleString('id-ID')}` : '')}
+                                    style={{ fontSize: 11, fill: '#374151', fontWeight: 600 }}
+                                  />
                                 </Bar>
+                                <ReferenceLine
+                                  y={average}
+                                  stroke="#2563eb"
+                                  strokeDasharray="8 6"
+                                  strokeWidth={2}
+                                  isFront
+                                />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>

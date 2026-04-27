@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.10] - 2026-04-27
+
+### Added
+- **Dashboard V2: Kontrol Visibilitas Nominal Lebih Lengkap**
+  - Ditambahkan kontrol hide/show nominal per-komponen pada chart line/bar/stacked serta ringkasan nominal chart.
+  - Ditambahkan kontrol global `Tampilkan Semua Nominal` pada panel floating filter untuk membuka semua nominal sekaligus.
+
+- **Dashboard V2: Pola Rata-Rata Konsisten**
+  - Card chart kini menampilkan box info rata-rata yang lebih konsisten dan mudah dibaca antar komponen chart.
+  - Dukungan toggle visibilitas rata-rata diperluas ke komponen chart tambahan agar perilaku antar card seragam.
+
+### Changed
+- **Layout Dashboard V2**
+  - Penyempurnaan komponen floating control dan struktur layout dashboard agar interaksi filter/visibility lebih stabil pada berbagai ukuran layar.
+  - Penyesuaian rendering donut/bar/line chart untuk mengurangi overlap elemen teks dan komponen kontrol.
+
+### Fixed
+- **Subscriber Charts: Garis Average Dihapus**
+  - Garis putus-putus average di chart `Subscriber Analytics` dihapus.
+  - Garis putus-putus average di chart `Subscriber by Program` dihapus.
+  - Perubahan ini menghindari visual noise dan overlap label pada kedua chart subscriber.
+
 ## [1.6.9] - 2026-04-20
 
 ### Added

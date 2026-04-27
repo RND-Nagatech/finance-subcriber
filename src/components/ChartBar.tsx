@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, Cell, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell, ReferenceLine } from 'recharts';
 
 interface SubKategori {
   sub_kategori: string;
@@ -26,6 +26,9 @@ const COLORS = [
 ];
 
 export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
+  const averageValue = data.length > 0
+    ? data.reduce((sum, item) => sum + Number(item.value || 0), 0) / data.length
+    : 0;
   function CustomTooltip({ active, payload, label }: {
     active?: boolean;
     payload?: Array<{
@@ -53,6 +56,14 @@ export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div className="mb-2 flex w-full justify-end">
+        <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-2 text-right">
+          <div className="text-xs font-medium text-blue-700">Rata-rata (Average)</div>
+          <div className="text-sm font-semibold text-blue-700">
+            Rp {Math.round(averageValue).toLocaleString('id-ID')}
+          </div>
+        </div>
+      </div>
       <ResponsiveContainer width="100%" height={400}>
         <BarChart
           data={data}
@@ -131,6 +142,13 @@ export function ChartBar({ data, totalKategori, ticks }: ChartBarProps) {
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Bar>
+          <ReferenceLine
+            y={averageValue}
+            stroke="#2563eb"
+            strokeDasharray="8 6"
+            strokeWidth={2}
+            isFront
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

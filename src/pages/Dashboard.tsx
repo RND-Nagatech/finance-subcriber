@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, LabelList, ReferenceLine } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChartDonut } from '@/components/ChartDonut';
 import { ChartBar } from '@/components/ChartBar';
@@ -1017,6 +1017,13 @@ export default function Dashboard() {
                                 <Bar dataKey={selectedKey} name={selectedKey === 'estimasi' ? 'Estimasi' : 'Realisasi'} fill={color} radius={[4,4,0,0]} barSize={50}>
                                   <LabelList dataKey={selectedKey} position="top" offset={10} formatter={(value: number) => `Rp ${value.toLocaleString('id-ID')}`} style={{ fontSize: 11, fill: '#374151', fontWeight: 600 }} />
                                 </Bar>
+                                <ReferenceLine
+                                  y={average}
+                                  stroke="#2563eb"
+                                  strokeDasharray="8 6"
+                                  strokeWidth={2}
+                                  isFront
+                                />
                               </BarChart>
                             </ResponsiveContainer>
                           </div>

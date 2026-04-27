@@ -1,6 +1,6 @@
 
 
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useState } from 'react';
 
 interface SubKategori {
@@ -54,14 +54,14 @@ export function ChartDonut({ data, totalKategori }: ChartDonutProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <ResponsiveContainer width="100%" height={350}>
+      <ResponsiveContainer width="100%" height={300}>
         <PieChart>
           <Pie
             data={data}
             cx="50%"
             cy="50%"
-            innerRadius={60}
-            outerRadius={120}
+            innerRadius={58}
+            outerRadius={100}
             paddingAngle={1}
             dataKey="value"
             onMouseEnter={handlePieEnter}
@@ -73,21 +73,25 @@ export function ChartDonut({ data, totalKategori }: ChartDonutProps) {
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
           </Pie>
-          <Legend 
-            layout="vertical"
-            verticalAlign="middle"
-            align="right"
-            iconSize={12}
-            fontSize={10}
-            wrapperStyle={{fontSize: "13px", paddingLeft: "20px"}}
-            formatter={(value, entry) => {
-              const data = entry.payload;
-              return <span>{value}: <strong style={{fontSize: 14}}>Rp {data.value.toLocaleString('id-ID')}</strong></span>;
-            }}
-           />
           <Tooltip content={<CustomTooltip />} />
         </PieChart>
       </ResponsiveContainer>
+      <div className="mt-3 grid w-full grid-cols-1 gap-2 px-2 md:grid-cols-2">
+        {data.map((item, index) => (
+          <div key={`${item.name}-${index}`} className="flex items-center justify-between rounded-md border border-gray-200 bg-white/70 px-3 py-2 text-sm">
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="inline-block h-3 w-3 shrink-0 rounded-sm"
+                style={{ backgroundColor: COLORS[index % COLORS.length] }}
+              />
+              <span className="truncate text-gray-700">{item.name}</span>
+            </div>
+            <span className="ml-3 shrink-0 font-semibold text-gray-900">
+              Rp {Number(item.value || 0).toLocaleString('id-ID')}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

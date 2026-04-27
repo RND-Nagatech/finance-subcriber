@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, Cell, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, Cell, LabelList, ReferenceLine } from 'recharts';
 
 interface SubscriberGrowthData {
   bulan: string;
@@ -19,6 +19,9 @@ const COLORS = [
 ];
 
 export function SubscriberGrowthChart({ data }: SubscriberGrowthChartProps) {
+  const averageCount = data.length > 0
+    ? data.reduce((sum, row) => sum + Number(row.count || 0), 0) / data.length
+    : 0;
   function CustomTooltip({ active, payload, label }: {
     active?: boolean;
     payload?: Array<{
@@ -76,6 +79,19 @@ export function SubscriberGrowthChart({ data }: SubscriberGrowthChartProps) {
           <YAxis
             tickFormatter={(value) => value.toLocaleString('id-ID')}
             fontSize={12}
+          />
+          <ReferenceLine
+            y={averageCount}
+            stroke="#2563eb"
+            strokeDasharray="8 6"
+            strokeWidth={2}
+            label={{
+              value: `Avg ${Math.round(averageCount).toLocaleString('id-ID')}`,
+              position: 'insideRight',
+              fill: '#2563eb',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
           />
           <Tooltip content={<CustomTooltip />} />
           <Bar

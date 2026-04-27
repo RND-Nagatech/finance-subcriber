@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { Eye, EyeOff } from 'lucide-react';
 
 interface LineChartKategoriProps {
@@ -34,6 +34,7 @@ export default function LineChartKategori({
   const totalValue = data.reduce((sum, item) => {
     return sum + item.nominal
   }, 0);
+  const averageValue = data.length > 0 ? totalValue / data.length : 0;
   const maskCurrency = () => 'Rp ••••••••••';
 
   return (
@@ -58,6 +59,14 @@ export default function LineChartKategori({
         </div>
       )}
       {description && <p className="text-sm text-muted-foreground mb-4">{description}</p>}
+      <div className="mb-2 flex justify-end">
+        <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-2 text-right">
+          <div className="text-xs font-medium text-blue-700">Rata-rata (Average)</div>
+          <div className="text-sm font-semibold text-blue-700">
+            {showNominal ? `Rp ${Math.round(averageValue).toLocaleString('id-ID')}` : maskCurrency()}
+          </div>
+        </div>
+      </div>
       <ResponsiveContainer width="100%" height={340}>
         <LineChart data={data} margin={{ top: 10, right: 70, left: 10, bottom: 10 }}>
           <XAxis
@@ -139,6 +148,12 @@ export default function LineChartKategori({
                 />
               );
             }}
+          />
+          <ReferenceLine
+            y={averageValue}
+            stroke="#2563eb"
+            strokeDasharray="8 6"
+            strokeWidth={2}
           />
         </LineChart>
       </ResponsiveContainer>

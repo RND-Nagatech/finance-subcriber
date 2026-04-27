@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, ReferenceLine } from 'recharts';
 
 interface SubscriberCumulativeData {
   bulan: string;
@@ -11,6 +11,9 @@ interface SubscriberCumulativeChartProps {
 }
 
 export function SubscriberCumulativeChart({ data }: SubscriberCumulativeChartProps) {
+  const averageTotal = data.length > 0
+    ? data.reduce((sum, row) => sum + Number(row.total || 0), 0) / data.length
+    : 0;
   function CustomTooltip({ active, payload, label }: {
     active?: boolean;
     payload?: Array<{
@@ -68,6 +71,19 @@ export function SubscriberCumulativeChart({ data }: SubscriberCumulativeChartPro
           <YAxis
             tickFormatter={(value) => value.toLocaleString('id-ID')}
             fontSize={12}
+          />
+          <ReferenceLine
+            y={averageTotal}
+            stroke="#2563eb"
+            strokeDasharray="8 6"
+            strokeWidth={2}
+            label={{
+              value: `Avg ${Math.round(averageTotal).toLocaleString('id-ID')}`,
+              position: 'insideRight',
+              fill: '#2563eb',
+              fontSize: 12,
+              fontWeight: 700,
+            }}
           />
           <Tooltip content={<CustomTooltip />} />
           <Line
