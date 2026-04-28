@@ -99,6 +99,36 @@ function normalizeDateLabelForMonthScope(params: { rawLabel: string; year: strin
   return label;
 }
 
+function resolveCalendarYearMonth(params: { fiscalYear: string; monthCode: string }): { year: number; month: number } {
+  const { fiscalYear, monthCode } = params;
+  const fy = Number(fiscalYear);
+  const monthMap: Record<string, number> = {
+    JAN: 1,
+    FEB: 2,
+    MAR: 3,
+    APR: 4,
+    MAY: 5,
+    JUN: 6,
+    JUL: 7,
+    AUG: 8,
+    SEP: 9,
+    OCT: 10,
+    NOV: 11,
+    DEC: 12,
+  };
+  const month = monthMap[monthCode] || 1;
+  const year = monthCode === 'DEC' ? fy - 1 : fy;
+  return { year, month };
+}
+
+function buildMonthDateSeries(params: { fiscalYear: string; monthCode: string }): string[] {
+  const { year, month } = resolveCalendarYearMonth(params);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return [];
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return Array.from({ length: daysInMonth }, (_, i) => `${year}-${pad(month)}-${pad(i + 1)}`);
+}
+
 export default function DashboardV2() {
   const { user } = useAppStore();
   // Year state; start empty then set to latest fiscal year when list arrives
@@ -381,6 +411,8 @@ export default function DashboardV2() {
 
   const shouldUseWeeklyGrouping = month !== 'ANNUAL' && month !== 'ALL_YEARS' && grouping === 'weekly';
   const isAllYearsScope = month === 'ALL_YEARS';
+  const shouldPadDailyMonthScope = month !== 'ANNUAL' && month !== 'ALL_YEARS';
+  const monthDateSeries = shouldPadDailyMonthScope ? buildMonthDateSeries({ fiscalYear: year, monthCode: month }) : [];
 
   const buildRelativeWeekLabelMap = (weekKeys: string[]) => {
     const sorted = [...weekKeys].sort();
@@ -416,6 +448,64 @@ export default function DashboardV2() {
         kategori: weekLabelMap.get(weekLabel) || weekLabel,
         subs: Object.keys(map[weekLabel]).map((name) => ({ name, total: map[weekLabel][name] })),
       }));
+  };
+
+  const fillMissingDailyLineRows = (rows: Array<{ bulan: string; nominal: number }>) => {
+    if (!shouldPadDailyMonthScope || monthDateSeries.length === 0) return rows;
+    const map = new Map<string, number>();
+    rows.forEach((row) => {
+      const normalized = normalizeDateLabelForMonthScope({ rawLabel: row.bulan, year, monthCode: month });
+      map.set(normalized, (map.get(normalized) || 0) + Number(row.nominal || 0));
+    });
+    const lastActiveIndex = (() => {
+      for (let i = monthDateSeries.length - 1; i >= 0; i -= 1) {
+        const value = map.get(monthDateSeries[i]) || 0;
+        if (Math.abs(value) > 0) return i;
+      }
+      return 0;
+    })();
+    const effectiveSeries = monthDateSeries.slice(0, lastActiveIndex + 1);
+    return effectiveSeries.map((date) => ({
+      bulan: date,
+      nominal: map.get(date) || 0,
+    }));
+  };
+
+  const fillMissingDailyStackedRows = (
+    rows: Array<{ kategori: string; subs: Array<{ name: string; total: number }> }>
+  ) => {
+    if (!shouldPadDailyMonthScope || monthDateSeries.length === 0) return rows;
+    const subNames = Array.from(
+      new Set(
+        rows.flatMap((row) => (row.subs || []).map((sub) => sub.name)).filter(Boolean)
+      )
+    );
+    const rowMap = new Map<string, Record<string, number>>();
+    rows.forEach((row) => {
+      const normalized = normalizeDateLabelForMonthScope({ rawLabel: row.kategori, year, monthCode: month });
+      const existing = rowMap.get(normalized) || {};
+      (row.subs || []).forEach((sub) => {
+        existing[sub.name] = (existing[sub.name] || 0) + Number(sub.total || 0);
+      });
+      rowMap.set(normalized, existing);
+    });
+    const lastActiveIndex = (() => {
+      for (let i = monthDateSeries.length - 1; i >= 0; i -= 1) {
+        const date = monthDateSeries[i];
+        const values = rowMap.get(date) || {};
+        const dayTotal = subNames.reduce((sum, name) => sum + Math.abs(values[name] || 0), 0);
+        if (dayTotal > 0) return i;
+      }
+      return 0;
+    })();
+    const effectiveSeries = monthDateSeries.slice(0, lastActiveIndex + 1);
+    return effectiveSeries.map((date) => {
+      const values = rowMap.get(date) || {};
+      return {
+        kategori: date,
+        subs: subNames.map((name) => ({ name, total: values[name] || 0 })),
+      };
+    });
   };
 
   const allYearsFinancialData = (() => {
@@ -463,18 +553,9 @@ export default function DashboardV2() {
         total: hariMap[hari][sub] || 0
       }))
     }));
-    if (!shouldUseWeeklyGrouping) return dailyRows;
-    const normalizedRows = dailyRows.map((row) => {
-      return {
-        ...row,
-        kategori: normalizeDateLabelForMonthScope({
-          rawLabel: row.kategori,
-          year,
-          monthCode: month,
-        }),
-      };
-    });
-    return groupStackedDataByWeek(normalizedRows);
+    const paddedRows = fillMissingDailyStackedRows(dailyRows);
+    if (!shouldUseWeeklyGrouping) return paddedRows;
+    return groupStackedDataByWeek(paddedRows);
   })();
 
   // Data untuk line chart kategori PEMBELIAN
@@ -486,7 +567,8 @@ export default function DashboardV2() {
           bulan: bulanData.bulan,
           nominal: bulanData.total
         }));
-        return shouldUseWeeklyGrouping ? groupLineDataByWeek(rawRows) : rawRows;
+        const paddedRows = fillMissingDailyLineRows(rawRows);
+        return shouldUseWeeklyGrouping ? groupLineDataByWeek(paddedRows) : paddedRows;
       })();
 
   // Data untuk stacked bar aset dan gaji tahunan
@@ -506,7 +588,8 @@ export default function DashboardV2() {
         { name: "GAJI", total: bulanMap[bulan].GAJI }
       ]
     }));
-    return shouldUseWeeklyGrouping ? groupStackedDataByWeek(dailyRows) : dailyRows;
+    const paddedRows = fillMissingDailyStackedRows(dailyRows);
+    return shouldUseWeeklyGrouping ? groupStackedDataByWeek(paddedRows) : paddedRows;
   })();
 
   // Data untuk stacked bar biaya lain tahunan
@@ -528,7 +611,8 @@ export default function DashboardV2() {
         total: bulanMap[bulan][sub] || 0
       }))
     }));
-    return shouldUseWeeklyGrouping ? groupStackedDataByWeek(dailyRows) : dailyRows;
+    const paddedRows = fillMissingDailyStackedRows(dailyRows);
+    return shouldUseWeeklyGrouping ? groupStackedDataByWeek(paddedRows) : paddedRows;
   })();
 
   // Data untuk stacked bar biaya biaya tahunan
@@ -550,7 +634,8 @@ export default function DashboardV2() {
         total: bulanMap[bulan][sub] || 0
       }))
     }));
-    return shouldUseWeeklyGrouping ? groupStackedDataByWeek(dailyRows) : dailyRows;
+    const paddedRows = fillMissingDailyStackedRows(dailyRows);
+    return shouldUseWeeklyGrouping ? groupStackedDataByWeek(paddedRows) : paddedRows;
   })();
 
   // Totals for stacked bar sections
@@ -572,7 +657,8 @@ export default function DashboardV2() {
           bulan: bulanData.bulan,
           nominal: bulanData.gross_margin
         }));
-        return shouldUseWeeklyGrouping ? groupLineDataByWeek(rawRows) : rawRows;
+        const paddedRows = fillMissingDailyLineRows(rawRows);
+        return shouldUseWeeklyGrouping ? groupLineDataByWeek(paddedRows) : paddedRows;
       })();
 
   // Data untuk subscriber per program chart
