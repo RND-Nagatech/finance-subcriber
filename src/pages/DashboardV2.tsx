@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, LabelList, ReferenceLine } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, LabelList, ReferenceLine, Line, ComposedChart } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChartDonut } from '@/components/ChartDonut';
 import { ChartBar } from '@/components/ChartBar';
@@ -127,6 +127,34 @@ function buildMonthDateSeries(params: { fiscalYear: string; monthCode: string })
   const daysInMonth = new Date(year, month, 0).getDate();
   const pad = (n: number) => String(n).padStart(2, '0');
   return Array.from({ length: daysInMonth }, (_, i) => `${year}-${pad(month)}-${pad(i + 1)}`);
+}
+
+function extractFiscalMonthCode(label: string): string {
+  const raw = String(label || '').toUpperCase();
+  const match = raw.match(/(DEC|JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV)/);
+  return match ? match[1] : '';
+}
+
+function buildOmzetMonthlyMap(pertahunRows: any[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  FISCAL_MONTH_ORDER.forEach((m) => {
+    result[m] = 0;
+  });
+
+  const pendapatan = (pertahunRows || []).find((it: any) => it.kategori === 'PENDAPATAN');
+
+  const pendapatanMap: Record<string, number> = {};
+
+  (pendapatan?.data_bulanan || []).forEach((row: any) => {
+    const monthCode = extractFiscalMonthCode(row?.bulan);
+    if (monthCode) pendapatanMap[monthCode] = Number(row?.total || 0);
+  });
+
+  FISCAL_MONTH_ORDER.forEach((monthCode) => {
+    result[monthCode] = Number(pendapatanMap[monthCode] || 0);
+  });
+
+  return result;
 }
 
 export default function DashboardV2() {
@@ -292,6 +320,25 @@ export default function DashboardV2() {
       return response.data;
     },
     enabled: !!year && month !== 'ALL_YEARS',
+  });
+
+  const { data: annualSelectedYearData } = useQuery({
+    queryKey: ['dashboard-annual-selected-year', year],
+    enabled: !!year,
+    queryFn: async () => {
+      const response = await axiosInstance.get(`/dashboard/rekap-aggregate?tahun=${year}`);
+      return response.data;
+    },
+  });
+
+  const previousYear = Number(year || 0) - 1;
+  const { data: annualPreviousYearData } = useQuery({
+    queryKey: ['dashboard-annual-previous-year', previousYear],
+    enabled: Number.isFinite(previousYear) && previousYear > 0,
+    queryFn: async () => {
+      const response = await axiosInstance.get(`/dashboard/rekap-aggregate?tahun=${previousYear}`);
+      return response.data;
+    },
   });
 
   const { data: allYearsDashboardData, isLoading: isAllYearsLoading } = useQuery({
@@ -717,6 +764,27 @@ export default function DashboardV2() {
   const biayaTotal = Number(pertahunData.find((it: any) => it.kategori === 'BIAYA')?.total_tahunan || 0);
   const dashboardCardClass = 'border border-slate-200 bg-white shadow-sm';
   const categoryCardsData = [...rekapData, ...asetDanGajiData, ...biayaBiayaData].filter((a) => a.kategori != "BIAYA");
+  const omzetSelectedYearMonthlyMap = buildOmzetMonthlyMap(annualSelectedYearData?.pertahun || []);
+  const omzetPrevYearMonthlyMap = buildOmzetMonthlyMap(annualPreviousYearData?.pertahun || []);
+  const omzetYtdChartData = FISCAL_MONTH_ORDER.map((monthCode) => ({
+    bulan: `${monthCode}-${String((monthCode === 'DEC' ? previousYear : Number(year || 0)) % 100).padStart(2, '0')}`,
+    prevYearOmzet: Number(omzetPrevYearMonthlyMap[monthCode] || 0),
+    currentYearOmzet: Number(omzetSelectedYearMonthlyMap[monthCode] || 0),
+  })).map((row) => ({
+    ...row,
+    growthPercent: row.prevYearOmzet > 0 ? (row.currentYearOmzet / row.prevYearOmzet) * 100 : 0,
+  }));
+  const omzetPrevTotal = omzetYtdChartData.reduce((sum, row) => sum + Number(row.prevYearOmzet || 0), 0);
+  const omzetCurrentTotal = omzetYtdChartData.reduce((sum, row) => sum + Number(row.currentYearOmzet || 0), 0);
+  const jakartaNow = new Date(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date()));
+  const currentMonthNumber = Math.max(1, Math.min(12, jakartaNow.getMonth() + 1));
+  const omzetPrevAverage = omzetPrevTotal / 12;
+  const omzetCurrentAverage = omzetCurrentTotal / currentMonthNumber;
   const allAmountKeys = [
     'kpi-total-saldo',
     'kpi-penjualan',
@@ -732,6 +800,10 @@ export default function DashboardV2() {
     'vps-bar-labels',
     'line-margin-total',
     'line-pembelian-total',
+    'omzet-ytd-total-prev',
+    'omzet-ytd-total-current',
+    'omzet-ytd-avg-prev',
+    'omzet-ytd-avg-current',
     'stacked-avg-pendapatan',
     'stacked-avg-aset',
     'stacked-avg-implementasi',
@@ -1003,6 +1075,102 @@ export default function DashboardV2() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Line chart untuk Margin per bulan */}
+            {month === 'ANNUAL' && omzetYtdChartData.length > 0 && Number.isFinite(previousYear) && previousYear > 0 && (
+              <div className="mb-8">
+                <Card className={dashboardCardClass}>
+                  <CardHeader>
+                    <CardTitle className="text-2xl font-bold text-gray-900">Omzet Year To Date</CardTitle>
+                    <CardDescription className="text-gray-600">
+                      Perbandingan pendapatan fiscal ({previousYear} vs {year}) + persentase pertumbuhan bulanan
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                        <div className="text-xs font-semibold text-blue-700">TOTAL {previousYear}</div>
+                        {renderCompactCurrencyWithToggle(omzetPrevTotal, 'omzet-ytd-total-prev', 'text-sm font-bold text-blue-800')}
+                      </div>
+                      <div className="rounded-lg border border-orange-100 bg-orange-50/70 p-3">
+                        <div className="text-xs font-semibold text-orange-700">TOTAL {year}</div>
+                        {renderCompactCurrencyWithToggle(omzetCurrentTotal, 'omzet-ytd-total-current', 'text-sm font-bold text-orange-800')}
+                      </div>
+                      <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                        <div className="text-xs font-semibold text-blue-700">RATA-RATA/BULAN {previousYear}</div>
+                        {renderCompactCurrencyWithToggle(omzetPrevAverage, 'omzet-ytd-avg-prev', 'text-sm font-bold text-blue-800')}
+                      </div>
+                      <div className="rounded-lg border border-orange-100 bg-orange-50/70 p-3">
+                        <div className="text-xs font-semibold text-orange-700">RATA-RATA/BULAN {year}</div>
+                        {renderCompactCurrencyWithToggle(omzetCurrentAverage, 'omzet-ytd-avg-current', 'text-sm font-bold text-orange-800')}
+                      </div>
+                    </div>
+                    <div className="w-full h-[420px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={omzetYtdChartData} margin={{ top: 16, right: 18, left: 4, bottom: 8 }}>
+                          <XAxis dataKey="bulan" />
+                          <YAxis tickFormatter={(value) => formatCurrency(Number(value || 0))} width={120} />
+                          <YAxis
+                            yAxisId="percent"
+                            orientation="right"
+                            domain={[0, 200]}
+                            tickFormatter={(value) => `${Number(value || 0).toFixed(0)}%`}
+                            width={55}
+                          />
+                          <Tooltip
+                            formatter={(value: any, name: string) => {
+                              if (name === 'growthPercent') {
+                                return [`${Number(value || 0).toFixed(1)}%`, 'Pertumbuhan'];
+                              }
+                              const label = name === 'prevYearOmzet' ? `${previousYear}` : `${year}`;
+                              return [formatCurrency(Number(value || 0)), `Pendapatan ${label}`];
+                            }}
+                          />
+                          <Legend
+                            formatter={(value: any) => {
+                              if (value === 'prevYearOmzet') return `Tahun ${previousYear}`;
+                              if (value === 'currentYearOmzet') return `Tahun ${year}`;
+                              if (value === 'growthPercent') return 'Growth %';
+                              return value;
+                            }}
+                          />
+                          <ReferenceLine y={omzetPrevAverage} stroke="#2563eb" strokeDasharray="6 5" />
+                          <ReferenceLine y={omzetCurrentAverage} stroke="#f97316" strokeDasharray="6 5" />
+                          <Bar dataKey="prevYearOmzet" fill="#1d4ed8" name="prevYearOmzet" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="currentYearOmzet" fill="#f97316" name="currentYearOmzet" radius={[4, 4, 0, 0]} />
+                          <Line
+                            yAxisId="percent"
+                            type="monotone"
+                            dataKey="growthPercent"
+                            stroke="#16a34a"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            name="growthPercent"
+                          />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                      <div className="text-xs font-semibold text-slate-600 mb-2">Persentase Pertumbuhan Bulanan</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {omzetYtdChartData.map((row) => {
+                          const growth = Number(row.growthPercent || 0);
+                          const isPositive = growth >= 100;
+                          return (
+                            <div key={`growth-ledger-${row.bulan}`} className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs">
+                              <span className="font-medium text-slate-700">{row.bulan}</span>
+                              <span className={isPositive ? 'font-semibold text-emerald-600' : 'font-semibold text-rose-600'}>
+                                {growth.toFixed(1)}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             )}
 

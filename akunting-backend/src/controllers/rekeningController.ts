@@ -2,13 +2,14 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Rekening from '../models/Rekening';
 import Bank from '../models/Bank';
+import Perusahaan from '../models/Perusahaan';
 import RiwayatSaldoRekening from '../models/RiwayatSaldoRekening';
 import RekeningTransfer from '../models/RekeningTransfer';
 import { applyTransferToDailyBalance } from '../services/rekeningDailyBalanceService';
 
 export const getAllRekenings = async (req: Request, res: Response) => {
   try {
-    const rekenings = await Rekening.find().populate('bank_id');
+    const rekenings = await Rekening.find().populate('bank_id').populate('perusahaan_id');
     res.json(rekenings);
   } catch (err) {
     res.status(500).json({ message: 'Gagal mengambil data rekening.' });
@@ -17,7 +18,7 @@ export const getAllRekenings = async (req: Request, res: Response) => {
 
 export const getRekeningById = async (req: Request, res: Response) => {
   try {
-    const rekening = await Rekening.findById(req.params.id).populate('bank_id');
+    const rekening = await Rekening.findById(req.params.id).populate('bank_id').populate('perusahaan_id');
     if (!rekening) return res.status(404).json({ message: 'Rekening tidak ditemukan.' });
     res.json(rekening);
   } catch (err) {
@@ -28,12 +29,20 @@ export const getRekeningById = async (req: Request, res: Response) => {
 
 export const createRekening = async (req: Request, res: Response) => {
   try {
-    const { bank_id, no_rekening, nama_rekening, saldo } = req.body;
+    const { bank_id, perusahaan_id, no_rekening, nama_rekening, saldo } = req.body;
     // Cari kode_bank dari bank_id
     const bank = await Bank.findById(bank_id);
     if (!bank) return res.status(400).json({ message: 'Bank tidak ditemukan.' });
+    let perusahaan: any = null;
+    if (perusahaan_id) {
+      perusahaan = await Perusahaan.findById(perusahaan_id);
+      if (!perusahaan) return res.status(400).json({ message: 'Perusahaan tidak ditemukan.' });
+    }
     const rekening = new Rekening({
       bank_id,
+      perusahaan_id: perusahaan?._id || null,
+      kode_perusahaan: perusahaan?.kode_perusahaan || '',
+      nama_perusahaan: perusahaan?.nama_perusahaan || '',
       kode_bank: bank.kode_bank,
       no_rekening,
       nama_rekening,
@@ -49,13 +58,27 @@ export const createRekening = async (req: Request, res: Response) => {
 
 export const updateRekening = async (req: Request, res: Response) => {
   try {
-    const { bank_id, no_rekening, nama_rekening, saldo } = req.body;
+    const { bank_id, perusahaan_id, no_rekening, nama_rekening, saldo } = req.body;
     // Cari kode_bank dari bank_id
     const bank = await Bank.findById(bank_id);
     if (!bank) return res.status(400).json({ message: 'Bank tidak ditemukan.' });
+    let perusahaan: any = null;
+    if (perusahaan_id) {
+      perusahaan = await Perusahaan.findById(perusahaan_id);
+      if (!perusahaan) return res.status(400).json({ message: 'Perusahaan tidak ditemukan.' });
+    }
     const rekening = await Rekening.findByIdAndUpdate(
       req.params.id,
-      { bank_id, kode_bank: bank.kode_bank, no_rekening, nama_rekening, saldo: saldo || 0 },
+      {
+        bank_id,
+        perusahaan_id: perusahaan?._id || null,
+        kode_perusahaan: perusahaan?.kode_perusahaan || '',
+        nama_perusahaan: perusahaan?.nama_perusahaan || '',
+        kode_bank: bank.kode_bank,
+        no_rekening,
+        nama_rekening,
+        saldo: saldo || 0,
+      },
       { new: true }
     );
     if (!rekening) return res.status(404).json({ message: 'Rekening tidak ditemukan.' });

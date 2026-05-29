@@ -42,10 +42,18 @@ interface Bank {
 interface Rekening {
   _id?: string;
   bank_id: string;
+  perusahaan_id?: string;
+  kode_perusahaan?: string;
+  nama_perusahaan?: string;
   kode_bank?: string;
   no_rekening: string;
   nama_rekening: string;
   saldo: number;
+}
+interface Perusahaan {
+  _id?: string;
+  kode_perusahaan: string;
+  nama_perusahaan: string;
 }
 
 export default function Rekening() {
@@ -54,7 +62,7 @@ export default function Rekening() {
   const canViewSaldo = user?.role === 'superuser' || user?.role === 'corsec';
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Rekening>({ bank_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+  const [formData, setFormData] = useState<Rekening>({ bank_id: '', perusahaan_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
   const [saldoDisplay, setSaldoDisplay] = useState<string>('0');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -103,6 +111,13 @@ export default function Rekening() {
     queryKey: ['rekening-all'],
     queryFn: async () => {
       const res = await axiosInstance.get('/master/rekening?all=true');
+      return res.data || [];
+    },
+  });
+  const { data: perusahaanList = [] } = useQuery<Perusahaan[]>({
+    queryKey: ['perusahaan-all'],
+    queryFn: async () => {
+      const res = await axiosInstance.get('/master/perusahaan?all=true');
       return res.data || [];
     },
   });
@@ -170,6 +185,9 @@ export default function Rekening() {
       setEditId(rekening._id || null);
       setFormData({
         bank_id,
+        perusahaan_id: rekening.perusahaan_id || '',
+        kode_perusahaan: rekening.kode_perusahaan,
+        nama_perusahaan: rekening.nama_perusahaan,
         kode_bank: rekening.kode_bank,
         no_rekening: rekening.no_rekening,
         nama_rekening: rekening.nama_rekening,
@@ -178,7 +196,7 @@ export default function Rekening() {
       setSaldoDisplay(formatCurrency(rekening.saldo || 0));
     } else {
       setEditId(null);
-      setFormData({ bank_id: '', kode_bank: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+      setFormData({ bank_id: '', perusahaan_id: '', kode_perusahaan: '', nama_perusahaan: '', no_rekening: '', nama_rekening: '', saldo: 0 });
       setSaldoDisplay('0');
     }
     setModalOpen(true);
@@ -187,7 +205,7 @@ export default function Rekening() {
   const handleCloseModal = () => {
     setModalOpen(false);
     setEditId(null);
-    setFormData({ bank_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+    setFormData({ bank_id: '', perusahaan_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
     setSaldoDisplay('0');
   };
 
@@ -251,7 +269,7 @@ export default function Rekening() {
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       rows = rows.filter((r) =>
-        `${r.kode_bank || ''} ${r.no_rekening || ''} ${r.nama_rekening || ''}`
+        `${r.kode_bank || ''} ${r.no_rekening || ''} ${r.nama_rekening || ''} ${r.kode_perusahaan || ''} ${r.nama_perusahaan || ''}`
           .toLowerCase()
           .includes(q)
       );
@@ -318,7 +336,7 @@ export default function Rekening() {
                 setSearchQuery(e.target.value);
                 setPage(1);
               }}
-              placeholder="Kode bank / No rekening / Nama rekening"
+              placeholder="Bank / No rekening / Nama rekening / Perusahaan"
               className="w-80 border-2 border-gray-200"
             />
           </div>
@@ -364,6 +382,7 @@ export default function Rekening() {
                 <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Kode Bank</TableHead>
                 <TableHead className="w-56 px-6 py-4 font-semibold text-gray-900">No Rekening</TableHead>
                 <TableHead className="w-56 px-6 py-4 font-semibold text-gray-900">Nama Rekening</TableHead>
+                <TableHead className="w-52 px-6 py-4 font-semibold text-gray-900">Perusahaan</TableHead>
                 {canViewSaldo && (
                   <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Saldo</TableHead>
                 )}
@@ -373,7 +392,7 @@ export default function Rekening() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={canViewSaldo ? 5 : 4} className="text-center py-12">
+                  <TableCell colSpan={canViewSaldo ? 6 : 5} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data rekening...</p>
@@ -382,7 +401,7 @@ export default function Rekening() {
                 </TableRow>
               ) : filteredRekeningList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={canViewSaldo ? 5 : 4} className="text-center py-12">
+                  <TableCell colSpan={canViewSaldo ? 6 : 5} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -401,6 +420,9 @@ export default function Rekening() {
                     </TableCell>
                     <TableCell className="w-56 px-6 py-4 font-mono text-gray-900">{r.no_rekening}</TableCell>
                     <TableCell className="w-56 px-6 py-4 font-medium text-gray-900">{r.nama_rekening}</TableCell>
+                    <TableCell className="w-52 px-6 py-4 font-medium text-gray-900">
+                      {r.kode_perusahaan ? `${r.kode_perusahaan} - ${r.nama_perusahaan || '-'}` : '-'}
+                    </TableCell>
                     {canViewSaldo && (
                       <TableCell className="w-40 px-6 py-4 font-mono text-gray-900">
                         Rp {new Intl.NumberFormat('id-ID').format(r.saldo || 0)}
@@ -474,6 +496,23 @@ export default function Rekening() {
                 <option value="">Pilih Kode Bank</option>
                 {bankList.map((b) => (
                   <option key={b._id} value={b._id}>{b.kode_bank} - {b.nama_bank}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="perusahaan_id" className="text-sm font-semibold text-gray-700">Perusahaan</Label>
+              <select
+                id="perusahaan_id"
+                name="perusahaan_id"
+                value={formData.perusahaan_id || ''}
+                onChange={handleChange}
+                className="bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2 rounded-md"
+              >
+                <option value="">(Kosongkan jika tidak ada)</option>
+                {perusahaanList.map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.kode_perusahaan} - {p.nama_perusahaan}
+                  </option>
                 ))}
               </select>
             </div>

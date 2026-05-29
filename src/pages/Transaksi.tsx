@@ -782,9 +782,37 @@ export default function Transaksi() {
   // Formatted input values for display
   const [formattedNilai, setFormattedNilai] = useState('');
   const [editFormattedNilai, setEditFormattedNilai] = useState('');
+  const selectedAddPerusahaan = useMemo(
+    () => perusahaanList.find((p) => p._id === formData.perusahaan_id),
+    [perusahaanList, formData.perusahaan_id]
+  );
+  const filteredAddRekeningList = useMemo(() => {
+    if (!formData.perusahaan_id) return [];
+    return rekeningList.filter((r: any) => {
+      if (r.perusahaan_id) return String(r.perusahaan_id) === String(formData.perusahaan_id);
+      return (
+        (selectedAddPerusahaan?.kode_perusahaan && r.kode_perusahaan === selectedAddPerusahaan.kode_perusahaan) ||
+        (selectedAddPerusahaan?.nama_perusahaan && r.nama_perusahaan === selectedAddPerusahaan.nama_perusahaan)
+      );
+    });
+  }, [rekeningList, formData.perusahaan_id, selectedAddPerusahaan]);
+  const selectedEditPerusahaan = useMemo(
+    () => perusahaanList.find((p) => p._id === editData?.perusahaan_id),
+    [perusahaanList, editData?.perusahaan_id]
+  );
+  const filteredEditRekeningList = useMemo(() => {
+    if (!editData?.perusahaan_id) return [];
+    return rekeningList.filter((r: any) => {
+      if (r.perusahaan_id) return String(r.perusahaan_id) === String(editData.perusahaan_id);
+      return (
+        (selectedEditPerusahaan?.kode_perusahaan && r.kode_perusahaan === selectedEditPerusahaan.kode_perusahaan) ||
+        (selectedEditPerusahaan?.nama_perusahaan && r.nama_perusahaan === selectedEditPerusahaan.nama_perusahaan)
+      );
+    });
+  }, [rekeningList, editData?.perusahaan_id, selectedEditPerusahaan]);
   const selectedAddRekening =
     formData.rekening_id && formData.rekening_id !== 'none'
-      ? rekeningList.find((r) => r._id === formData.rekening_id)
+      ? filteredAddRekeningList.find((r) => r._id === formData.rekening_id) || rekeningList.find((r) => r._id === formData.rekening_id)
       : null;
 
   // Persist selected bulan per fiscal year in localStorage so refresh keeps selection
@@ -821,6 +849,30 @@ export default function Transaksi() {
       localStorage.setItem(selectedMonthKey, formData.bulan_fiskal);
     }
   }, [formData.bulan_fiskal, selectedMonthKey]);
+
+  useEffect(() => {
+    setFormData((prev) => {
+      if (!prev.perusahaan_id) {
+        return prev.rekening_id ? { ...prev, rekening_id: '' } : prev;
+      }
+      if (!prev.rekening_id || prev.rekening_id === 'none') return prev;
+      const exists = filteredAddRekeningList.some((r: any) => r._id === prev.rekening_id);
+      return exists ? prev : { ...prev, rekening_id: '' };
+    });
+  }, [formData.perusahaan_id, filteredAddRekeningList]);
+
+  useEffect(() => {
+    if (!editData) return;
+    setEditData((prev: any) => {
+      if (!prev) return prev;
+      if (!prev.perusahaan_id) {
+        return prev.rekening_id ? { ...prev, rekening_id: 'none' } : prev;
+      }
+      if (!prev.rekening_id || prev.rekening_id === 'none') return prev;
+      const exists = filteredEditRekeningList.some((r: any) => r._id === prev.rekening_id);
+      return exists ? prev : { ...prev, rekening_id: 'none' };
+    });
+  }, [editData?.perusahaan_id, filteredEditRekeningList]);
   // ...existing code...
 
   // Fetch categories
@@ -1619,7 +1671,7 @@ export default function Transaksi() {
                       <Label htmlFor="perusahaan_id" className="text-sm font-semibold text-gray-700">Perusahaan</Label>
                       <Select
                         value={formData.perusahaan_id}
-                        onValueChange={value => setFormData({ ...formData, perusahaan_id: value })}
+                        onValueChange={value => setFormData({ ...formData, perusahaan_id: value, rekening_id: '' })}
                         required
                       >
                         <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
@@ -1641,13 +1693,14 @@ export default function Transaksi() {
                         value={formData.rekening_id}
                         onValueChange={value => setFormData({ ...formData, rekening_id: value })}
                         required={false}
+                        disabled={!formData.perusahaan_id}
                       >
                         <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
-                          <SelectValue placeholder="Pilih rekening (opsional)" />
+                          <SelectValue placeholder={formData.perusahaan_id ? 'Pilih rekening (opsional)' : 'Pilih perusahaan dulu'} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
-                          {rekeningList.map((r) => (
+                          {filteredAddRekeningList.map((r) => (
                             <SelectItem key={r._id} value={r._id}>
                               {r.kode_bank} - {r.no_rekening}
                             </SelectItem>
@@ -2270,7 +2323,7 @@ export default function Transaksi() {
                       <Label htmlFor="edit-perusahaan_id" className="text-sm font-semibold text-gray-700">Perusahaan</Label>
                       <Select
                         value={editData?.perusahaan_id || ''}
-                        onValueChange={value => setEditData({ ...editData, perusahaan_id: value })}
+                        onValueChange={value => setEditData({ ...editData, perusahaan_id: value, rekening_id: 'none' })}
                         required
                       >
                         <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
@@ -2292,13 +2345,14 @@ export default function Transaksi() {
                         value={editData?.rekening_id || 'none'}
                         onValueChange={value => setEditData({ ...editData, rekening_id: value })}
                         required={false}
+                        disabled={!editData?.perusahaan_id}
                       >
                         <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
-                          <SelectValue placeholder="Pilih rekening (opsional)" />
+                          <SelectValue placeholder={editData?.perusahaan_id ? 'Pilih rekening (opsional)' : 'Pilih perusahaan dulu'} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
-                          {rekeningList.map((r) => (
+                          {filteredEditRekeningList.map((r) => (
                             <SelectItem key={r._id} value={r._id}>
                               {r.kode_bank} - {r.no_rekening}
                             </SelectItem>
