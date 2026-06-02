@@ -86,6 +86,15 @@ interface Option {
   nama: string;
 }
 
+const getReferenceId = (value: any): string => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    return String(value._id || value.id || '');
+  }
+  return String(value);
+};
+
 
 // Bulan fiskal dinamis dari backend
 const currentYear = new Date().getFullYear();
@@ -789,7 +798,8 @@ export default function Transaksi() {
   const filteredAddRekeningList = useMemo(() => {
     if (!formData.perusahaan_id) return [];
     return rekeningList.filter((r: any) => {
-      if (r.perusahaan_id) return String(r.perusahaan_id) === String(formData.perusahaan_id);
+      const rekeningPerusahaanId = getReferenceId(r.perusahaan_id);
+      if (rekeningPerusahaanId) return rekeningPerusahaanId === String(formData.perusahaan_id);
       return (
         (selectedAddPerusahaan?.kode_perusahaan && r.kode_perusahaan === selectedAddPerusahaan.kode_perusahaan) ||
         (selectedAddPerusahaan?.nama_perusahaan && r.nama_perusahaan === selectedAddPerusahaan.nama_perusahaan)
@@ -803,7 +813,8 @@ export default function Transaksi() {
   const filteredEditRekeningList = useMemo(() => {
     if (!editData?.perusahaan_id) return [];
     return rekeningList.filter((r: any) => {
-      if (r.perusahaan_id) return String(r.perusahaan_id) === String(editData.perusahaan_id);
+      const rekeningPerusahaanId = getReferenceId(r.perusahaan_id);
+      if (rekeningPerusahaanId) return rekeningPerusahaanId === String(editData.perusahaan_id);
       return (
         (selectedEditPerusahaan?.kode_perusahaan && r.kode_perusahaan === selectedEditPerusahaan.kode_perusahaan) ||
         (selectedEditPerusahaan?.nama_perusahaan && r.nama_perusahaan === selectedEditPerusahaan.nama_perusahaan)

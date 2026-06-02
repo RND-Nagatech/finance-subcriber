@@ -56,6 +56,15 @@ interface Perusahaan {
   nama_perusahaan: string;
 }
 
+const getReferenceId = (value: any): string => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    return String(value._id || value.id || '');
+  }
+  return String(value);
+};
+
 export default function Rekening() {
   const queryClient = useQueryClient();
   const { user } = useAppStore();
@@ -185,7 +194,7 @@ export default function Rekening() {
       setEditId(rekening._id || null);
       setFormData({
         bank_id,
-        perusahaan_id: rekening.perusahaan_id || '',
+        perusahaan_id: getReferenceId(rekening.perusahaan_id),
         kode_perusahaan: rekening.kode_perusahaan,
         nama_perusahaan: rekening.nama_perusahaan,
         kode_bank: rekening.kode_bank,
