@@ -95,6 +95,12 @@ const getReferenceId = (value: any): string => {
   return String(value);
 };
 
+const getReferenceIds = (values: any): string[] => {
+  if (!values) return [];
+  const list = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(list.map(getReferenceId).filter(Boolean)));
+};
+
 
 // Bulan fiskal dinamis dari backend
 const currentYear = new Date().getFullYear();
@@ -798,6 +804,8 @@ export default function Transaksi() {
   const filteredAddRekeningList = useMemo(() => {
     if (!formData.perusahaan_id) return [];
     return rekeningList.filter((r: any) => {
+      const rekeningPerusahaanIds = getReferenceIds(r.perusahaan_ids);
+      if (rekeningPerusahaanIds.length > 0) return rekeningPerusahaanIds.includes(String(formData.perusahaan_id));
       const rekeningPerusahaanId = getReferenceId(r.perusahaan_id);
       if (rekeningPerusahaanId) return rekeningPerusahaanId === String(formData.perusahaan_id);
       return (
@@ -813,6 +821,8 @@ export default function Transaksi() {
   const filteredEditRekeningList = useMemo(() => {
     if (!editData?.perusahaan_id) return [];
     return rekeningList.filter((r: any) => {
+      const rekeningPerusahaanIds = getReferenceIds(r.perusahaan_ids);
+      if (rekeningPerusahaanIds.length > 0) return rekeningPerusahaanIds.includes(String(editData.perusahaan_id));
       const rekeningPerusahaanId = getReferenceId(r.perusahaan_id);
       if (rekeningPerusahaanId) return rekeningPerusahaanId === String(editData.perusahaan_id);
       return (

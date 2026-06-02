@@ -42,7 +42,8 @@ interface Bank {
 interface Rekening {
   _id?: string;
   bank_id: string;
-  perusahaan_id?: string;
+  perusahaan_id?: string | { _id?: string; id?: string };
+  perusahaan_ids?: Array<string | { _id?: string; id?: string; kode_perusahaan?: string; nama_perusahaan?: string }>;
   kode_perusahaan?: string;
   nama_perusahaan?: string;
   kode_bank?: string;
@@ -65,13 +66,19 @@ const getReferenceId = (value: any): string => {
   return String(value);
 };
 
+const getReferenceIds = (values: any): string[] => {
+  if (!values) return [];
+  const list = Array.isArray(values) ? values : [values];
+  return Array.from(new Set(list.map(getReferenceId).filter(Boolean)));
+};
+
 export default function Rekening() {
   const queryClient = useQueryClient();
   const { user } = useAppStore();
   const canViewSaldo = user?.role === 'superuser' || user?.role === 'corsec';
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Rekening>({ bank_id: '', perusahaan_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+  const [formData, setFormData] = useState<Rekening>({ bank_id: '', perusahaan_ids: [], no_rekening: '', nama_rekening: '', saldo: 0 });
   const [saldoDisplay, setSaldoDisplay] = useState<string>('0');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -192,9 +199,12 @@ export default function Rekening() {
         if (found) bank_id = found._id || bank_id;
       }
       setEditId(rekening._id || null);
+      const perusahaan_ids = getReferenceIds(rekening.perusahaan_ids);
+      const legacyPerusahaanId = getReferenceId(rekening.perusahaan_id);
       setFormData({
         bank_id,
-        perusahaan_id: getReferenceId(rekening.perusahaan_id),
+        perusahaan_id: legacyPerusahaanId,
+        perusahaan_ids: perusahaan_ids.length > 0 ? perusahaan_ids : (legacyPerusahaanId ? [legacyPerusahaanId] : []),
         kode_perusahaan: rekening.kode_perusahaan,
         nama_perusahaan: rekening.nama_perusahaan,
         kode_bank: rekening.kode_bank,
@@ -205,7 +215,7 @@ export default function Rekening() {
       setSaldoDisplay(formatCurrency(rekening.saldo || 0));
     } else {
       setEditId(null);
-      setFormData({ bank_id: '', perusahaan_id: '', kode_perusahaan: '', nama_perusahaan: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+      setFormData({ bank_id: '', perusahaan_ids: [], kode_perusahaan: '', nama_perusahaan: '', no_rekening: '', nama_rekening: '', saldo: 0 });
       setSaldoDisplay('0');
     }
     setModalOpen(true);
@@ -214,7 +224,7 @@ export default function Rekening() {
   const handleCloseModal = () => {
     setModalOpen(false);
     setEditId(null);
-    setFormData({ bank_id: '', perusahaan_id: '', no_rekening: '', nama_rekening: '', saldo: 0 });
+    setFormData({ bank_id: '', perusahaan_ids: [], no_rekening: '', nama_rekening: '', saldo: 0 });
     setSaldoDisplay('0');
   };
 
@@ -237,7 +247,12 @@ export default function Rekening() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    saveMutation.mutate(formData);
+    const perusahaan_ids = formData.perusahaan_ids || [];
+    saveMutation.mutate({
+      ...formData,
+      perusahaan_id: perusahaan_ids[0] || '',
+      perusahaan_ids,
+    });
   };
 
   const handleTransferSubmit = (e: React.FormEvent) => {
@@ -270,6 +285,15 @@ export default function Rekening() {
     }
   };
 
+  const getRekeningPerusahaanLabel = (r: Rekening) => {
+    const populatedLabels = (r.perusahaan_ids || [])
+      .filter((p: any) => typeof p === 'object')
+      .map((p: any) => `${p.kode_perusahaan || '-'} - ${p.nama_perusahaan || '-'}`);
+    if (populatedLabels.length > 0) return populatedLabels.join(', ');
+    if (r.kode_perusahaan || r.nama_perusahaan) return `${r.kode_perusahaan || '-'} - ${r.nama_perusahaan || '-'}`;
+    return '-';
+  };
+
   const filteredRekeningList = useMemo(() => {
     let rows = [...rekeningList];
     if (filterBank !== 'ALL') {
@@ -278,7 +302,7 @@ export default function Rekening() {
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       rows = rows.filter((r) =>
-        `${r.kode_bank || ''} ${r.no_rekening || ''} ${r.nama_rekening || ''} ${r.kode_perusahaan || ''} ${r.nama_perusahaan || ''}`
+        `${r.kode_bank || ''} ${r.no_rekening || ''} ${r.nama_rekening || ''} ${getRekeningPerusahaanLabel(r)}`
           .toLowerCase()
           .includes(q)
       );
@@ -298,6 +322,18 @@ export default function Rekening() {
 
   const formatRekeningOptionLabel = (r: Rekening) =>
     `${r.kode_bank || '-'} - ${r.no_rekening} - ${r.nama_rekening} (Saldo: Rp ${new Intl.NumberFormat('id-ID').format(r.saldo || 0)})`;
+
+  const togglePerusahaan = (id?: string) => {
+    if (!id) return;
+    setFormData((prev) => {
+      const current = prev.perusahaan_ids || [];
+      const exists = current.includes(id);
+      return {
+        ...prev,
+        perusahaan_ids: exists ? current.filter((item) => item !== id) : [...current, id],
+      };
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
@@ -430,7 +466,9 @@ export default function Rekening() {
                     <TableCell className="w-56 px-6 py-4 font-mono text-gray-900">{r.no_rekening}</TableCell>
                     <TableCell className="w-56 px-6 py-4 font-medium text-gray-900">{r.nama_rekening}</TableCell>
                     <TableCell className="w-52 px-6 py-4 font-medium text-gray-900">
-                      {r.kode_perusahaan ? `${r.kode_perusahaan} - ${r.nama_perusahaan || '-'}` : '-'}
+                      <span className="line-clamp-2" title={getRekeningPerusahaanLabel(r)}>
+                        {getRekeningPerusahaanLabel(r)}
+                      </span>
                     </TableCell>
                     {canViewSaldo && (
                       <TableCell className="w-40 px-6 py-4 font-mono text-gray-900">
@@ -509,21 +547,30 @@ export default function Rekening() {
               </select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="perusahaan_id" className="text-sm font-semibold text-gray-700">Perusahaan</Label>
-              <select
-                id="perusahaan_id"
-                name="perusahaan_id"
-                value={formData.perusahaan_id || ''}
-                onChange={handleChange}
-                className="bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2 rounded-md"
-              >
-                <option value="">(Kosongkan jika tidak ada)</option>
-                {perusahaanList.map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.kode_perusahaan} - {p.nama_perusahaan}
-                  </option>
-                ))}
-              </select>
+              <Label className="text-sm font-semibold text-gray-700">Perusahaan</Label>
+              <div className="bg-blue-50 focus-within:bg-white border-2 border-gray-200 transition-all duration-200 rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+                {perusahaanList.length === 0 ? (
+                  <p className="text-sm text-gray-500">Belum ada data perusahaan.</p>
+                ) : (
+                  perusahaanList.map((p) => {
+                    const checked = !!p._id && (formData.perusahaan_ids || []).includes(p._id);
+                    return (
+                      <label key={p._id} className="flex items-center gap-3 text-sm text-gray-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => togglePerusahaan(p._id)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <span>{p.kode_perusahaan} - {p.nama_perusahaan}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                Pilih satu atau beberapa perusahaan yang boleh memakai rekening ini.
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="no_rekening" className="text-sm font-semibold text-gray-700">No Rekening</Label>
