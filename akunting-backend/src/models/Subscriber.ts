@@ -5,6 +5,12 @@ export interface ISubscriber extends Document {
   no_ok: string | null;
   nomor_telepon: string | null;
   sales: string | null;
+  nama_owner: string | null;
+  no_hp_owner: string | null;
+  gender_owner: 'LAKI-LAKI' | 'PEREMPUAN' | null;
+  nama_pic: string | null;
+  no_hp_pic: string | null;
+  gender_pic: 'LAKI-LAKI' | 'PEREMPUAN' | null;
   toko: string;
   grup: string | null;
   domain: string | null;
@@ -35,6 +41,12 @@ const SubscriberSchema: Schema = new Schema({
   no_ok: { type: String, required: false, default: null },
   nomor_telepon: { type: String, required: false, default: null },
   sales: { type: String, required: false, default: null },
+  nama_owner: { type: String, required: false, default: null },
+  no_hp_owner: { type: String, required: false, default: null },
+  gender_owner: { type: String, required: false, enum: ['LAKI-LAKI', 'PEREMPUAN', null], default: null },
+  nama_pic: { type: String, required: false, default: null },
+  no_hp_pic: { type: String, required: false, default: null },
+  gender_pic: { type: String, required: false, enum: ['LAKI-LAKI', 'PEREMPUAN', null], default: null },
   toko: { type: String, required: true },
   grup: { type: String, required: false, default: null },
   domain: { type: String, required: false, default: null },

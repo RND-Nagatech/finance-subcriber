@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { Fragment, useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -41,6 +41,12 @@ interface Subscriber {
   kode: string;
   no_ok: string | null;
   sales: string | null;
+  nama_owner: string | null;
+  no_hp_owner: string | null;
+  gender_owner: 'LAKI-LAKI' | 'PEREMPUAN' | null;
+  nama_pic: string | null;
+  no_hp_pic: string | null;
+  gender_pic: 'LAKI-LAKI' | 'PEREMPUAN' | null;
   toko: string;
   grup: string | null;
   domain: string | null;
@@ -82,6 +88,12 @@ export default function Subscriber() {
     kode: '',
     no_ok: null,
     sales: null,
+    nama_owner: null,
+    no_hp_owner: null,
+    gender_owner: null,
+    nama_pic: null,
+    no_hp_pic: null,
+    gender_pic: null,
     toko: '',
     grup: null,
     domain: null,
@@ -190,6 +202,12 @@ export default function Subscriber() {
   const data = response?.data || [];
   const pagination = response?.pagination || { total: 0 };
 
+  const visibleRowIds = useMemo(
+    () => data.map((item: Subscriber, idx: number) => item._id || item.kode || String(idx)).filter(Boolean),
+    [data]
+  );
+  const areAllRowsExpanded = visibleRowIds.length > 0 && visibleRowIds.every((id) => expandedRows.has(id));
+
   // Use all years from database for filter dropdown
   const availableYears = allYears;
 
@@ -216,6 +234,12 @@ export default function Subscriber() {
         return axiosInstance.put(`/subscriber/${editId}`, {
           no_ok: payload.no_ok,
           sales: payload.sales,
+          nama_owner: payload.nama_owner,
+          no_hp_owner: payload.no_hp_owner,
+          gender_owner: payload.gender_owner,
+          nama_pic: payload.nama_pic,
+          no_hp_pic: payload.no_hp_pic,
+          gender_pic: payload.gender_pic,
           toko: payload.toko,
           grup: payload.grup,
           domain: payload.domain,
@@ -234,6 +258,12 @@ export default function Subscriber() {
       return axiosInstance.post('/subscriber', {
         no_ok: payload.no_ok,
         sales: payload.sales,
+        nama_owner: payload.nama_owner,
+        no_hp_owner: payload.no_hp_owner,
+        gender_owner: payload.gender_owner,
+        nama_pic: payload.nama_pic,
+        no_hp_pic: payload.no_hp_pic,
+        gender_pic: payload.gender_pic,
         toko: payload.toko,
         grup: payload.grup,
         domain: payload.domain,
@@ -294,10 +324,24 @@ export default function Subscriber() {
   };
 
   const formatDateDisplay = (dateStr: string) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('id-ID');
+    const ymd = toDateInputValue(dateStr);
+    if (!ymd) return '';
+    const [year, month, day] = ymd.split('-');
+    return `${Number(day)}/${Number(month)}/${year}`;
+  };
+
+  const toDateInputValue = (value?: string | Date | null) => {
+    if (!value) return '';
+    if (value instanceof Date) {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    const raw = String(value);
+    const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+    return '';
   };
 
   // Format number for input display (Indonesian format: 100.000)
@@ -323,7 +367,7 @@ export default function Subscriber() {
     setEditId(item.kode);
     setFormData({
       ...item,
-      tanggal: item.tanggal ? new Date(item.tanggal).toISOString().split('T')[0] : '',
+      tanggal: toDateInputValue(item.tanggal),
     });
     setFormattedBiaya(formatNumberInput(item.biaya.toString()));
     setModalOpen(true);
@@ -430,7 +474,7 @@ export default function Subscriber() {
   });
 
   const handleOpenVpsDialog = (item: Subscriber) => {
-    const normalizedDate = item.tanggal ? new Date(item.tanggal).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const normalizedDate = toDateInputValue(item.tanggal) || toDateInputValue(new Date());
     setSelectedSubscriberForVps(item);
     setVpsStartDate(normalizedDate);
     setVpsMonthsText('1');
@@ -462,6 +506,12 @@ export default function Subscriber() {
       kode: '',
       no_ok: null,
       sales: null,
+      nama_owner: null,
+      no_hp_owner: null,
+      gender_owner: null,
+      nama_pic: null,
+      no_hp_pic: null,
+      gender_pic: null,
       toko: '',
       grup: null,
       domain: null,
@@ -502,6 +552,14 @@ export default function Subscriber() {
       newExpandedRows.add(id);
     }
     setExpandedRows(newExpandedRows);
+  };
+
+  const handleExpandAllRows = () => {
+    setExpandedRows(new Set(visibleRowIds));
+  };
+
+  const handleCollapseAllRows = () => {
+    setExpandedRows(new Set());
   };
 
   // Filter subscribers based on month/year (now done on backend)
@@ -545,6 +603,12 @@ export default function Subscriber() {
                 kode: '',
                 no_ok: null,
                 sales: null,
+                nama_owner: null,
+                no_hp_owner: null,
+                gender_owner: null,
+                nama_pic: null,
+                no_hp_pic: null,
+                gender_pic: null,
                 toko: '',
                 grup: null,
                 domain: null,
@@ -632,6 +696,10 @@ export default function Subscriber() {
                     <SelectItem value="internal_kode">Internal Kode</SelectItem>
                     <SelectItem value="kode">Kode</SelectItem>
                     <SelectItem value="sales">Sales</SelectItem>
+                    <SelectItem value="nama_owner">Nama Owner</SelectItem>
+                    <SelectItem value="no_hp_owner">No HP Owner</SelectItem>
+                    <SelectItem value="nama_pic">Nama PIC</SelectItem>
+                    <SelectItem value="no_hp_pic">No HP PIC</SelectItem>
                     <SelectItem value="grup">Grup</SelectItem>
                     <SelectItem value="domain">Domain</SelectItem>
                   </SelectContent>
@@ -669,6 +737,24 @@ export default function Subscriber() {
         </div>
 
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
+          <div className="flex items-center justify-end gap-2 border-b border-blue-200/50 bg-gradient-to-r from-blue-50/60 to-indigo-50/60 px-4 py-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExpandAllRows}
+              disabled={visibleRowIds.length === 0 || areAllRowsExpanded}
+            >
+              Expand All
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCollapseAllRows}
+              disabled={visibleRowIds.length === 0 || expandedRows.size === 0}
+            >
+              Collapse All
+            </Button>
+          </div>
           <Table className="w-full">
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-50 hover:to-indigo-50 border-b border-blue-200/50">
@@ -710,17 +796,19 @@ export default function Subscriber() {
                   </TableCell>
                 </TableRow>
               ) : (
-                data.map((item) => (
-                  <>
-                    <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
+                data.map((item, idx) => {
+                  const rowId = item._id || item.kode || String(idx);
+                  return (
+                  <Fragment key={rowId}>
+                    <TableRow className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                       <TableCell className="w-12 px-4 py-4">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => toggleRowExpansion(item._id || '')}
+                          onClick={() => toggleRowExpansion(rowId)}
                           className="p-1 h-6 w-6 hover:bg-blue-100"
                         >
-                          {expandedRows.has(item._id || '') ? (
+                          {expandedRows.has(rowId) ? (
                             <ChevronDown className="w-4 h-4 text-blue-600" />
                           ) : (
                             <ChevronRight className="w-4 h-4 text-blue-600" />
@@ -731,7 +819,7 @@ export default function Subscriber() {
                       <TableCell className="w-40 px-6 py-4 text-gray-700">{item.program}</TableCell>
                       <TableCell className="w-32 px-6 py-4 text-gray-700">{item.internal_kode || '-'}</TableCell>
                       <TableCell className="w-32 px-6 py-4 text-gray-700 font-semibold">{formatCurrency(item.biaya)}</TableCell>
-                      <TableCell className="w-28 px-6 py-4 text-gray-700">{new Date(item.tanggal).toLocaleDateString('id-ID')}</TableCell>
+                      <TableCell className="w-28 px-6 py-4 text-gray-700">{formatDateDisplay(item.tanggal)}</TableCell>
                       <TableCell className="w-44 px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
                           <Button
@@ -762,7 +850,7 @@ export default function Subscriber() {
                         </div>
                       </TableCell>
                     </TableRow>
-                    {expandedRows.has(item._id || '') && (
+                    {expandedRows.has(rowId) && (
                       <TableRow className="bg-blue-50/30 border-b border-gray-100/50">
                         <TableCell colSpan={7} className="px-6 py-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
@@ -778,6 +866,18 @@ export default function Subscriber() {
                               <div className="flex justify-between">
                                 <span className="font-medium text-gray-600">Sales:</span>
                                 <span className="text-gray-900">{item.sales || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Nama Owner:</span>
+                                <span className="text-gray-900">{item.nama_owner || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">No HP Owner:</span>
+                                <span className="text-gray-900">{item.no_hp_owner || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Gender Owner:</span>
+                                <span className="text-gray-900">{item.gender_owner || '-'}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="font-medium text-gray-600">Daerah:</span>
@@ -814,6 +914,18 @@ export default function Subscriber() {
                                 <span className="text-gray-900">{item.implementator || '-'}</span>
                               </div>
                               <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Nama PIC:</span>
+                                <span className="text-gray-900">{item.nama_pic || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">No HP PIC:</span>
+                                <span className="text-gray-900">{item.no_hp_pic || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Gender PIC:</span>
+                                <span className="text-gray-900">{item.gender_pic || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
                                 <span className="font-medium text-gray-600">Via:</span>
                                 <span className="text-gray-900">{item.via}</span>
                               </div>
@@ -842,13 +954,13 @@ export default function Subscriber() {
                               {item.input_date && (
                                 <div className="flex justify-between">
                                   <span className="font-medium text-gray-600">Input Date:</span>
-                                  <span className="text-gray-900">{new Date(item.input_date).toLocaleDateString('id-ID')}</span>
+                                  <span className="text-gray-900">{formatDateDisplay(item.input_date)}</span>
                                 </div>
                               )}
                               {item.update_date && (
                                 <div className="flex justify-between">
                                   <span className="font-medium text-gray-600">Update Date:</span>
-                                  <span className="text-gray-900">{new Date(item.update_date).toLocaleDateString('id-ID')}</span>
+                                  <span className="text-gray-900">{formatDateDisplay(item.update_date)}</span>
                                 </div>
                               )}
                             </div>
@@ -856,8 +968,9 @@ export default function Subscriber() {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
-                ))
+                  </Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -1099,6 +1212,95 @@ export default function Subscriber() {
                     <SelectItem value="ONLINE" className="hover:bg-blue-50 focus:bg-blue-50">ONLINE</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            <div className="border-t border-blue-200 pt-5">
+              <div className="mb-4">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-blue-700">Informasi Owner & PIC</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid gap-2">
+                  <Label htmlFor="nama_owner" className="text-sm font-semibold text-gray-700">Nama Owner</Label>
+                  <Input
+                    id="nama_owner"
+                    value={formData.nama_owner || ''}
+                    onChange={(e) => setFormData({ ...formData, nama_owner: e.target.value || null })}
+                    placeholder="Masukkan nama owner"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="no_hp_owner" className="text-sm font-semibold text-gray-700">No HP Owner</Label>
+                  <Input
+                    id="no_hp_owner"
+                    value={formData.no_hp_owner || ''}
+                    onChange={(e) => setFormData({ ...formData, no_hp_owner: e.target.value || null })}
+                    placeholder="Masukkan no HP owner"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="gender_owner" className="text-sm font-semibold text-gray-700">Gender Owner</Label>
+                  <Select
+                    value={formData.gender_owner || 'none'}
+                    onValueChange={(value: 'none' | 'LAKI-LAKI' | 'PEREMPUAN') =>
+                      setFormData({ ...formData, gender_owner: value === 'none' ? null : value })
+                    }
+                  >
+                    <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
+                      <SelectValue placeholder="Pilih gender owner" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white/95 backdrop-blur-sm border-gray-200 shadow-xl">
+                      <SelectItem value="none" className="hover:bg-blue-50 focus:bg-blue-50">Kosongkan</SelectItem>
+                      <SelectItem value="LAKI-LAKI" className="hover:bg-blue-50 focus:bg-blue-50">LAKI-LAKI</SelectItem>
+                      <SelectItem value="PEREMPUAN" className="hover:bg-blue-50 focus:bg-blue-50">PEREMPUAN</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="nama_pic" className="text-sm font-semibold text-gray-700">Nama PIC</Label>
+                  <Input
+                    id="nama_pic"
+                    value={formData.nama_pic || ''}
+                    onChange={(e) => setFormData({ ...formData, nama_pic: e.target.value || null })}
+                    placeholder="Masukkan nama PIC"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="no_hp_pic" className="text-sm font-semibold text-gray-700">No HP PIC</Label>
+                  <Input
+                    id="no_hp_pic"
+                    value={formData.no_hp_pic || ''}
+                    onChange={(e) => setFormData({ ...formData, no_hp_pic: e.target.value || null })}
+                    placeholder="Masukkan no HP PIC"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="gender_pic" className="text-sm font-semibold text-gray-700">Gender PIC</Label>
+                  <Select
+                    value={formData.gender_pic || 'none'}
+                    onValueChange={(value: 'none' | 'LAKI-LAKI' | 'PEREMPUAN') =>
+                      setFormData({ ...formData, gender_pic: value === 'none' ? null : value })
+                    }
+                  >
+                    <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
+                      <SelectValue placeholder="Pilih gender PIC" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white/95 backdrop-blur-sm border-gray-200 shadow-xl">
+                      <SelectItem value="none" className="hover:bg-blue-50 focus:bg-blue-50">Kosongkan</SelectItem>
+                      <SelectItem value="LAKI-LAKI" className="hover:bg-blue-50 focus:bg-blue-50">LAKI-LAKI</SelectItem>
+                      <SelectItem value="PEREMPUAN" className="hover:bg-blue-50 focus:bg-blue-50">PEREMPUAN</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 

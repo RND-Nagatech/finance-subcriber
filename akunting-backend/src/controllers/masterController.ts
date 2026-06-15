@@ -38,6 +38,40 @@ const generateNextKode = async (model: any): Promise<string> => {
   return nextNum.toString().padStart(3, '0');
 };
 
+const parseDateOnlyToNoonUtc = (value: unknown): Date | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = String(value).trim();
+  const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymd) {
+    const year = Number(ymd[1]);
+    const month = Number(ymd[2]);
+    const day = Number(ymd[3]);
+    const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+    if (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    ) {
+      return date;
+    }
+    return null;
+  }
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const normalizeOptionalString = (value: unknown): string | null => {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+};
+
+const normalizeGender = (value: unknown): 'LAKI-LAKI' | 'PEREMPUAN' | null => {
+  const normalized = normalizeOptionalString(value)?.toUpperCase();
+  if (normalized === 'LAKI-LAKI' || normalized === 'PEREMPUAN') return normalized;
+  return null;
+};
+
 export const createKategori = async (req: Request, res: Response) => {
   try {
     const { kategori } = req.body;
@@ -883,6 +917,12 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       no_ok,
       nomor_telepon,
       sales,
+      nama_owner,
+      no_hp_owner,
+      gender_owner,
+      nama_pic,
+      no_hp_pic,
+      gender_pic,
       toko,
       grup,
       domain,
@@ -898,8 +938,8 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
     } = req.body;
 
     // Validate and parse tanggal
-    const parsedTanggal = new Date(tanggal);
-    if (isNaN(parsedTanggal.getTime())) {
+    const parsedTanggal = parseDateOnlyToNoonUtc(tanggal);
+    if (!parsedTanggal) {
       return res.status(400).json({ message: 'Format tanggal tidak valid' });
     }
 
@@ -931,6 +971,12 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       no_ok,
       nomor_telepon,
       sales,
+      nama_owner: normalizeOptionalString(nama_owner),
+      no_hp_owner: normalizeOptionalString(no_hp_owner),
+      gender_owner: normalizeGender(gender_owner),
+      nama_pic: normalizeOptionalString(nama_pic),
+      no_hp_pic: normalizeOptionalString(no_hp_pic),
+      gender_pic: normalizeGender(gender_pic),
       toko,
       grup: grup || null,
       domain: domain || null,
@@ -970,6 +1016,12 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       no_ok,
       nomor_telepon,
       sales,
+      nama_owner,
+      no_hp_owner,
+      gender_owner,
+      nama_pic,
+      no_hp_pic,
+      gender_pic,
       toko,
       grup,
       domain,
@@ -1042,9 +1094,20 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     // Use custom biaya if provided, otherwise keep existing or use program biaya
     const finalBiaya = customBiaya !== undefined ? customBiaya : programBiaya;
 
+    const parsedTanggal = tanggal !== undefined ? parseDateOnlyToNoonUtc(tanggal) : null;
+    if (tanggal !== undefined && !parsedTanggal) {
+      return res.status(400).json({ message: 'Format tanggal tidak valid' });
+    }
+
     old.no_ok = no_ok ?? old.no_ok;
     old.nomor_telepon = nomor_telepon ?? old.nomor_telepon;
     old.sales = sales ?? old.sales;
+    old.nama_owner = nama_owner !== undefined ? normalizeOptionalString(nama_owner) : old.nama_owner;
+    old.no_hp_owner = no_hp_owner !== undefined ? normalizeOptionalString(no_hp_owner) : old.no_hp_owner;
+    old.gender_owner = gender_owner !== undefined ? normalizeGender(gender_owner) : old.gender_owner;
+    old.nama_pic = nama_pic !== undefined ? normalizeOptionalString(nama_pic) : old.nama_pic;
+    old.no_hp_pic = no_hp_pic !== undefined ? normalizeOptionalString(no_hp_pic) : old.no_hp_pic;
+    old.gender_pic = gender_pic !== undefined ? normalizeGender(gender_pic) : old.gender_pic;
     old.toko = toko ?? old.toko;
     old.grup = grup ?? old.grup;
     old.domain = domain ?? old.domain;
@@ -1053,7 +1116,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     old.program = programName ?? old.program;
     old.vb_online = vb_online ?? old.vb_online;
     old.biaya = finalBiaya;
-    old.tanggal = tanggal ? new Date(tanggal) : old.tanggal;
+    old.tanggal = parsedTanggal || old.tanggal;
     old.implementator = implementator ?? old.implementator;
     old.via = via ?? old.via;
     old.internal_kode = internal_kode ?? old.internal_kode;
@@ -1071,6 +1134,12 @@ export const updateSubscriber = async (req: Request, res: Response) => {
         no_ok: old.no_ok,
         nomor_telepon: old.nomor_telepon,
         sales: old.sales,
+        nama_owner: old.nama_owner,
+        no_hp_owner: old.no_hp_owner,
+        gender_owner: old.gender_owner,
+        nama_pic: old.nama_pic,
+        no_hp_pic: old.no_hp_pic,
+        gender_pic: old.gender_pic,
         toko: old.toko,
         grup: old.grup,
         domain: old.domain,
