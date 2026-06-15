@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.11] - 2026-06-15
+
+### Added
+- **User Management: Tambah User Baru**
+  - Ditambahkan endpoint `POST /api/users` untuk membuat user baru dari menu **User Management**.
+  - Form **User Management** sekarang memiliki tombol `Tambah User` dan dialog tambah user.
+  - Password user baru divalidasi minimal 6 karakter dan disimpan dalam bentuk hash.
+
+- **Perjalanan Dinas Pegawai: Dokumentasi Endpoint**
+  - Ditambahkan dokumentasi endpoint untuk auth, list perjalanan dinas, input item transaksi, upload gambar, penyelesaian perjalanan dinas, dan history perjalanan dinas.
+
+- **Subscriber: Informasi Owner & PIC**
+  - Ditambahkan field optional `Nama Owner`, `No HP Owner`, `Gender Owner`, `Nama PIC`, `No HP PIC`, dan `Gender PIC`.
+  - Field Owner & PIC dipindahkan ke bagian paling bawah form Subscriber dengan border atas dan label section `Informasi Owner & PIC`.
+
+- **Subscriber: Expand/Collapse All**
+  - Ditambahkan kontrol expand semua dan collapse semua data pada tabel Subscriber seperti fitur di Transaksi.
+
+### Changed
+- **Rekening: Multi Perusahaan**
+  - Data rekening disiapkan agar dapat terhubung ke lebih dari satu perusahaan.
+
+### Fixed
+- **Subscriber: Koreksi Tanggal Saat Edit**
+  - Perbaikan handling tanggal Subscriber agar input tanggal tidak mundur satu hari akibat perbedaan timezone saat proses edit.
+
 ## [1.6.10] - 2026-04-27
 
 ### Added

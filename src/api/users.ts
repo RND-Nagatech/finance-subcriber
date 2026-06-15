@@ -13,6 +13,11 @@ export async function fetchUsers(): Promise<User[]> {
   return res.data?.data ?? [];
 }
 
+export async function createUser(data: { username: string; name?: string; password: string; role: string }): Promise<User> {
+  const res = await axiosInstance.post('/users', data);
+  return res.data?.data;
+}
+
 export async function updateUser(id: string, data: { username?: string; name?: string; password?: string; role?: string }): Promise<User> {
   const res = await axiosInstance.put(`/users/${id}`, data);
   return res.data?.data;

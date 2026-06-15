@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { fetchUsers, updateUser, deleteUser, User } from '@/api/users';
+import { fetchUsers, createUser, updateUser, deleteUser, User } from '@/api/users';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,7 +47,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 
 interface UserFormData {
   username: string;
@@ -84,6 +84,20 @@ export default function Users() {
     queryFn: fetchUsers,
   });
 
+  // Create user
+  const createMutation = useMutation({
+    mutationFn: createUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('User berhasil ditambahkan!');
+      handleCloseModal();
+    },
+    onError: (error: any) => {
+      const serverMsg = error?.response?.data?.message;
+      toast.error(serverMsg || 'Gagal menambahkan user!');
+    },
+  });
+
   // Update user
   const updateMutation = useMutation({
     mutationFn: async (payload: { id: string; data: Partial<UserFormData> }) => {
@@ -115,7 +129,16 @@ export default function Users() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editId) return;
+
+    if (!editId) {
+      createMutation.mutate({
+        username: formData.username,
+        name: formData.name,
+        password: formData.password,
+        role: formData.role,
+      });
+      return;
+    }
 
     const updateData: Partial<UserFormData> = {};
     if (formData.username) updateData.username = formData.username;
@@ -129,6 +152,12 @@ export default function Users() {
   const handleEdit = (user: User) => {
     setEditId(user._id);
     setFormData({ username: user.username, name: user.name || '', password: '', role: user.role });
+    setModalOpen(true);
+  };
+
+  const handleAdd = () => {
+    setEditId(null);
+    setFormData({ username: '', name: '', password: '', role: 'user' });
     setModalOpen(true);
   };
 
@@ -155,6 +184,10 @@ export default function Users() {
             Manage registered users in the system
           </p>
         </div>
+        <Button onClick={handleAdd} className="gap-2">
+          <Plus className="h-4 w-4" />
+          Tambah User
+        </Button>
       </div>
 
       <Card>
@@ -224,13 +257,15 @@ export default function Users() {
         </CardContent>
       </Card>
 
-      {/* Edit User Dialog */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+      {/* Add/Edit User Dialog */}
+      <Dialog open={modalOpen} onOpenChange={(open) => open ? setModalOpen(true) : handleCloseModal()}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
+            <DialogTitle>{editId ? 'Edit User' : 'Tambah User'}</DialogTitle>
             <DialogDescription>
-              Update user information. Leave password blank to keep current password.
+              {editId
+                ? 'Update user information. Leave password blank to keep current password.'
+                : 'Tambahkan user baru yang dapat mengakses aplikasi.'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit}>
@@ -244,6 +279,7 @@ export default function Users() {
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   className="col-span-3"
+                  required
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -284,7 +320,9 @@ export default function Users() {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="col-span-3"
-                  placeholder="Leave blank to keep current password"
+                  placeholder={editId ? 'Leave blank to keep current password' : 'Minimal 6 karakter'}
+                  required={!editId}
+                  minLength={editId ? undefined : 6}
                 />
               </div>
             </div>
@@ -292,8 +330,10 @@ export default function Users() {
               <Button type="button" variant="outline" onClick={handleCloseModal}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                {createMutation.isPending || updateMutation.isPending
+                  ? 'Saving...'
+                  : editId ? 'Save Changes' : 'Tambah User'}
               </Button>
             </DialogFooter>
           </form>

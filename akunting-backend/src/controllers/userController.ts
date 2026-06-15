@@ -12,6 +12,45 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
+export const createUser = async (req: Request, res: Response) => {
+  try {
+    const { username, name, password, role } = req.body;
+    const normalizedUsername = String(username || '').trim();
+    const normalizedPassword = String(password || '');
+    const normalizedName = String(name || '').trim();
+
+    if (!normalizedUsername || !normalizedPassword || !role) {
+      return res.status(400).json({ message: 'Username, password, dan role wajib diisi.' });
+    }
+
+    if (normalizedPassword.length < 6) {
+      return res.status(400).json({ message: 'Password minimal 6 karakter.' });
+    }
+
+    const exists = await User.findOne({ username: normalizedUsername });
+    if (exists) {
+      return res.status(400).json({ message: 'Username sudah digunakan.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(normalizedPassword, 10);
+    const user = await User.create({
+      username: normalizedUsername,
+      name: normalizedName || undefined,
+      password: hashedPassword,
+      role,
+      credentials: [],
+    });
+
+    const sanitizedUser = await User.findById(user._id, { password: 0, credentials: 0, currentChallenge: 0 });
+    return res.status(201).json({ success: true, data: sanitizedUser });
+  } catch (err: any) {
+    if (err?.name === 'ValidationError') {
+      return res.status(400).json({ message: 'Data user tidak valid.', err });
+    }
+    return res.status(500).json({ message: 'Server error', err });
+  }
+};
+
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
