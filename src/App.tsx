@@ -41,6 +41,11 @@ import PerjalananDinas from "./pages/PerjalananDinas";
 import PerjalananDinasTransaksi from "./pages/PerjalananDinasTransaksi";
 import PerjalananDinasDana from "./pages/PerjalananDinasDana";
 import PerjalananDinasAudit from "./pages/PerjalananDinasAudit";
+import {
+  PerjalananDinasMarketingPage,
+  PerjalananDinasPrivacyPolicyPage,
+  PerjalananDinasSupportPage,
+} from "./pages/PublicPerjalananDinasApp";
 
 const queryClient = new QueryClient();
 
@@ -86,6 +91,9 @@ const App = () => (
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/perjalanan-dinas-app" element={<PerjalananDinasMarketingPage />} />
+          <Route path="/perjalanan-dinas-app/support" element={<PerjalananDinasSupportPage />} />
+          <Route path="/perjalanan-dinas-app/privacy-policy" element={<PerjalananDinasPrivacyPolicyPage />} />
           
           <Route
             path="/dashboard-v2"
@@ -337,12 +345,15 @@ function FiscalYearInitializer() {
   // This component runs early and ensures the global fiscal year
   // is aligned with server's active fiscal year.
   const setFiscalYear = useAppStore(s => s.setFiscalYear);
+  const isPublicPerjalananDinasApp = window.location.pathname.startsWith('/perjalanan-dinas-app');
   const { data: activeYear } = useQuery({
     queryKey: ['fiscal-active'],
     queryFn: fetchActiveFiscalYear,
+    enabled: !isPublicPerjalananDinasApp,
   });
 
   useEffect(() => {
+    if (isPublicPerjalananDinasApp) return;
     console.debug('[FiscalYearInitializer] fetched activeYear:', activeYear);
     if (activeYear) {
       console.debug('[FiscalYearInitializer] setting fiscalYear to', Number(activeYear));
@@ -350,7 +361,7 @@ function FiscalYearInitializer() {
     } else {
       console.debug('[FiscalYearInitializer] no activeYear returned from server');
     }
-  }, [activeYear, setFiscalYear]);
+  }, [activeYear, isPublicPerjalananDinasApp, setFiscalYear]);
 
   return null;
 }

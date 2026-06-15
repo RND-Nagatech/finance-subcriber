@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Perjalanan Dinas Pegawai: Dokumentasi Endpoint**
   - Ditambahkan dokumentasi endpoint untuk auth, list perjalanan dinas, input item transaksi, upload gambar, penyelesaian perjalanan dinas, dan history perjalanan dinas.
 
+- **Perjalanan Dinas App Store Public URLs**
+  - Ditambahkan halaman publik `/perjalanan-dinas-app` sebagai Marketing URL.
+  - Ditambahkan halaman publik `/perjalanan-dinas-app/support` sebagai Support URL.
+  - Ditambahkan halaman publik `/perjalanan-dinas-app/privacy-policy` sebagai Privacy Policy URL.
+
 - **Subscriber: Informasi Owner & PIC**
   - Ditambahkan field optional `Nama Owner`, `No HP Owner`, `Gender Owner`, `Nama PIC`, `No HP PIC`, dan `Gender PIC`.
   - Field Owner & PIC dipindahkan ke bagian paling bawah form Subscriber dengan border atas dan label section `Informasi Owner & PIC`.
