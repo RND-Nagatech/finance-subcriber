@@ -279,7 +279,7 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* <div className="text-center pt-4">
+          <div className="text-center pt-4">
             <p className="text-sm text-gray-600">
               Don't have an account?{" "}
               <Link
@@ -289,7 +289,7 @@ export default function Login() {
                 Sign up here
               </Link>
             </p>
-          </div> */}
+          </div>
         </CardContent>
       </Card>
     </div>
