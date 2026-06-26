@@ -208,7 +208,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
 
   const role = user?.role || 'user';
   const isOffice = ['admin', 'finance', 'corsec', 'superuser'].includes(role);
-  const isAudit = ['corsec', 'superuser'].includes(role);
+  const isAudit = ['finance', 'corsec', 'superuser'].includes(role);
   const canPost = ['finance', 'corsec', 'superuser'].includes(role);
 
   const headersQuery = useQuery({
