@@ -23,7 +23,7 @@ type ReqUser = {
 };
 
 const OFFICE_ROLES = new Set(['admin', 'finance', 'corsec', 'superuser']);
-const AUDIT_ROLES = new Set(['corsec', 'superuser']);
+const AUDIT_ROLES = new Set(['finance', 'corsec', 'superuser']);
 const POST_ROLES = new Set(['finance', 'corsec', 'superuser']);
 
 function httpError(message: string, statusCode: number) {
