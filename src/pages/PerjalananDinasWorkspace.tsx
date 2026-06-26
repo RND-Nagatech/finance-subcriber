@@ -29,6 +29,7 @@ import {
   type PerjalananItem,
   type PerjalananItemAuditStatus,
 } from '@/api/perjalananDinas';
+import { resolveAttachmentUrl } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -537,9 +538,8 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
     []
   );
 
-  const previewBaseUrl = (import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:5001');
   const activePreview = previewAttachments[previewIndex];
-  const activePreviewUrl = activePreview ? `${previewBaseUrl}${activePreview.path}` : '';
+  const activePreviewUrl = activePreview ? resolveAttachmentUrl(activePreview.path) : '';
   const activePreviewName = activePreview?.original_name || activePreview?.path?.split('/').pop() || '';
   const isPdfPreview = /\.pdf($|\?)/i.test(activePreviewUrl) || activePreviewName.toLowerCase().endsWith('.pdf');
 
@@ -1088,7 +1088,7 @@ export default function PerjalananDinasWorkspace({ view }: Props) {
                         <AttachmentUploader tripId={selectedTripId} itemId={it._id} onDone={invalidateSelectedTrip} disabled={transaksiInputLocked} />
                         {(it.attachments || []).slice(0, 2).map((att, idx) => (
                           <div key={`${att.path}-${idx}`} className="flex items-center justify-between bg-gray-50 rounded p-2 text-xs">
-                            <a href={`${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:5001'}${att.path}`} target="_blank" rel="noreferrer" className="text-blue-600 underline truncate">
+                            <a href={resolveAttachmentUrl(att.path)} target="_blank" rel="noreferrer" className="text-blue-600 underline truncate">
                               {att.original_name || att.path.split('/').pop()}
                             </a>
                             <Button variant="ghost" size="sm" disabled={transaksiInputLocked} className="text-red-600" onClick={async () => {
