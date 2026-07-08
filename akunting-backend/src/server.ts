@@ -16,11 +16,17 @@ import vpsRoutes from './routes/vpsRoutes';
 import vpsTTRoutes from './routes/vpsTTRoutes';
 import userRoutes from './routes/userRoutes';
 import perjalananDinasRoutes from './routes/perjalananDinasRoutes';
+import assetRoutes from './routes/assetRoutes';
 import { errorLoggerMiddleware } from './middleware/errorLoggerMiddleware';
 
 // Import models to ensure they are registered with Mongoose
 import './models/TtFinanceDetail';
 import './models/RiwayatSaldoRekening';
+import './models/Asset';
+import './models/AssetType';
+import './models/AssetLedger';
+import './models/AssetTransfer';
+import './models/AssetTypePriceHistory';
 
 const app = express();
 const PORT = process.env.PORT || 5003;
@@ -64,6 +70,7 @@ app.use('/api/vps', vpsRoutes);
 app.use('/api/tt-vps', vpsTTRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/perjalanan-dinas', perjalananDinasRoutes);
+app.use('/api', assetRoutes);
 
 // Error logging middleware
 app.use(errorLoggerMiddleware);
@@ -85,4 +92,3 @@ connectDB().then(() => {
   console.error('❌ Failed to connect DB', err);
   process.exit(1);
 });
-

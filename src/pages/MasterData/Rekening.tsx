@@ -310,6 +310,16 @@ export default function Rekening() {
     return rows;
   }, [rekeningList, filterBank, searchQuery]);
 
+  const totalSaldoAll = useMemo(
+    () => rekeningList.reduce((total, rekening) => total + Number(rekening.saldo || 0), 0),
+    [rekeningList]
+  );
+
+  const totalSaldoFiltered = useMemo(
+    () => filteredRekeningList.reduce((total, rekening) => total + Number(rekening.saldo || 0), 0),
+    [filteredRekeningList]
+  );
+
   const totalPages = Math.max(1, Math.ceil(filteredRekeningList.length / pageSize));
   const pagedRekeningList = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -370,6 +380,28 @@ export default function Rekening() {
             </Button>
           </div>
         </div>
+        {canViewSaldo && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-blue-200 bg-white/80 p-5 shadow-sm">
+              <div className="text-sm font-semibold text-blue-700">Total Saldo Ditampilkan</div>
+              <div className="mt-2 text-3xl font-bold text-gray-950">
+                Rp {formatCurrency(totalSaldoFiltered)}
+              </div>
+              <div className="mt-1 text-sm text-gray-500">
+                Dari {filteredRekeningList.length} rekening sesuai filter saat ini
+              </div>
+            </div>
+            <div className="rounded-lg border border-indigo-200 bg-white/80 p-5 shadow-sm">
+              <div className="text-sm font-semibold text-indigo-700">Total Saldo Semua Rekening</div>
+              <div className="mt-2 text-3xl font-bold text-gray-950">
+                Rp {formatCurrency(totalSaldoAll)}
+              </div>
+              <div className="mt-1 text-sm text-gray-500">
+                Dari {rekeningList.length} rekening aktif
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white/70 rounded-lg border-2 border-dashed border-blue-200 p-4 flex flex-wrap gap-3 items-end">
           <div className="flex flex-col">

@@ -26,6 +26,7 @@ import Program from "./pages/MasterData/Program";
 import Subscriber from "./pages/Subscriber";
 import CustomDashboard from "./pages/MasterData/CustomDashboard";
 import Transaksi from "./pages/Transaksi";
+import Assets from "./pages/Assets";
 import TutupBuku from "./pages/TutupBuku";
 import NotFound from "./pages/NotFound";
 import PublicDashboard from "./pages/public-dashboard";
@@ -233,6 +234,16 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <Transaksi />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Assets />
                 </MainLayout>
               </ProtectedRoute>
             }

@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
 import { fetchUsers } from '@/api/users';
+import { fetchAssets, type AssetItem } from '@/api/assets';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import {
@@ -78,6 +79,13 @@ interface Transaksi {
   perjalanan_dinas_id?: string;
   is_special_transaction?: boolean;
   transaction_mode?: 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY';
+  source_type?: 'REKENING' | 'ASSET';
+  asset_id?: string;
+  asset_code?: string;
+  asset_name?: string;
+  asset_qty?: number;
+  asset_unit?: string;
+  asset_unit_price_snapshot?: number;
 }
 
 
@@ -314,6 +322,11 @@ export default function Transaksi() {
     },
   });
 
+  const { data: assetList = [] } = useQuery({
+    queryKey: ['assets'],
+    queryFn: fetchAssets,
+  });
+
   // Fetch rekening for validation dialog
   const { data: validationRekening } = useQuery({
     queryKey: ['rekening-validation', validateRow?.rekening_id],
@@ -330,12 +343,16 @@ export default function Transaksi() {
     enabled: !!validateRow?.rekening_id && validateDialogOpen,
   });
 
+  const validationAsset = validateRow?.source_type === 'ASSET' && validateRow?.asset_id
+    ? assetList.find((asset: AssetItem) => asset._id === validateRow.asset_id)
+    : null;
+
     // Handler untuk validasi data hasil attachment
     // Handler untuk buka dialog validasi
     const handleValidate = (row: any) => {
       // Cari rekening_id berdasarkan kode_bank dan no_rekening jika belum ada
       let rekening_id = row.rekening_id;
-      if (!rekening_id && row.kode_bank && row.no_rekening) {
+      if (row.source_type !== 'ASSET' && !rekening_id && row.kode_bank && row.no_rekening) {
         const rekening = rekeningList.find((r) => r.kode_bank === row.kode_bank && r.no_rekening === row.no_rekening);
         rekening_id = rekening?._id;
       }
@@ -378,6 +395,8 @@ export default function Transaksi() {
         if (refetch) refetch();
         // Invalidate rekening queries to update saldo
         queryClient.invalidateQueries({ queryKey: ['rekening-all'] });
+        queryClient.invalidateQueries({ queryKey: ['assets'] });
+        queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       } catch (err: any) {
         toast.error(err?.response?.data?.message || 'Gagal validasi data');
       } finally {
@@ -586,6 +605,9 @@ export default function Transaksi() {
             keterangan: detail.keterangan || '',
             is_special_transaction: Boolean(detail.is_special_transaction),
             transaction_mode: detail.transaction_mode || (detail.is_special_transaction ? 'SPECIAL' : 'NORMAL'),
+            source_type: detail.source_type || 'REKENING',
+            asset_id: getReferenceId(detail.asset_id),
+            asset_qty: detail.asset_qty ?? '',
             perusahaan_id: perusahaanList.find((p) => p.nama_perusahaan === detail.nama_perusahaan)?._id || '',
             rekening_id: rekeningList.find((r) => r.no_rekening === detail.no_rekening && r.kode_bank === detail.kode_bank)?._id || '',
           });
@@ -624,8 +646,16 @@ export default function Transaksi() {
           }
           const perusahaanObj = perusahaanList.find((p) => p._id === editData.perusahaan_id);
           let rekeningObj = null;
-          if (editData.rekening_id && editData.rekening_id !== 'none') {
+          const editSourceType = editData.source_type || 'REKENING';
+          if (editSourceType === 'REKENING' && editData.rekening_id && editData.rekening_id !== 'none') {
             rekeningObj = rekeningList.find((r) => r._id === editData.rekening_id);
+          }
+          const editAssetQty = Number(editData.asset_qty);
+          if (editSourceType === 'ASSET') {
+            if (!editData.asset_id || Number.isNaN(editAssetQty) || editAssetQty <= 0) {
+              toast.error('Asset dan qty asset wajib diisi dengan benar!');
+              return;
+            }
           }
           const payload = {
             kategori: editData.kategori,
@@ -640,13 +670,18 @@ export default function Transaksi() {
             transaction_mode: editData.transaction_mode || (editData.is_special_transaction ? 'SPECIAL' : 'NORMAL'),
             kode_perusahaan: perusahaanObj?.kode_perusahaan || '',
             nama_perusahaan: perusahaanObj?.nama_perusahaan || '',
-            kode_bank: rekeningObj?.kode_bank || '',
-            no_rekening: rekeningObj?.no_rekening || '',
+            source_type: editSourceType,
+            kode_bank: editSourceType === 'REKENING' ? (rekeningObj?.kode_bank || '') : '',
+            no_rekening: editSourceType === 'REKENING' ? (rekeningObj?.no_rekening || '') : '',
+            asset_id: editSourceType === 'ASSET' ? editData.asset_id : undefined,
+            asset_qty: editSourceType === 'ASSET' ? editAssetQty : undefined,
           };
           await axiosInstance.put(`/transaksi/${editData.id}`, payload);
           setEditModalOpen(false);
           setEditData(null);
           queryClient.invalidateQueries({ queryKey: ['transaksi'] });
+          queryClient.invalidateQueries({ queryKey: ['assets'] });
+          queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
           toast.success('Transaksi berhasil diupdate!');
         } catch (err: any) {
           const msg = err?.response?.data?.message || 'Gagal update transaksi.';
@@ -688,6 +723,8 @@ export default function Transaksi() {
             }
           });
           queryClient.invalidateQueries({ queryKey: ['transaksi'] });
+          queryClient.invalidateQueries({ queryKey: ['assets'] });
+          queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
           toast.success('Transaksi berhasil dihapus!');
           setDeleteDialogOpen(false);
           setDeleteData(null);
@@ -751,6 +788,9 @@ export default function Transaksi() {
     tanggal: '',
     perusahaan_id: '', // new
     rekening_id: '',   // new
+    source_type: 'REKENING' as 'REKENING' | 'ASSET',
+    asset_id: '',
+    asset_qty: '',
     is_special_transaction: false,
     transaction_mode: 'NORMAL' as 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY',
   });
@@ -814,6 +854,7 @@ export default function Transaksi() {
       );
     });
   }, [rekeningList, formData.perusahaan_id, selectedAddPerusahaan]);
+  const filteredAddAssetList = useMemo(() => assetList, [assetList]);
   const selectedEditPerusahaan = useMemo(
     () => perusahaanList.find((p) => p._id === editData?.perusahaan_id),
     [perusahaanList, editData?.perusahaan_id]
@@ -831,9 +872,18 @@ export default function Transaksi() {
       );
     });
   }, [rekeningList, editData?.perusahaan_id, selectedEditPerusahaan]);
+  const filteredEditAssetList = useMemo(() => assetList, [assetList]);
   const selectedAddRekening =
     formData.rekening_id && formData.rekening_id !== 'none'
       ? filteredAddRekeningList.find((r) => r._id === formData.rekening_id) || rekeningList.find((r) => r._id === formData.rekening_id)
+      : null;
+  const selectedAddAsset =
+    formData.asset_id
+      ? filteredAddAssetList.find((asset: AssetItem) => asset._id === formData.asset_id) || assetList.find((asset: AssetItem) => asset._id === formData.asset_id)
+      : null;
+  const selectedEditAsset =
+    editData?.asset_id
+      ? filteredEditAssetList.find((asset: AssetItem) => asset._id === editData.asset_id) || assetList.find((asset: AssetItem) => asset._id === editData.asset_id)
       : null;
 
   // Persist selected bulan per fiscal year in localStorage so refresh keeps selection
@@ -876,11 +926,16 @@ export default function Transaksi() {
       if (!prev.perusahaan_id) {
         return prev.rekening_id ? { ...prev, rekening_id: '' } : prev;
       }
+      if (prev.source_type === 'ASSET') {
+        if (!prev.asset_id) return prev;
+        const assetExists = filteredAddAssetList.some((asset: AssetItem) => asset._id === prev.asset_id);
+        return assetExists ? prev : { ...prev, asset_id: '' };
+      }
       if (!prev.rekening_id || prev.rekening_id === 'none') return prev;
       const exists = filteredAddRekeningList.some((r: any) => r._id === prev.rekening_id);
       return exists ? prev : { ...prev, rekening_id: '' };
     });
-  }, [formData.perusahaan_id, filteredAddRekeningList]);
+  }, [formData.perusahaan_id, formData.source_type, filteredAddRekeningList, filteredAddAssetList]);
 
   useEffect(() => {
     if (!editData) return;
@@ -889,11 +944,16 @@ export default function Transaksi() {
       if (!prev.perusahaan_id) {
         return prev.rekening_id ? { ...prev, rekening_id: 'none' } : prev;
       }
+      if ((prev.source_type || 'REKENING') === 'ASSET') {
+        if (!prev.asset_id) return prev;
+        const assetExists = filteredEditAssetList.some((asset: AssetItem) => asset._id === prev.asset_id);
+        return assetExists ? prev : { ...prev, asset_id: '' };
+      }
       if (!prev.rekening_id || prev.rekening_id === 'none') return prev;
       const exists = filteredEditRekeningList.some((r: any) => r._id === prev.rekening_id);
       return exists ? prev : { ...prev, rekening_id: 'none' };
     });
-  }, [editData?.perusahaan_id, filteredEditRekeningList]);
+  }, [editData?.perusahaan_id, editData?.source_type, filteredEditRekeningList, filteredEditAssetList]);
   // ...existing code...
 
   // Fetch categories
@@ -1246,9 +1306,17 @@ export default function Transaksi() {
     const subKategoriObj = subCategories.find((sk) => sk._id === formData.subkategori_id);
     const kategoriObj = categories.find((k) => k._id === formData.kategori_id);
     const perusahaanObj = perusahaanList.find((p) => p._id === formData.perusahaan_id);
+    const sourceType = formData.source_type || 'REKENING';
     let rekeningObj = null;
-    if (formData.rekening_id && formData.rekening_id !== 'none') {
+    if (sourceType === 'REKENING' && formData.rekening_id && formData.rekening_id !== 'none') {
       rekeningObj = rekeningList.find((r) => r._id === formData.rekening_id);
+    }
+    const assetQty = Number(formData.asset_qty);
+    if (sourceType === 'ASSET') {
+      if (!formData.asset_id || Number.isNaN(assetQty) || assetQty <= 0) {
+        toast.error('Asset dan qty asset wajib diisi dengan benar!');
+        return;
+      }
     }
     const payload: any = {
       kategori: kategoriObj?.kategori || '',
@@ -1264,9 +1332,11 @@ export default function Transaksi() {
       // Properti perusahaan
       kode_perusahaan: perusahaanObj?.kode_perusahaan || '',
       nama_perusahaan: perusahaanObj?.nama_perusahaan || '',
-      // Properti rekening
-      kode_bank: rekeningObj?.kode_bank || '',
-      no_rekening: rekeningObj?.no_rekening || '',
+      source_type: sourceType,
+      kode_bank: sourceType === 'REKENING' ? (rekeningObj?.kode_bank || '') : '',
+      no_rekening: sourceType === 'REKENING' ? (rekeningObj?.no_rekening || '') : '',
+      asset_id: sourceType === 'ASSET' ? formData.asset_id : undefined,
+      asset_qty: sourceType === 'ASSET' ? assetQty : undefined,
     };
     setCreatingWithAttachments(true);
     try {
@@ -1305,6 +1375,9 @@ export default function Transaksi() {
         tanggal: '',
         perusahaan_id: '',
         rekening_id: '',
+        source_type: 'REKENING',
+        asset_id: '',
+        asset_qty: '',
         is_special_transaction: false,
         transaction_mode: 'NORMAL',
       });
@@ -1340,6 +1413,9 @@ export default function Transaksi() {
       tanggal: '',
       perusahaan_id: '',
       rekening_id: '',
+      source_type: 'REKENING',
+      asset_id: '',
+      asset_qty: '',
       is_special_transaction: false,
       transaction_mode: 'NORMAL',
     });
@@ -1707,29 +1783,86 @@ export default function Transaksi() {
                         </SelectContent>
                       </Select>
                     </div>
-                    {/* Rekening Dropdown */}
                     <div className="grid gap-2">
-                      <Label htmlFor="rekening_id" className="text-sm font-semibold text-gray-700">No Rekening</Label>
+                      <Label htmlFor="source_type" className="text-sm font-semibold text-gray-700">Sumber Transaksi</Label>
                       <Select
-                        value={formData.rekening_id}
-                        onValueChange={value => setFormData({ ...formData, rekening_id: value })}
-                        required={false}
-                        disabled={!formData.perusahaan_id}
+                        value={formData.source_type}
+                        onValueChange={(value: 'REKENING' | 'ASSET') => setFormData({
+                          ...formData,
+                          source_type: value,
+                          rekening_id: value === 'REKENING' ? formData.rekening_id : '',
+                          asset_id: value === 'ASSET' ? formData.asset_id : '',
+                          asset_qty: value === 'ASSET' ? formData.asset_qty : '',
+                        })}
                       >
                         <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
-                          <SelectValue placeholder={formData.perusahaan_id ? 'Pilih rekening (opsional)' : 'Pilih perusahaan dulu'} />
+                          <SelectValue placeholder="Pilih sumber" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
-                          {filteredAddRekeningList.map((r) => (
-                            <SelectItem key={r._id} value={r._id}>
-                              {r.kode_bank} - {r.no_rekening}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="REKENING">Rekening</SelectItem>
+                          <SelectItem value="ASSET">Asset</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    {selectedAddRekening && (
+                    {formData.source_type === 'REKENING' && (
+                      <div className="grid gap-2">
+                        <Label htmlFor="rekening_id" className="text-sm font-semibold text-gray-700">No Rekening</Label>
+                        <Select
+                          value={formData.rekening_id}
+                          onValueChange={value => setFormData({ ...formData, rekening_id: value })}
+                          required={false}
+                          disabled={!formData.perusahaan_id}
+                        >
+                          <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                            <SelectValue placeholder={formData.perusahaan_id ? 'Pilih rekening (opsional)' : 'Pilih perusahaan dulu'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
+                            {filteredAddRekeningList.map((r) => (
+                              <SelectItem key={r._id} value={r._id}>
+                                {r.kode_bank} - {r.no_rekening}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {formData.source_type === 'ASSET' && (
+                      <>
+                        <div className="grid gap-2">
+                          <Label htmlFor="asset_id" className="text-sm font-semibold text-gray-700">Asset</Label>
+                          <Select
+                            value={formData.asset_id}
+                            onValueChange={value => setFormData({ ...formData, asset_id: value })}
+                          >
+                            <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                              <SelectValue placeholder="Pilih asset" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredAddAssetList.map((asset: AssetItem) => (
+                                <SelectItem key={asset._id} value={asset._id}>
+                                  {asset.asset_code} - {asset.asset_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="asset_qty" className="text-sm font-semibold text-gray-700">Qty Asset</Label>
+                          <Input
+                            id="asset_qty"
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={formData.asset_qty}
+                            onChange={e => setFormData({ ...formData, asset_qty: e.target.value })}
+                            placeholder={selectedAddAsset?.unit ? `Masukkan qty (${selectedAddAsset.unit})` : 'Masukkan qty'}
+                            className="border-2 border-gray-200 transition-all duration-200"
+                          />
+                        </div>
+                      </>
+                    )}
+                    {formData.source_type === 'REKENING' && selectedAddRekening && (
                       <div className="md:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3">
                         <div className="flex items-start justify-between gap-4">
                           <div>
@@ -1744,6 +1877,25 @@ export default function Transaksi() {
                             <p>{selectedAddRekening.kode_bank || '-'}</p>
                             <p>{selectedAddRekening.no_rekening || '-'}</p>
                             <p>{selectedAddRekening.nama_rekening || '-'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {formData.source_type === 'ASSET' && selectedAddAsset && (
+                      <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                              Qty Asset Saat Ini
+                            </p>
+                            <p className="mt-1 text-2xl font-bold text-amber-800">
+                              {Number(selectedAddAsset.qty || 0).toLocaleString('id-ID')} {selectedAddAsset.unit || ''}
+                            </p>
+                          </div>
+                          <div className="text-right text-xs text-amber-700">
+                            <p>{selectedAddAsset.asset_code || '-'}</p>
+                            <p>{selectedAddAsset.asset_name || '-'}</p>
+                            <p>{formatCurrency(Number(selectedAddAsset.current_price || 0))}</p>
                           </div>
                         </div>
                       </div>
@@ -2216,14 +2368,31 @@ export default function Transaksi() {
                             <span className="text-[11px] text-slate-500 leading-tight">Perusahaan</span>
                             <span className="font-medium text-gray-900 truncate">{row.nama_perusahaan || '-'}</span>
                           </div>
-                          <div className="flex flex-col min-w-[90px]">
-                            <span className="text-[11px] text-slate-500 leading-tight">Kode Bank</span>
-                            <span className="font-medium text-gray-900 truncate">{row.kode_bank || '-'}</span>
-                          </div>
-                          <div className="flex flex-col min-w-[110px]">
-                            <span className="text-[11px] text-slate-500 leading-tight">No Rekening</span>
-                            <span className="font-medium text-gray-900 truncate">{row.no_rekening || '-'}</span>
-                          </div>
+                          {row.source_type === 'ASSET' ? (
+                            <>
+                              <div className="flex flex-col min-w-[120px]">
+                                <span className="text-[11px] text-slate-500 leading-tight">Asset</span>
+                                <span className="font-medium text-amber-800 truncate">{row.asset_code || row.asset_name || '-'}</span>
+                              </div>
+                              <div className="flex flex-col min-w-[110px]">
+                                <span className="text-[11px] text-slate-500 leading-tight">Qty Asset</span>
+                                <span className="font-medium text-amber-800 truncate">
+                                  {row.asset_qty ? `${Number(row.asset_qty).toLocaleString('id-ID')} ${row.asset_unit || ''}` : '-'}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex flex-col min-w-[90px]">
+                                <span className="text-[11px] text-slate-500 leading-tight">Kode Bank</span>
+                                <span className="font-medium text-gray-900 truncate">{row.kode_bank || '-'}</span>
+                              </div>
+                              <div className="flex flex-col min-w-[110px]">
+                                <span className="text-[11px] text-slate-500 leading-tight">No Rekening</span>
+                                <span className="font-medium text-gray-900 truncate">{row.no_rekening || '-'}</span>
+                              </div>
+                            </>
+                          )}
                           <div className="flex flex-col min-w-[90px]">
                             <span className="text-[11px] text-slate-500 leading-tight">Input By</span>
                             <span className="font-medium text-gray-900 truncate">{row.input_by || row.created_by || '-'}</span>
@@ -2359,28 +2528,85 @@ export default function Transaksi() {
                         </SelectContent>
                       </Select>
                     </div>
-                    {/* Rekening Dropdown (Edit) */}
                     <div className="grid gap-2">
-                      <Label htmlFor="edit-rekening_id" className="text-sm font-semibold text-gray-700">No Rekening</Label>
+                      <Label htmlFor="edit-source_type" className="text-sm font-semibold text-gray-700">Sumber Transaksi</Label>
                       <Select
-                        value={editData?.rekening_id || 'none'}
-                        onValueChange={value => setEditData({ ...editData, rekening_id: value })}
-                        required={false}
-                        disabled={!editData?.perusahaan_id}
+                        value={editData?.source_type || 'REKENING'}
+                        onValueChange={(value: 'REKENING' | 'ASSET') => setEditData({
+                          ...editData,
+                          source_type: value,
+                          rekening_id: value === 'REKENING' ? editData.rekening_id : 'none',
+                          asset_id: value === 'ASSET' ? editData.asset_id : '',
+                          asset_qty: value === 'ASSET' ? editData.asset_qty : '',
+                        })}
                       >
                         <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
-                          <SelectValue placeholder={editData?.perusahaan_id ? 'Pilih rekening (opsional)' : 'Pilih perusahaan dulu'} />
+                          <SelectValue placeholder="Pilih sumber" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
-                          {filteredEditRekeningList.map((r) => (
-                            <SelectItem key={r._id} value={r._id}>
-                              {r.kode_bank} - {r.no_rekening}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="REKENING">Rekening</SelectItem>
+                          <SelectItem value="ASSET">Asset</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+                    {(editData?.source_type || 'REKENING') === 'REKENING' && (
+                      <div className="grid gap-2">
+                        <Label htmlFor="edit-rekening_id" className="text-sm font-semibold text-gray-700">No Rekening</Label>
+                        <Select
+                          value={editData?.rekening_id || 'none'}
+                          onValueChange={value => setEditData({ ...editData, rekening_id: value })}
+                          required={false}
+                          disabled={!editData?.perusahaan_id}
+                        >
+                          <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                            <SelectValue placeholder={editData?.perusahaan_id ? 'Pilih rekening (opsional)' : 'Pilih perusahaan dulu'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">(Kosongkan jika tidak ada)</SelectItem>
+                            {filteredEditRekeningList.map((r) => (
+                              <SelectItem key={r._id} value={r._id}>
+                                {r.kode_bank} - {r.no_rekening}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {(editData?.source_type || 'REKENING') === 'ASSET' && (
+                      <>
+                        <div className="grid gap-2">
+                          <Label htmlFor="edit-asset_id" className="text-sm font-semibold text-gray-700">Asset</Label>
+                          <Select
+                            value={editData?.asset_id || ''}
+                            onValueChange={value => setEditData({ ...editData, asset_id: value })}
+                          >
+                            <SelectTrigger className="border-2 border-gray-200 transition-all duration-200">
+                              <SelectValue placeholder="Pilih asset" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredEditAssetList.map((asset: AssetItem) => (
+                                <SelectItem key={asset._id} value={asset._id}>
+                                  {asset.asset_code} - {asset.asset_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="edit-asset_qty" className="text-sm font-semibold text-gray-700">Qty Asset</Label>
+                          <Input
+                            id="edit-asset_qty"
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={editData?.asset_qty || ''}
+                            onChange={e => setEditData({ ...editData, asset_qty: e.target.value })}
+                            placeholder={selectedEditAsset?.unit ? `Masukkan qty (${selectedEditAsset.unit})` : 'Masukkan qty'}
+                            className="border-2 border-gray-200 transition-all duration-200"
+                          />
+                        </div>
+                      </>
+                    )}
                     {/* Tanggal */}
                     <div className="grid gap-2">
                       <Label htmlFor="edit-tanggal" className="text-sm font-semibold text-gray-700">Tanggal</Label>
@@ -2780,7 +3006,41 @@ export default function Transaksi() {
           )}
 
           {/* Proyeksi Saldo */}
-          {validationRekening && validateRow ? (
+          {validateRow?.source_type === 'ASSET' && validationAsset ? (
+            (() => {
+              const qtyTransaksi = Number(validateRow.asset_qty || 0);
+              const deltaQty = validateRow.kategori === 'PENDAPATAN' ? qtyTransaksi : -qtyTransaksi;
+              const isPenambahan = deltaQty >= 0;
+              const qtyAkhir = Number(validationAsset.qty || 0) + deltaQty;
+              return (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                  <h3 className="text-m font-semibold text-amber-900 mb-2">Proyeksi Qty Asset</h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Asset:</span>
+                      <span className="font-medium">{validationAsset.asset_code} - {validationAsset.asset_name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Qty Awal:</span>
+                      <span className="font-medium">{Number(validationAsset.qty || 0).toLocaleString('id-ID')} {validationAsset.unit || validateRow.asset_unit || ''}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>{isPenambahan ? 'Penambahan' : 'Pengurangan'}:</span>
+                      <span className={`font-medium ${isPenambahan ? 'text-green-600' : 'text-red-600'}`}>
+                        {isPenambahan ? '+' : '-'}{Math.abs(deltaQty).toLocaleString('id-ID')} {validationAsset.unit || validateRow.asset_unit || ''}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-amber-300 pt-1">
+                      <span className="font-semibold">Qty Akhir:</span>
+                      <span className="font-semibold text-amber-900">
+                        {qtyAkhir.toLocaleString('id-ID')} {validationAsset.unit || validateRow.asset_unit || ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
+          ) : validationRekening && validateRow ? (
             (() => {
               const nilaiTransaksi = Number(validateRow.nilai || 0);
               const deltaSaldo = validateRow.kategori === 'PENDAPATAN' ? nilaiTransaksi : -nilaiTransaksi;
