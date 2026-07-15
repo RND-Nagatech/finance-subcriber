@@ -28,12 +28,28 @@ const getAuditUserId = (req: Request) => {
   return 'system';
 };
 
-// Helper function to generate next kode (increment from last active record)
-const generateNextKode = async (model: any): Promise<string> => {
-  const lastDoc = await model.findOne({ $or: [{ status_aktv: true }, { active: true }] }).sort({ kode: -1 });
-  if (!lastDoc || !lastDoc.kode) return '001';
-  const lastNum = parseInt(lastDoc.kode, 10);
-  if (isNaN(lastNum)) return '001';
+// Helper function to generate next kode from the highest numeric kode in the collection.
+const generateNextKode = async (model: any, field = 'kode'): Promise<string> => {
+  const [lastDoc] = await model.aggregate([
+    {
+      $addFields: {
+        kode_number: {
+          $convert: {
+            input: `$${field}`,
+            to: 'int',
+            onError: null,
+            onNull: null,
+          },
+        },
+      },
+    },
+    { $match: { kode_number: { $ne: null } } },
+    { $sort: { kode_number: -1 } },
+    { $limit: 1 },
+    { $project: { kode_number: 1 } },
+  ]);
+
+  const lastNum = Number(lastDoc?.kode_number || 0);
   const nextNum = lastNum + 1;
   return nextNum.toString().padStart(3, '0');
 };
@@ -965,6 +981,13 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
 
     const userId = resolveUserId(req);
     const finalKode = await generateNextKode(Subscriber);
+    const requestedInternalKode = normalizeOptionalString(internal_kode);
+    const internalKodeExists = requestedInternalKode
+      ? await Subscriber.exists({ internal_kode: requestedInternalKode })
+      : null;
+    const finalInternalKode = !requestedInternalKode || internalKodeExists
+      ? await generateNextKode(Subscriber, 'internal_kode')
+      : requestedInternalKode;
 
     const subscriber = new Subscriber({
       kode: finalKode,
@@ -988,7 +1011,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       tanggal: parsedTanggal,
       implementator,
       via,
-      internal_kode,
+      internal_kode: finalInternalKode,
       prev_subscriber: prevSubscriber,
       current_subscriber: currentSubscriber,
       prev_biaya: prevBiaya,

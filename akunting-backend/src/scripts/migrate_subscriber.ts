@@ -13,12 +13,28 @@ const resolveUserId = (req?: any) => {
   return 'ROBBI'; // Default for migration
 };
 
-// Helper function to generate next kode (increment from last active record)
+// Helper function to generate next kode from the highest numeric kode in the collection.
 const generateNextKode = async (model: any): Promise<string> => {
-  const lastDoc = await model.findOne({ $or: [{ status_aktv: true }, { active: true }] }).sort({ kode: -1 });
-  if (!lastDoc || !lastDoc.kode) return '001';
-  const lastNum = parseInt(lastDoc.kode, 10);
-  if (isNaN(lastNum)) return '001';
+  const [lastDoc] = await model.aggregate([
+    {
+      $addFields: {
+        kode_number: {
+          $convert: {
+            input: '$kode',
+            to: 'int',
+            onError: null,
+            onNull: null,
+          },
+        },
+      },
+    },
+    { $match: { kode_number: { $ne: null } } },
+    { $sort: { kode_number: -1 } },
+    { $limit: 1 },
+    { $project: { kode_number: 1 } },
+  ]);
+
+  const lastNum = Number(lastDoc?.kode_number || 0);
   const nextNum = lastNum + 1;
   return nextNum.toString().padStart(3, '0');
 };

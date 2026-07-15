@@ -33,6 +33,14 @@ function columnLetter(n: number): string {
   return s;
 }
 
+function resolveTransactionModeLabel(row: any): string {
+  const mode = String(row?.transaction_mode || '').toUpperCase();
+  if (mode === 'SPECIAL') return 'Khusus Rekening Only';
+  if (mode === 'FINANCE_ONLY') return 'Khusus Dashboard Only';
+  if (mode === 'NORMAL') return 'Normal';
+  return row?.is_special_transaction ? 'Khusus Rekening Only' : 'Normal';
+}
+
 export const exportTransaksiExcel = async (req: Request, res: Response) => {
   try {
     const { from, to, nama_perusahaan, kategori, sub_kategori, akun, input_by, sortKategori, flatten, tahun, bulan, special_type, q } = req.query as any;
@@ -100,6 +108,8 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
             akun: 1,
             input_by: 1,
             tahun_fiskal: 1,
+            transaction_mode: 1,
+            is_special_transaction: 1,
             bulan: '$data_bulanan.bulan',
             nilai: '$data_bulanan.nilai'
           }
@@ -129,7 +139,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       ];
       rows = await Model.aggregate(pipeline).allowDiskUse(true).exec();
       // Rekap tidak perlu kolom Input By
-      header = ['No', 'Kategori', 'Sub Kategori', 'Akun', 'Bulan Fiskal', 'Nilai', 'Tahun Fiskal'];
+      header = ['No', 'Jenis Transaksi', 'Kategori', 'Sub Kategori', 'Akun', 'Bulan Fiskal', 'Nilai', 'Tahun Fiskal'];
     } else {
       const filter: any = { status_deleted: { $ne: true } };
       const andFilters: any[] = [];
@@ -182,7 +192,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       if (sortKategori === 'desc') sort.kategori = -1;
       if (!sortKategori) sort.tanggal = 1;
       rows = await TtFinanceDetail.find(filter).sort(sort).limit(limit).lean();
-      header = ['No', 'Tanggal', 'Kategori', 'Sub Kategori', 'Akun', 'Nilai', 'Keterangan', 'Input By', 'Perusahaan', 'No Rekening', 'Kode Bank', 'Bulan Fiskal'];
+      header = ['No', 'Tanggal', 'Jenis Transaksi', 'Kategori', 'Sub Kategori', 'Akun', 'Nilai', 'Keterangan', 'Input By', 'Perusahaan', 'No Rekening', 'Kode Bank', 'Bulan Fiskal'];
     }
 
     const workbook = new ExcelJS.Workbook();
@@ -226,6 +236,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
       const values = doFlatten
         ? [
             idx,
+            resolveTransactionModeLabel(row),
             row.kategori,
             row.sub_kategori,
             row.akun,
@@ -236,6 +247,7 @@ export const exportTransaksiExcel = async (req: Request, res: Response) => {
         : [
             idx,
             row.tanggal,
+            resolveTransactionModeLabel(row),
             row.kategori,
             row.sub_kategori,
             row.akun,
