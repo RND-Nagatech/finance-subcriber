@@ -411,6 +411,28 @@ export default function AppSidebar() {
                       )}
                     </SidebarMenuButton>
                   </NavLink>
+	                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <NavLink to="/assets/types">
+                    <SidebarMenuButton
+                      isActive={location.pathname === "/assets/types"}
+                      className={cn(
+                        "group relative rounded-xl px-4 py-4 text-slate-300 hover:text-white transition-all duration-300",
+                        "hover:bg-gradient-to-r hover:from-emerald-600/20 hover:to-teal-600/20",
+                        "hover:shadow-lg hover:shadow-emerald-500/10",
+                        "data-[active=true]:bg-gradient-to-r data-[active=true]:from-emerald-600/30 data-[active=true]:to-teal-600/30",
+                        "data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-emerald-500/20",
+                        "border border-transparent data-[active=true]:border-emerald-500/30",
+                        "py-5"
+                      )}
+                    >
+                      <Gem className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                      <span className="font-medium">Jenis Asset</span>
+                      {location.pathname === "/assets/types" && (
+                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-emerald-400 to-teal-500 rounded-r-full" />
+                      )}
+                    </SidebarMenuButton>
+                  </NavLink>
                 </SidebarMenuItem>
 
                 {/* PERJALANAN DINAS */}

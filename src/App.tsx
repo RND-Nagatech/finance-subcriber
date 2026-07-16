@@ -27,6 +27,7 @@ import Subscriber from "./pages/Subscriber";
 import CustomDashboard from "./pages/MasterData/CustomDashboard";
 import Transaksi from "./pages/Transaksi";
 import Assets from "./pages/Assets";
+import AssetTypes from "./pages/AssetTypes";
 import TutupBuku from "./pages/TutupBuku";
 import NotFound from "./pages/NotFound";
 import PublicDashboard from "./pages/public-dashboard";
@@ -244,6 +245,16 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <Assets />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assets/types"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AssetTypes />
                 </MainLayout>
               </ProtectedRoute>
             }

@@ -69,6 +69,64 @@ export const createAssetType = async (req: Request, res: Response) => {
   }
 };
 
+export const updateAssetType = async (req: Request, res: Response) => {
+  try {
+    const code = normalizeCode(req.body?.code);
+    const name = String(req.body?.name || '').trim().toUpperCase();
+    const unit = String(req.body?.unit || '').trim();
+    const current_price = Number(req.body?.current_price || 0);
+    if (!code || !name || !unit) {
+      return res.status(400).json({ message: 'code, name, dan unit wajib diisi.' });
+    }
+    if (!Number.isFinite(current_price) || current_price < 0) {
+      return res.status(400).json({ message: 'Harga sekarang tidak valid.' });
+    }
+
+    const data = await AssetType.findById(req.params.id);
+    if (!data || data.status_aktv === false) {
+      return res.status(404).json({ message: 'Jenis asset tidak ditemukan.' });
+    }
+
+    data.code = code;
+    data.name = name;
+    data.unit = unit;
+    data.current_price = current_price;
+    data.update_by = actor(req);
+    data.update_date = new Date();
+    await data.save();
+
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    const duplicate = err?.code === 11000;
+    return res.status(duplicate ? 400 : 500).json({ message: duplicate ? 'Kode jenis asset sudah digunakan.' : 'Gagal update jenis asset.', error: err?.message });
+  }
+};
+
+export const deleteAssetType = async (req: Request, res: Response) => {
+  try {
+    const data = await AssetType.findById(req.params.id);
+    if (!data || data.status_aktv === false) {
+      return res.status(404).json({ message: 'Jenis asset tidak ditemukan.' });
+    }
+
+    const used = await Asset.exists({ asset_type_id: data._id });
+    if (used) {
+      return res.status(400).json({
+        message: 'Jenis asset sedang dipakai, silahkan ganti terlebih dahulu dan ulangi lagi.',
+      });
+    }
+
+    data.status_aktv = false;
+    data.update_by = actor(req);
+    data.update_date = new Date();
+    await data.save();
+
+    return res.json({ success: true, data, message: 'Jenis asset berhasil dihapus.' });
+  } catch (err: any) {
+    return res.status(500).json({ message: 'Gagal hapus jenis asset.', error: err?.message });
+  }
+};
+
 export const updateAssetTypeCurrentPrice = async (req: Request, res: Response) => {
   try {
     const current_price = Number(req.body?.current_price);

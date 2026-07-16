@@ -106,6 +106,16 @@ export async function createAssetType(payload: { code: string; name: string; uni
   return data?.data;
 }
 
+export async function updateAssetType(id: string, payload: { code: string; name: string; unit: string; current_price: number }) {
+  const { data } = await axiosInstance.put(`/asset-types/${id}`, payload);
+  return data?.data;
+}
+
+export async function deleteAssetType(id: string) {
+  const { data } = await axiosInstance.delete(`/asset-types/${id}`);
+  return data?.data;
+}
+
 export async function updateAssetTypeCurrentPrice(id: string, current_price: number, keterangan?: string) {
   const { data } = await axiosInstance.put(`/asset-types/${id}/current-price`, { current_price, keterangan });
   return data?.data;

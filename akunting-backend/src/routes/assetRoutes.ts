@@ -4,6 +4,7 @@ import {
   createAsset,
   createAssetType,
   deleteAsset,
+  deleteAssetType,
   getAssetLedger,
   getAssetSummary,
   listAssetLedgerHistory,
@@ -15,6 +16,7 @@ import {
   transferAssetToRekening,
   transferRekeningToAsset,
   updateAsset,
+  updateAssetType,
   updateAssetTypeCurrentPrice,
 } from '../controllers/assetController';
 
@@ -24,6 +26,8 @@ router.get('/asset-types', listAssetTypes);
 router.post('/asset-types', authenticate, createAssetType);
 router.get('/asset-types/price-history', authenticate, listAssetTypePriceHistory);
 router.put('/asset-types/:id/current-price', authenticate, updateAssetTypeCurrentPrice);
+router.put('/asset-types/:id', authenticate, updateAssetType);
+router.delete('/asset-types/:id', authenticate, deleteAssetType);
 router.get('/assets/summary', getAssetSummary);
 router.get('/assets/transfers/history', authenticate, listAssetTransfers);
 router.post('/assets/transfer-from-rekening', authenticate, transferRekeningToAsset);

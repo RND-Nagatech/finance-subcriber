@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
+import { Link } from 'react-router-dom';
 import { BarChart3, Coins, LineChart, Minus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import {
   createAsset,
-  createAssetType,
   deleteAsset,
   fetchAssetLedgerHistory,
   fetchAssets,
@@ -25,6 +25,16 @@ import {
 import axiosInstance from '@/api/axiosInstance';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Dialog,
   DialogContent,
@@ -67,12 +77,12 @@ const numberFmt = (value: number) => new Intl.NumberFormat('id-ID', { maximumFra
 export default function Assets() {
   const queryClient = useQueryClient();
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
-  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [priceDialogOpen, setPriceDialogOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [assetToRekeningDialogOpen, setAssetToRekeningDialogOpen] = useState(false);
   const [reduceDialogOpen, setReduceDialogOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<AssetType | null>(null);
+  const [deleteAssetItem, setDeleteAssetItem] = useState<AssetItem | null>(null);
   const [assetForm, setAssetForm] = useState({
     asset_type_id: '',
     asset_name: '',
@@ -80,7 +90,6 @@ export default function Assets() {
     qty: '',
     harga_beli_per_unit: '',
   });
-  const [typeForm, setTypeForm] = useState({ code: '', name: '', unit: '', current_price: '' });
   const [priceText, setPriceText] = useState('');
   const [priceNote, setPriceNote] = useState('');
   const [transferForm, setTransferForm] = useState({
@@ -132,22 +141,6 @@ export default function Assets() {
 
   const totalGrowthClass = Number(summary?.growth_nominal || 0) >= 0 ? 'text-emerald-700' : 'text-red-700';
 
-  const createTypeMut = useMutation({
-    mutationFn: () => createAssetType({
-      code: typeForm.code,
-      name: typeForm.name,
-      unit: typeForm.unit,
-      current_price: Number(typeForm.current_price || 0),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['asset-types'] });
-      toast.success('Jenis asset berhasil ditambahkan');
-      setTypeDialogOpen(false);
-      setTypeForm({ code: '', name: '', unit: '', current_price: '' });
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Gagal menambah jenis asset'),
-  });
-
   const createAssetMut = useMutation({
     mutationFn: () => createAsset({
       asset_type_id: assetForm.asset_type_id,
@@ -188,6 +181,7 @@ export default function Assets() {
       queryClient.invalidateQueries({ queryKey: ['assets'] });
       queryClient.invalidateQueries({ queryKey: ['assets-summary'] });
       toast.success('Asset berhasil dinonaktifkan');
+      setDeleteAssetItem(null);
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Gagal hapus asset'),
   });
@@ -366,9 +360,11 @@ export default function Assets() {
           <p className="mt-1 text-sm text-slate-500">Kelola emas, mata uang asing, dan asset lain dengan valuasi harga sekarang.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setTypeDialogOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Jenis Asset
+          <Button asChild variant="outline" className="gap-2">
+            <Link to="/assets/types">
+              <Plus className="h-4 w-4" />
+              Jenis Asset
+            </Link>
           </Button>
           <Button variant="outline" onClick={() => setReduceDialogOpen(true)} className="gap-2 border-red-200 text-red-700 hover:bg-red-50">
             <Minus className="h-4 w-4" />
@@ -446,9 +442,7 @@ export default function Assets() {
                         <div className="text-xs">{numberFmt(asset.growth_percent || 0)}%</div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" className="text-red-600" onClick={() => {
-                          if (window.confirm('Nonaktifkan asset ini?')) deleteMut.mutate(asset._id);
-                        }}>
+                        <Button variant="ghost" size="sm" className="text-red-600" onClick={() => setDeleteAssetItem(asset)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
@@ -612,22 +606,6 @@ export default function Assets() {
         </Card>
       </div>
 
-      <Dialog open={typeDialogOpen} onOpenChange={setTypeDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Tambah Jenis Asset</DialogTitle>
-            <DialogDescription>Harga sekarang di sini berlaku untuk semua asset dengan jenis yang sama.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2"><Label>Kode</Label><Input value={typeForm.code} onChange={(e) => setTypeForm({ ...typeForm, code: e.target.value })} placeholder="EMAS" /></div>
-            <div className="grid gap-2"><Label>Nama</Label><Input value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} placeholder="Emas" /></div>
-            <div className="grid gap-2"><Label>Satuan</Label><Input value={typeForm.unit} onChange={(e) => setTypeForm({ ...typeForm, unit: e.target.value })} placeholder="gram" /></div>
-            <div className="grid gap-2"><Label>Harga Sekarang / Satuan</Label><Input type="number" value={typeForm.current_price} onChange={(e) => setTypeForm({ ...typeForm, current_price: e.target.value })} placeholder="2500000" /></div>
-          </div>
-          <DialogFooter><Button onClick={() => createTypeMut.mutate()} disabled={createTypeMut.isPending}>Simpan</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={assetDialogOpen} onOpenChange={setAssetDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -661,6 +639,30 @@ export default function Assets() {
           <DialogFooter><Button onClick={() => createAssetMut.mutate()} disabled={createAssetMut.isPending}>Simpan</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteAssetItem} onOpenChange={(open) => !open && setDeleteAssetItem(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Nonaktifkan Asset?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Asset {deleteAssetItem?.asset_name || '-'} akan dinonaktifkan dari daftar asset aktif.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMut.isPending}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteMut.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteAssetItem?._id) deleteMut.mutate(deleteAssetItem._id);
+              }}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Nonaktifkan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={reduceDialogOpen} onOpenChange={setReduceDialogOpen}>
         <DialogContent>
