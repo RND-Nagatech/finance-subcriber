@@ -370,9 +370,10 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
     if(!detail) return res.status(404).json({ message: 'Transaksi detail not found' });
     const hasRekening = shouldAffectRekening(detail) && hasValidRekeningKey(detail.kode_bank, detail.no_rekening);
     const detailDelta = calculateSignedDelta(detail.kategori, Number(detail.nilai || 0));
+    const user = req.user as any;
+    const userRole = String(user?.role || '').toLowerCase();
     if (detail.is_validated) {
-      const user = req.user as any;
-      if (!user || user.role !== 'superuser') {
+      if (!user || userRole !== 'superuser') {
         return res.status(403).json({ message: 'Hanya superuser yang bisa menghapus transaksi tervalidasi.' });
       }
 
@@ -452,6 +453,8 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
           actor: rollbackBy,
         });
       }
+    } else if (!['superuser', 'finance'].includes(userRole)) {
+      return res.status(403).json({ message: 'Hanya finance atau superuser yang bisa menghapus transaksi belum valid.' });
     }
 
     // Rollback snapshot saldo harian:

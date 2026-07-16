@@ -2300,7 +2300,7 @@ export default function Transaksi() {
                                 )}
                               </>
                             ) : null}
-                            {user?.role === 'superuser' && (
+                            {(user?.role === 'superuser' || (!row.is_validated && user?.role === 'finance')) && (
                               <DropdownMenuItem
                                 onClick={() => handleDelete(row)}
                                 className="cursor-pointer text-red-600 focus:text-red-600"
