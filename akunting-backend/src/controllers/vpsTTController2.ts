@@ -104,25 +104,6 @@ function isSameDokuCustomer(
   return JSON.stringify(normalizeDokuCustomer(stored)) === JSON.stringify(current);
 }
 
-function copyDokuPayment(payment: NonNullable<ITTVpsDetail['doku_payment']>) {
-  return {
-    invoice_number: payment.invoice_number,
-    payment_url: payment.payment_url,
-    token_id: payment.token_id,
-    expired_date: payment.expired_date,
-    amount: payment.amount,
-    request_id: payment.request_id,
-    generated_at: payment.generated_at,
-    generated_by: payment.generated_by,
-    status: payment.status,
-    paid_at: payment.paid_at,
-    notification_request_id: payment.notification_request_id,
-    transaction_original_request_id: payment.transaction_original_request_id,
-    channel_id: payment.channel_id,
-    customer: payment.customer ? normalizeDokuCustomer(payment.customer) : undefined,
-  };
-}
-
 function formatJakartaDate(value?: string): string {
   const date = value ? new Date(value) : new Date();
   const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
@@ -762,37 +743,26 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       phone: customerPhone,
       address: customerAddress,
     });
-    const currentPayment = firstItem.doku_payment;
-    let sharedDokuPayment: NonNullable<ITTVpsDetail['doku_payment']>;
-
-    if (
-      currentPayment?.payment_url
-      && currentPayment.amount === grandTotal
-      && currentPayment.status !== 'SUCCESS'
-      && isDokuLinkStillActive(currentPayment.expired_date)
-      && isSameDokuCustomer(currentPayment.customer, dokuCustomer)
-    ) {
-      sharedDokuPayment = copyDokuPayment(currentPayment);
-    } else {
-      const dokuInvoiceNumber = generateDokuInvoiceNumber(firstItem._id.toString(), invoiceNumber);
-      const dokuResult = await createDokuCheckout({
-        amount: grandTotal,
-        invoiceNumber: dokuInvoiceNumber,
-        customer: dokuCustomer,
-      });
-      sharedDokuPayment = {
-        invoice_number: dokuInvoiceNumber,
-        payment_url: dokuResult.paymentUrl,
-        token_id: dokuResult.tokenId,
-        expired_date: dokuResult.expiredDate,
-        amount: grandTotal,
-        request_id: dokuResult.requestId,
-        generated_at: now,
-        generated_by: userTag,
-        status: 'PENDING',
-        customer: dokuResult.customer,
-      };
-    }
+    // A newly generated invoice must get a fresh checkout so its current callback
+    // configuration is always registered at DOKU.
+    const dokuInvoiceNumber = generateDokuInvoiceNumber(firstItem._id.toString(), invoiceNumber);
+    const dokuResult = await createDokuCheckout({
+      amount: grandTotal,
+      invoiceNumber: dokuInvoiceNumber,
+      customer: dokuCustomer,
+    });
+    const sharedDokuPayment: NonNullable<ITTVpsDetail['doku_payment']> = {
+      invoice_number: dokuInvoiceNumber,
+      payment_url: dokuResult.paymentUrl,
+      token_id: dokuResult.tokenId,
+      expired_date: dokuResult.expiredDate,
+      amount: grandTotal,
+      request_id: dokuResult.requestId,
+      generated_at: now,
+      generated_by: userTag,
+      status: 'PENDING',
+      customer: dokuResult.customer,
+    };
 
     session = await mongoose.startSession();
     await session.withTransaction(async () => {

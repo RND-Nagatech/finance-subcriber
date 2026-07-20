@@ -196,6 +196,13 @@ export async function createDokuCheckout(request: DokuCheckoutRequest): Promise<
     secretKey: config.secretKey,
   });
 
+  console.info('DOKU checkout request:', {
+    invoice_number: request.invoiceNumber,
+    amount,
+    request_id: requestId,
+    notification_url: notificationUrl || null,
+  });
+
   const controller = new AbortController();
   const timeoutMs = Math.max(1000, Number(process.env.DOKU_REQUEST_TIMEOUT_MS) || 15000);
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -221,6 +228,12 @@ export async function createDokuCheckout(request: DokuCheckoutRequest): Promise<
   }
 
   const responseBody = await response.json().catch(() => ({})) as any;
+  console.info('DOKU checkout response:', {
+    invoice_number: request.invoiceNumber,
+    status: response.status,
+    request_id: requestId,
+    notification_url: responseBody?.response?.additional_info?.override_notification_url || null,
+  });
   if (!response.ok) {
     const rawMessages = responseBody?.error_messages
       ?? responseBody?.error?.messages
