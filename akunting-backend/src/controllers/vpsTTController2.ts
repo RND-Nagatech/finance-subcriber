@@ -636,8 +636,11 @@ function sendDokuResultPage(
     `<div><span>${escapeHtml(account.kode_bank || 'Rekening')}</span><strong>${escapeHtml(account.no_rekening || '')}</strong>${account.nama_rekening ? `<small>${escapeHtml(account.nama_rekening)}</small>` : ''}</div>`
   ).join('') || '';
   const paidPdfUrl = invoice?.pdf_paid_url ? escapeHtml(invoice.pdf_paid_url) : '';
+  const paidPdfDownloadName = escapeHtml(
+    `${String(invoice?.invoice_number || 'invoice').replace(/[\\/:*?"<>|]/g, '-')}-LUNAS.pdf`
+  );
   const invoiceSection = paidPdfUrl ? `<section class="pdf-document">
-    <header class="pdf-header"><div><span class="invoice-kicker">INVOICE LUNAS</span><h2>${escapeHtml(invoice?.invoice_number || '-')}</h2></div><a href="${paidPdfUrl}" target="_blank" rel="noreferrer">Buka PDF</a></header>
+    <header class="pdf-header"><div><span class="invoice-kicker">INVOICE LUNAS</span><h2>${escapeHtml(invoice?.invoice_number || '-')}</h2></div><div class="pdf-actions"><a href="${paidPdfUrl}" target="_blank" rel="noreferrer">Buka PDF</a><a class="secondary" href="${paidPdfUrl}" download="${paidPdfDownloadName}">Download PDF</a></div></header>
     <object data="${paidPdfUrl}" type="application/pdf" aria-label="Invoice ${escapeHtml(invoice?.invoice_number || '')}">
       <p>Preview PDF tidak didukung pada browser ini. <a href="${paidPdfUrl}" target="_blank" rel="noreferrer">Buka invoice PDF</a>.</p>
     </object>
@@ -700,7 +703,7 @@ function sendDokuResultPage(
     .spinner { width:14px; height:14px; border:2px solid #c7d6d2; border-top-color:#087b75; border-radius:50%; animation:spin .8s linear infinite; }
     .footer { margin-top:26px; color:var(--muted); font-size:12px; }
     .pdf-document { margin-top:22px; overflow:hidden; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 12px 36px rgba(23,33,43,.07); }
-    .pdf-header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 20px; border-bottom:1px solid var(--line); }.pdf-header h2 { margin:4px 0 0; font-size:18px; }.pdf-header a { padding:10px 14px; background:#17212b; color:#fff; border-radius:6px; font-size:13px; font-weight:700; text-decoration:none; }.pdf-document object { display:block; width:100%; height:820px; border:0; background:#e8edeb; }.pdf-document object p { padding:24px; }
+    .pdf-header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 20px; border-bottom:1px solid var(--line); }.pdf-header h2 { margin:4px 0 0; font-size:18px; }.pdf-actions { display:flex; align-items:center; gap:8px; }.pdf-actions a { padding:10px 14px; background:#17212b; color:#fff; border:1px solid #17212b; border-radius:6px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; }.pdf-actions a.secondary { background:#fff; color:#17212b; }.pdf-document object { display:block; width:100%; height:820px; border:0; background:#e8edeb; }.pdf-document object p { padding:24px; }
     .invoice-document { margin-top:22px; padding:34px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 12px 36px rgba(23,33,43,.07); }
     .invoice-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding-bottom:26px; border-bottom:2px solid #17212b; }
     .invoice-kicker { color:#087b75; font-size:11px; font-weight:800; }.invoice-header h2 { margin:5px 0 4px; font-size:24px; }.invoice-header p { margin:0; color:var(--muted); font-size:13px; }
@@ -710,7 +713,7 @@ function sendDokuResultPage(
     .invoice-bottom { display:grid; grid-template-columns:1fr 260px; gap:32px; padding-top:25px; }.accounts>div { margin-bottom:12px; }.accounts>div span,.accounts>div strong,.accounts>div small { display:block; }.accounts>div span,.accounts>div small { color:var(--muted); font-size:12px; }.accounts>div strong { margin:3px 0; font-size:14px; }.totals>div { display:flex; justify-content:space-between; gap:20px; padding:7px 0; font-size:13px; }.grand-total { margin-top:6px; padding-top:13px!important; border-top:2px solid #17212b; font-size:16px!important; }
     .notes { margin-top:24px; padding:15px; background:#f5f8f7; border-left:3px solid #d5a62e; }.notes p { margin:0; color:#53605c; font-size:13px; line-height:1.55; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    @media (max-width:560px) { .shell{padding-top:32px}.content,.invoice-document{padding:26px 22px}.status-row{gap:14px}h1{font-size:22px}.detail{display:block}.detail strong{display:block;text-align:left;margin-top:6px}.parties,.invoice-bottom{grid-template-columns:1fr}.invoice-header{display:block}.invoice-header button{margin-top:16px}.invoice-bottom{gap:18px}.pdf-document object{height:620px}.pdf-header{align-items:flex-start}.pdf-header a{white-space:nowrap} }
+    @media (max-width:560px) { .shell{padding-top:32px}.content,.invoice-document{padding:26px 22px}.status-row{gap:14px}h1{font-size:22px}.detail{display:block}.detail strong{display:block;text-align:left;margin-top:6px}.parties,.invoice-bottom{grid-template-columns:1fr}.invoice-header{display:block}.invoice-header button{margin-top:16px}.invoice-bottom{gap:18px}.pdf-document object{height:620px}.pdf-header{align-items:flex-start;flex-direction:column}.pdf-actions{width:100%;flex-wrap:wrap}.pdf-actions a{flex:1;text-align:center} }
     @media print { body{background:#fff}.shell{width:100%;padding:0}.brand,.receipt,.invoice-header button,.pdf-header{display:none}.invoice-document,.pdf-document{margin:0;border:0;box-shadow:none}.invoice-document{padding:0}.pdf-document object{height:100vh} }
     @media (prefers-reduced-motion:reduce) { .spinner,.pending .status-mark::after { animation:none; } }
   </style>
