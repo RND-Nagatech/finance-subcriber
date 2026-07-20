@@ -165,15 +165,24 @@ export async function getDokuTransactionStatus(invoiceNumber: string): Promise<D
     secretKey: config.secretKey,
   });
 
-  const response = await fetch(`${config.baseUrl}${requestTarget}`, {
-    method: 'GET',
-    headers: {
-      'Client-Id': config.clientId,
-      'Request-Id': requestId,
-      'Request-Timestamp': requestTimestamp,
-      Signature: signature,
-    },
-  });
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1000, Number(process.env.DOKU_STATUS_TIMEOUT_MS) || 8000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: globalThis.Response;
+  try {
+    response = await fetch(`${config.baseUrl}${requestTarget}`, {
+      method: 'GET',
+      headers: {
+        'Client-Id': config.clientId,
+        'Request-Id': requestId,
+        'Request-Timestamp': requestTimestamp,
+        Signature: signature,
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   const body = await response.json().catch(() => ({})) as any;
   if (!response.ok) {
     const message = Array.isArray(body?.error_messages)

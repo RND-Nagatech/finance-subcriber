@@ -582,25 +582,142 @@ export const handleDokuNotification = async (req: Request, res: Response) => {
 
 function sendDokuResultPage(
   res: Response,
-  options: { title: string; message: string; success?: boolean; refreshSeconds?: number; statusCode?: number }
+  options: {
+    title: string;
+    message: string;
+    success?: boolean;
+    refreshSeconds?: number;
+    statusCode?: number;
+    invoiceNumber?: string;
+    amount?: number;
+    invoiceMeta?: ITTVpsDetail['invoice_meta'];
+  }
 ) {
+  const escapeHtml = (value: string) => value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
   if (options.refreshSeconds) res.setHeader('Refresh', String(options.refreshSeconds));
-  const color = options.success ? '#047857' : '#0f766e';
+  const isError = (options.statusCode || 200) >= 400;
+  const variant = options.success ? 'success' : isError ? 'error' : 'pending';
+  const statusLabel = options.success ? 'TERVERIFIKASI' : isError ? 'PERLU DIPERIKSA' : 'MEMPROSES';
   const refreshMeta = options.refreshSeconds
     ? `<meta http-equiv="refresh" content="${options.refreshSeconds}">`
     : '';
+  const invoiceRow = options.invoiceNumber
+    ? `<div class="detail"><span>Nomor invoice</span><strong>${escapeHtml(options.invoiceNumber)}</strong></div>`
+    : '';
+  const amountRow = typeof options.amount === 'number'
+    ? `<div class="detail"><span>Total pembayaran</span><strong>${new Intl.NumberFormat('id-ID', {
+      style: 'currency', currency: 'IDR', maximumFractionDigits: 0,
+    }).format(options.amount)}</strong></div>`
+    : '';
+  const refreshText = options.refreshSeconds
+    ? `<div class="refresh"><span class="spinner" aria-hidden="true"></span>Mencoba kembali dalam ${options.refreshSeconds} detik</div>`
+    : '';
+  const formatCurrency = (value: number) => new Intl.NumberFormat('id-ID', {
+    style: 'currency', currency: 'IDR', maximumFractionDigits: 0,
+  }).format(Number(value) || 0);
+  const invoice = options.success ? options.invoiceMeta : undefined;
+  const invoiceItems = invoice?.items?.map((item) => `<tr>
+    <td><strong>${escapeHtml(item.program_name || '-')}</strong>${item.start_date || item.tempo_date
+      ? `<small>${escapeHtml(item.start_date || '-')} s/d ${escapeHtml(item.tempo_date || '-')}</small>`
+      : ''}</td>
+    <td class="number">${Number(item.qty) || 0}</td>
+    <td class="number">${formatCurrency(item.unit_price)}</td>
+    <td class="number"><strong>${formatCurrency(item.line_total)}</strong></td>
+  </tr>`).join('') || '';
+  const paymentAccounts = invoice?.payment_accounts?.filter((account) => account.no_rekening).map((account) =>
+    `<div><span>${escapeHtml(account.kode_bank || 'Rekening')}</span><strong>${escapeHtml(account.no_rekening || '')}</strong>${account.nama_rekening ? `<small>${escapeHtml(account.nama_rekening)}</small>` : ''}</div>`
+  ).join('') || '';
+  const invoiceSection = invoice ? `<section class="invoice-document">
+    <header class="invoice-header">
+      <div><span class="invoice-kicker">INVOICE</span><h2>${escapeHtml(invoice.invoice_number || '-')}</h2><p>${escapeHtml(invoice.display_date || '')}</p></div>
+      <button type="button" onclick="window.print()">Cetak invoice</button>
+    </header>
+    <div class="parties">
+      <div><span>Dari</span><strong>${escapeHtml(invoice.sender?.name || 'PT Nagatech Sistem Integrator')}</strong><p>${escapeHtml(invoice.sender?.address || '')}<br>${escapeHtml(invoice.sender?.phone || '')}</p></div>
+      <div><span>Ditagihkan kepada</span><strong>${escapeHtml(invoice.customer?.name || '-')}</strong><p>${escapeHtml(invoice.customer?.address || '')}<br>${escapeHtml(invoice.customer?.phone || '')}</p></div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Deskripsi</th><th class="number">Qty</th><th class="number">Harga</th><th class="number">Jumlah</th></tr></thead><tbody>${invoiceItems}</tbody></table></div>
+    <div class="invoice-bottom">
+      <div class="accounts"><span>Pembayaran</span>${paymentAccounts || '<p>DOKU Payment Gateway</p>'}</div>
+      <div class="totals">
+        <div><span>Subtotal</span><strong>${formatCurrency(invoice.subtotal)}</strong></div>
+        ${(invoice.discount_rp || 0) > 0 ? `<div><span>${escapeHtml(invoice.discount_label || 'Diskon')}</span><strong>- ${formatCurrency(invoice.discount_rp)}</strong></div>` : ''}
+        ${(invoice.extra_deduction_rp || 0) > 0 ? `<div><span>Potongan tambahan</span><strong>- ${formatCurrency(invoice.extra_deduction_rp || 0)}</strong></div>` : ''}
+        <div class="grand-total"><span>Total</span><strong>${formatCurrency(invoice.grand_total)}</strong></div>
+      </div>
+    </div>
+    ${invoice.notes ? `<div class="notes"><span>Catatan</span><p>${escapeHtml(invoice.notes)}</p></div>` : ''}
+  </section>` : '';
   return res.status(options.statusCode || 200).type('html').send(`<!doctype html>
 <html lang="id">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   ${refreshMeta}
-  <title>${options.title}</title>
+  <title>${escapeHtml(options.title)}</title>
+  <style>
+    :root { color-scheme: light; --ink:#17212b; --muted:#64706d; --line:#d9e1de; --paper:#fff; --canvas:#edf2f0; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--canvas); color:var(--ink); font-family:"Avenir Next","Segoe UI",sans-serif; letter-spacing:0; }
+    .shell { width:min(100% - 32px,620px); margin:0 auto; padding:72px 0 40px; }
+    .brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+    .brand-mark { width:38px; height:38px; display:grid; place-items:center; background:#17212b; color:#fff; font-weight:800; font-size:18px; border-radius:6px; }
+    .brand-copy strong { display:block; font-size:14px; letter-spacing:0; }
+    .brand-copy span { color:var(--muted); font-size:12px; }
+    .receipt { overflow:hidden; background:var(--paper); border:1px solid var(--line); border-radius:8px; box-shadow:0 18px 50px rgba(23,33,43,.10); }
+    .accent { height:5px; background:#d5a62e; }
+    .content { padding:34px; }
+    .status-row { display:flex; align-items:flex-start; gap:18px; }
+    .status-mark { position:relative; flex:0 0 48px; width:48px; height:48px; border-radius:50%; }
+    .success .status-mark { background:#dff4e8; border:1px solid #9bd2b1; }
+    .success .status-mark::after { content:""; position:absolute; width:10px; height:20px; left:18px; top:10px; border:solid #087a4b; border-width:0 3px 3px 0; transform:rotate(45deg); }
+    .pending .status-mark { background:#e1f3f1; border:1px solid #9ccdc8; }
+    .pending .status-mark::after { content:""; position:absolute; inset:10px; border:3px solid #b7d9d5; border-top-color:#087b75; border-radius:50%; animation:spin .8s linear infinite; }
+    .error .status-mark { background:#fff0e8; border:1px solid #efb99d; }
+    .error .status-mark::before,.error .status-mark::after { content:""; position:absolute; left:22px; top:12px; width:3px; height:24px; background:#b7462f; border-radius:2px; }
+    .error .status-mark::before { transform:rotate(45deg); }.error .status-mark::after { transform:rotate(-45deg); }
+    .eyebrow { margin:1px 0 7px; color:#087b75; font-size:11px; font-weight:800; }
+    h1 { margin:0; font-size:26px; line-height:1.2; letter-spacing:0; }
+    .message { margin:11px 0 0; color:var(--muted); font-size:15px; line-height:1.65; }
+    .details { margin-top:30px; padding-top:8px; border-top:1px solid var(--line); }
+    .detail { display:flex; justify-content:space-between; gap:24px; padding:14px 0; border-bottom:1px solid #edf1ef; font-size:14px; }
+    .detail span { color:var(--muted); }.detail strong { text-align:right; overflow-wrap:anywhere; }
+    .refresh { display:flex; align-items:center; gap:9px; margin-top:22px; padding:11px 13px; background:#f5f8f7; border-left:3px solid #d5a62e; color:#53605c; font-size:13px; }
+    .spinner { width:14px; height:14px; border:2px solid #c7d6d2; border-top-color:#087b75; border-radius:50%; animation:spin .8s linear infinite; }
+    .footer { display:flex; justify-content:space-between; align-items:center; gap:18px; margin-top:26px; color:var(--muted); font-size:12px; }
+    .footer a { color:#17212b; font-weight:700; text-decoration:none; border-bottom:1px solid #87928f; }
+    .invoice-document { margin-top:22px; padding:34px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 12px 36px rgba(23,33,43,.07); }
+    .invoice-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding-bottom:26px; border-bottom:2px solid #17212b; }
+    .invoice-kicker { color:#087b75; font-size:11px; font-weight:800; }.invoice-header h2 { margin:5px 0 4px; font-size:24px; }.invoice-header p { margin:0; color:var(--muted); font-size:13px; }
+    .invoice-header button { min-height:38px; padding:0 14px; background:#17212b; color:#fff; border:0; border-radius:6px; font-family:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+    .parties { display:grid; grid-template-columns:1fr 1fr; gap:36px; padding:26px 0; }.parties span,.accounts>span,.notes>span { display:block; margin-bottom:8px; color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; }.parties strong { font-size:14px; }.parties p { margin:7px 0 0; color:var(--muted); font-size:13px; line-height:1.55; }
+    .table-wrap { overflow-x:auto; } table { width:100%; border-collapse:collapse; font-size:13px; } th { padding:11px 10px; background:#f0f4f2; color:#53605c; text-align:left; font-size:11px; text-transform:uppercase; } td { padding:15px 10px; border-bottom:1px solid #e7ecea; vertical-align:top; } td small { display:block; margin-top:5px; color:var(--muted); }.number { text-align:right; white-space:nowrap; }
+    .invoice-bottom { display:grid; grid-template-columns:1fr 260px; gap:32px; padding-top:25px; }.accounts>div { margin-bottom:12px; }.accounts>div span,.accounts>div strong,.accounts>div small { display:block; }.accounts>div span,.accounts>div small { color:var(--muted); font-size:12px; }.accounts>div strong { margin:3px 0; font-size:14px; }.totals>div { display:flex; justify-content:space-between; gap:20px; padding:7px 0; font-size:13px; }.grand-total { margin-top:6px; padding-top:13px!important; border-top:2px solid #17212b; font-size:16px!important; }
+    .notes { margin-top:24px; padding:15px; background:#f5f8f7; border-left:3px solid #d5a62e; }.notes p { margin:0; color:#53605c; font-size:13px; line-height:1.55; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @media (max-width:560px) { .shell{padding-top:32px}.content,.invoice-document{padding:26px 22px}.status-row{gap:14px}h1{font-size:22px}.detail{display:block}.detail strong{display:block;text-align:left;margin-top:6px}.footer{display:block}.footer a{display:inline-block;margin-top:12px}.parties,.invoice-bottom{grid-template-columns:1fr}.invoice-header{display:block}.invoice-header button{margin-top:16px}.invoice-bottom{gap:18px} }
+    @media print { body{background:#fff}.shell{width:100%;padding:0}.brand,.receipt,.invoice-header button{display:none}.invoice-document{margin:0;border:0;box-shadow:none}.invoice-document{padding:0} }
+    @media (prefers-reduced-motion:reduce) { .spinner,.pending .status-mark::after { animation:none; } }
+  </style>
 </head>
-<body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a">
-  <main style="max-width:560px;margin:12vh auto;padding:32px;border:1px solid #cbd5e1;background:#fff">
-    <h1 style="margin:0 0 16px;font-size:24px;color:${color}">${options.title}</h1>
-    <p style="margin:0;line-height:1.6">${options.message}</p>
+<body>
+  <main class="shell">
+    <div class="brand"><div class="brand-mark">N</div><div class="brand-copy"><strong>Nagatech Sistem Integrator</strong><span>Pembayaran resmi</span></div></div>
+    <section class="receipt ${variant}">
+      <div class="accent"></div>
+      <div class="content">
+        <div class="status-row"><div class="status-mark" aria-hidden="true"></div><div><div class="eyebrow">${statusLabel}</div><h1>${escapeHtml(options.title)}</h1><p class="message">${escapeHtml(options.message)}</p></div></div>
+        ${(invoiceRow || amountRow) ? `<div class="details">${invoiceRow}${amountRow}</div>` : ''}
+        ${refreshText}
+        <div class="footer"><span>Status diperiksa langsung melalui DOKU</span><a href="/">Kembali ke aplikasi</a></div>
+      </div>
+    </section>
+    ${invoiceSection}
   </main>
 </body>
 </html>`);
@@ -616,11 +733,13 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
       statusCode: 400,
     });
   }
+  const paymentDetails = { invoiceNumber: payload.invoiceNumber, amount: payload.amount };
 
   try {
     const docs = await TTVpsDetail.find({ 'doku_payment.invoice_number': payload.invoiceNumber });
     if (docs.length === 0) {
       return sendDokuResultPage(res, {
+        ...paymentDetails,
         title: 'Invoice tidak ditemukan',
         message: 'Data invoice pembayaran tidak ditemukan.',
         statusCode: 404,
@@ -628,6 +747,7 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
     }
     if (docs.some((doc) => Math.round(Number(doc.doku_payment?.amount)) !== payload.amount)) {
       return sendDokuResultPage(res, {
+        ...paymentDetails,
         title: 'Nominal tidak sesuai',
         message: 'Nominal callback tidak sesuai dengan data invoice.',
         statusCode: 409,
@@ -635,28 +755,20 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
     }
     if (docs.every((doc) => doc.status === 'DONE')) {
       return sendDokuResultPage(res, {
+        ...paymentDetails,
         title: 'Pembayaran berhasil',
         message: 'Pembayaran sudah tercatat dan tagihan telah diselesaikan.',
         success: true,
+        invoiceMeta: docs[0].invoice_meta,
       });
     }
     const processDocs = docs.filter((doc) => doc.status === 'PROCESS');
     if (processDocs.length === 0) {
       return sendDokuResultPage(res, {
+        ...paymentDetails,
         title: 'Invoice belum diproses',
         message: 'Status invoice harus PROCESS sebelum pembayaran dapat diselesaikan.',
         statusCode: 409,
-      });
-    }
-
-    const minimumCheckAgeMs = 60_000;
-    const remainingMs = minimumCheckAgeMs - (Date.now() - payload.issuedAt);
-    if (remainingMs > 0) {
-      const refreshSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
-      return sendDokuResultPage(res, {
-        title: 'Memverifikasi pembayaran',
-        message: 'Status pembayaran sedang diverifikasi ke DOKU. Halaman ini akan diperbarui otomatis.',
-        refreshSeconds,
       });
     }
 
@@ -666,6 +778,7 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
       || dokuStatus.amount !== payload.amount
     ) {
       return sendDokuResultPage(res, {
+        ...paymentDetails,
         title: 'Verifikasi gagal',
         message: 'Data transaksi DOKU tidak sesuai dengan invoice.',
         statusCode: 409,
@@ -673,9 +786,10 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
     }
     if (dokuStatus.status !== 'SUCCESS') {
       return sendDokuResultPage(res, {
+        ...paymentDetails,
         title: 'Pembayaran belum selesai',
         message: `Status pembayaran saat ini: ${dokuStatus.status || 'PENDING'}. Halaman ini akan diperbarui otomatis.`,
-        refreshSeconds: 15,
+        refreshSeconds: 5,
         statusCode: 202,
       });
     }
@@ -713,9 +827,11 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
     }
 
     return sendDokuResultPage(res, {
+      ...paymentDetails,
       title: 'Pembayaran berhasil',
       message: 'Pembayaran telah diverifikasi dan tagihan sudah diselesaikan.',
       success: true,
+      invoiceMeta: docs[0].invoice_meta,
     });
   } catch (err: any) {
     console.error('DOKU callback result error:', {
@@ -723,10 +839,11 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
       invoice_number: payload.invoiceNumber,
     });
     return sendDokuResultPage(res, {
+      ...paymentDetails,
       title: 'Verifikasi masih diproses',
       message: 'Status pembayaran belum dapat diverifikasi. Halaman ini akan mencoba kembali otomatis.',
-      refreshSeconds: 15,
-      statusCode: 502,
+      refreshSeconds: 5,
+      statusCode: 202,
     });
   }
 };
