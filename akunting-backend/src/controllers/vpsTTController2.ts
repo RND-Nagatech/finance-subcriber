@@ -49,8 +49,8 @@ async function generateMonthlyInvoiceNumber(): Promise<string> {
 }
 
 function generateDokuInvoiceNumber(itemId: string, sourceInvoiceNumber?: string): string {
-  const sourceKey = String(sourceInvoiceNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  if (sourceKey) return `VPS${sourceKey}`.slice(0, 30);
+  const sourceKey = String(sourceInvoiceNumber || '').trim();
+  if (sourceKey) return sourceKey.slice(0, 30);
   const dateKey = getDateKeyYYMMDD(new Date());
   const itemKey = itemId.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
   const randomKey = new mongoose.Types.ObjectId().toHexString().slice(-6).toUpperCase();
@@ -424,7 +424,10 @@ export const generateDokuPaymentLink = async (req: Request, res: Response) => {
       });
     }
 
-    const invoiceNumber = generateDokuInvoiceNumber(item._id.toString());
+    const invoiceNumber = generateDokuInvoiceNumber(
+      item._id.toString(),
+      item.invoice_meta?.invoice_number
+    );
     const result = await createDokuCheckout({
       amount,
       invoiceNumber,
@@ -882,6 +885,13 @@ export const uploadInvoicePdfs = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Invoice tidak ditemukan.' });
     }
 
+    console.info('Invoice PDF uploaded:', {
+      invoice_number: invoiceNumber,
+      original_path: originalFile.path,
+      paid_path: paidFile.path,
+      matched_items: result.matchedCount,
+    });
+
     return res.status(201).json({
       pdf_original_url: pdfOriginalUrl,
       pdf_paid_url: pdfPaidUrl,
@@ -1059,7 +1069,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     });
     // A newly generated invoice must get a fresh checkout so its current callback
     // configuration is always registered at DOKU.
-    const dokuInvoiceNumber = generateDokuInvoiceNumber(firstItem._id.toString(), invoiceNumber);
+    const dokuInvoiceNumber = invoiceNumber;
     const dokuResult = await createDokuCheckout({
       amount: grandTotal,
       invoiceNumber: dokuInvoiceNumber,

@@ -7,7 +7,7 @@ import { authenticate } from '../middleware/authMiddleware';
 import { createSchedule, deleteItem, generateDokuPaymentLink, generateInvoiceAndMarkProcess, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, handleDokuCallbackResult, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, uploadInvoicePdfs } from '../controllers/vpsTTController2';
 
 const router = Router();
-const invoiceUploadDir = path.join(process.cwd(), 'uploads', 'vps-invoices');
+const invoiceUploadDir = path.resolve(__dirname, '..', '..', 'uploads', 'vps-invoices');
 fs.mkdirSync(invoiceUploadDir, { recursive: true });
 const invoicePdfUpload = multer({
   storage: multer.diskStorage({

@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
@@ -44,8 +45,10 @@ app.use(express.json({
 }));
 app.use(morgan('dev'));
 
-// Serve static files for uploads
-app.use('/uploads', express.static('uploads'));
+// Keep uploads stable even when PM2 starts the process from a different cwd.
+const backendUploadsDir = path.resolve(__dirname, '..', 'uploads');
+app.use('/uploads', express.static(backendUploadsDir));
+app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 
 // Request logging middleware
 app.use((req, res, next) => {

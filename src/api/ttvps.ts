@@ -265,8 +265,7 @@ export async function uploadInvoiceVpsPdfs(params: {
   form.append('paid', params.paid, params.paidFileName);
   const { data } = await axiosInstance.post(
     `/tt-vps/invoice/${encodeURIComponent(params.invoiceNumber)}/pdf`,
-    form,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    form
   );
   return data;
 }
