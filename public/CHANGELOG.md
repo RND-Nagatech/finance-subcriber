@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-20
+
+### Added
+- **VPS: Integrasi DOKU Checkout**
+  - Ditambahkan aksi untuk membuat link pembayaran DOKU pada data VPS.
+  - Generate invoice VPS sekarang otomatis membuat checkout dan link pembayaran DOKU.
+  - Dialog `Link Pembayaran DOKU` menampilkan toko, nominal, nomor invoice, masa berlaku, serta tombol buka payment page.
+  - Customer DOKU menggunakan nama toko dan data subscriber yang sudah tersedia.
+
+- **VPS: Pesan Pembayaran Siap Salin**
+  - Ditambahkan pesan resmi pembayaran PT Nagatech Sistem Integrator beserta payment URL.
+  - Tombol salin menggunakan Clipboard API dengan fallback untuk browser atau halaman yang tidak mendukung secure clipboard.
+
+- **DOKU: Callback Hasil Pembayaran**
+  - Checkout menggunakan `order.callback_url` dan `auto_redirect` untuk mengembalikan pelanggan setelah pembayaran.
+  - Callback membawa token bertanda tangan yang berisi nomor invoice dan nominal pembayaran.
+  - Backend memverifikasi token, nomor invoice, nominal, serta status transaksi melalui DOKU Check Status API.
+  - Invoice VPS hanya dapat diselesaikan otomatis dari status internal `PROCESS` ketika transaksi DOKU berstatus `SUCCESS`.
+  - Setelah pembayaran terverifikasi, status VPS otomatis berubah menjadi `DONE` dan tanggal pelunasan disimpan menggunakan timezone `Asia/Jakarta`.
+  - Halaman verifikasi melakukan retry otomatis setiap 5 detik apabila status DOKU belum tersedia.
+
+- **VPS Invoice: Penyimpanan PDF Asli**
+  - Ditambahkan endpoint upload PDF invoice `POST /api/tt-vps/invoice/:invoiceNumber/pdf`.
+  - PDF original dan PDF `LUNAS` yang dibuat frontend sekarang otomatis diunggah ke backend.
+  - URL kedua PDF disimpan pada `invoice_meta.pdf_original_url` dan `invoice_meta.pdf_paid_url`.
+  - File disimpan secara persisten pada folder `uploads/vps-invoices` dan tersedia melalui path `/uploads/vps-invoices/...`.
+
+- **Halaman Pembayaran Berhasil**
+  - Ditambahkan tampilan hasil pembayaran yang modern, profesional, responsif, dan mendukung mode print.
+  - Halaman menampilkan status verifikasi, nomor invoice, nominal, dan PDF invoice `LUNAS` yang sama persis dengan file hasil generate frontend.
+  - Invoice lama yang belum memiliki file PDF tetap menggunakan tampilan HTML sebagai fallback.
+
+### Changed
+- **Nomor Invoice DOKU Disamakan dengan Invoice PDF**
+  - `order.invoice_number` DOKU sekarang menggunakan nomor `invoice_meta.invoice_number` tanpa prefix tambahan.
+  - Nomor pada PDF, data backend, callback token, checkout DOKU, dan Check Status DOKU sekarang konsisten.
+
+- **Generate Invoice Selalu Membuat Checkout Baru**
+  - Generate invoice baru tidak lagi memakai ulang payment link aktif dari invoice sebelumnya.
+  - Perubahan callback dan konfigurasi DOKU selalu ikut terkirim pada checkout terbaru.
+
+- **Verifikasi Pembayaran Lebih Cepat**
+  - Jeda verifikasi awal 60 detik dihapus.
+  - Status DOKU diperiksa langsung ketika callback dibuka, dengan timeout request yang dapat diatur melalui `DOKU_STATUS_TIMEOUT_MS`.
+
+- **Halaman Hasil Pembayaran**
+  - Tautan `Kembali ke aplikasi` dihapus karena halaman pembayaran ditujukan untuk pihak eksternal/customer.
+  - Invoice tidak lagi dibangun ulang untuk transaksi baru; viewer menggunakan blob PDF yang sama dengan hasil download frontend.
+
+### Fixed
+- **Upload PDF Invoice Tidak Masuk Backend**
+  - Header multipart sekarang dibentuk otomatis oleh browser agar boundary FormData valid.
+  - Lokasi upload tidak lagi bergantung pada working directory PM2.
+  - Static file server dan multer menggunakan path absolut backend agar file selalu masuk ke `akunting-backend/uploads/vps-invoices`.
+  - Ditambahkan log backend untuk lokasi PDF original/LUNAS dan jumlah item invoice yang diperbarui.
+
+- **Koneksi DOKU dan Diagnostik Checkout**
+  - Ditambahkan timeout untuk request checkout dan Check Status DOKU.
+  - Log checkout menampilkan invoice, nominal, request ID, callback URL, serta HTTP status tanpa menampilkan secret atau callback token.
+  - Error koneksi dan respons DOKU dibuat lebih mudah ditelusuri dari log backend.
+
+### Security
+- **Validasi Callback Pembayaran**
+  - Callback tidak langsung dipercaya sebagai bukti pembayaran.
+  - Token callback dilindungi HMAC SHA-256, memiliki masa berlaku, dan diverifikasi menggunakan perbandingan timing-safe.
+  - Backend tetap meminta status transaksi langsung ke DOKU sebelum mengubah invoice menjadi `DONE`.
+  - Nomor invoice dan nominal dari DOKU harus sama dengan data invoice yang tersimpan.
+
 ## [1.6.11] - 2026-06-15
 
 ### Added
