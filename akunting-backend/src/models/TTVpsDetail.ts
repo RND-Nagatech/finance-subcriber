@@ -56,6 +56,8 @@ export interface ITTVpsDetail extends Document {
     grand_total: number;
     notes?: string;
     display_date: string;
+    pdf_original_url?: string;
+    pdf_paid_url?: string;
   };
   doku_payment?: {
     invoice_number: string;
@@ -145,6 +147,8 @@ const TTVpsDetailSchema: Schema = new Schema(
       grand_total: { type: Number, required: false, min: 0 },
       notes: { type: String, required: false, default: '' },
       display_date: { type: String, required: false },
+      pdf_original_url: { type: String, required: false },
+      pdf_paid_url: { type: String, required: false },
     },
     doku_payment: {
       invoice_number: { type: String, required: false },

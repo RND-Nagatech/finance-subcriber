@@ -54,6 +54,8 @@ export interface TTVpsDetailItemDTO {
     grand_total: number;
     notes?: string;
     display_date: string;
+    pdf_original_url?: string;
+    pdf_paid_url?: string;
   };
   doku_payment?: DokuPaymentDTO;
 }
@@ -248,6 +250,24 @@ export async function generateInvoiceVps(params: { payload: GenerateInvoiceVpsPa
     ? `/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/invoice/generate`
     : '/tt-vps/invoice/generate';
   const { data } = await axiosInstance.post(endpoint, payload);
+  return data;
+}
+
+export async function uploadInvoiceVpsPdfs(params: {
+  invoiceNumber: string;
+  original: Blob;
+  originalFileName: string;
+  paid: Blob;
+  paidFileName: string;
+}): Promise<{ pdf_original_url: string; pdf_paid_url: string }> {
+  const form = new FormData();
+  form.append('original', params.original, params.originalFileName);
+  form.append('paid', params.paid, params.paidFileName);
+  const { data } = await axiosInstance.post(
+    `/tt-vps/invoice/${encodeURIComponent(params.invoiceNumber)}/pdf`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  );
   return data;
 }
 

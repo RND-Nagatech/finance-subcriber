@@ -17,9 +17,9 @@ import {
 function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }
 
 const INVOICE_SENDER = {
-  name: 'PT. GRAHA INTEGRA APLIKASI',
-  address: 'SEMARANG',
-  phone: '0815-1959-5999',
+  name: 'PT. NAGATECH SISTEM INTEGRATOR',
+  address: 'JL.CILENGKRANG 1, BANDUNG, JAWA BARAT, INDONESIA',
+  phone: '0811-2286-6660',
 };
 
 function getDateKeyYYMMDD(date = new Date()): string {
@@ -632,7 +632,13 @@ function sendDokuResultPage(
   const paymentAccounts = invoice?.payment_accounts?.filter((account) => account.no_rekening).map((account) =>
     `<div><span>${escapeHtml(account.kode_bank || 'Rekening')}</span><strong>${escapeHtml(account.no_rekening || '')}</strong>${account.nama_rekening ? `<small>${escapeHtml(account.nama_rekening)}</small>` : ''}</div>`
   ).join('') || '';
-  const invoiceSection = invoice ? `<section class="invoice-document">
+  const paidPdfUrl = invoice?.pdf_paid_url ? escapeHtml(invoice.pdf_paid_url) : '';
+  const invoiceSection = paidPdfUrl ? `<section class="pdf-document">
+    <header class="pdf-header"><div><span class="invoice-kicker">INVOICE LUNAS</span><h2>${escapeHtml(invoice?.invoice_number || '-')}</h2></div><a href="${paidPdfUrl}" target="_blank" rel="noreferrer">Buka PDF</a></header>
+    <object data="${paidPdfUrl}" type="application/pdf" aria-label="Invoice ${escapeHtml(invoice?.invoice_number || '')}">
+      <p>Preview PDF tidak didukung pada browser ini. <a href="${paidPdfUrl}" target="_blank" rel="noreferrer">Buka invoice PDF</a>.</p>
+    </object>
+  </section>` : invoice ? `<section class="invoice-document">
     <header class="invoice-header">
       <div><span class="invoice-kicker">INVOICE</span><h2>${escapeHtml(invoice.invoice_number || '-')}</h2><p>${escapeHtml(invoice.display_date || '')}</p></div>
       <button type="button" onclick="window.print()">Cetak invoice</button>
@@ -689,8 +695,9 @@ function sendDokuResultPage(
     .detail span { color:var(--muted); }.detail strong { text-align:right; overflow-wrap:anywhere; }
     .refresh { display:flex; align-items:center; gap:9px; margin-top:22px; padding:11px 13px; background:#f5f8f7; border-left:3px solid #d5a62e; color:#53605c; font-size:13px; }
     .spinner { width:14px; height:14px; border:2px solid #c7d6d2; border-top-color:#087b75; border-radius:50%; animation:spin .8s linear infinite; }
-    .footer { display:flex; justify-content:space-between; align-items:center; gap:18px; margin-top:26px; color:var(--muted); font-size:12px; }
-    .footer a { color:#17212b; font-weight:700; text-decoration:none; border-bottom:1px solid #87928f; }
+    .footer { margin-top:26px; color:var(--muted); font-size:12px; }
+    .pdf-document { margin-top:22px; overflow:hidden; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 12px 36px rgba(23,33,43,.07); }
+    .pdf-header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 20px; border-bottom:1px solid var(--line); }.pdf-header h2 { margin:4px 0 0; font-size:18px; }.pdf-header a { padding:10px 14px; background:#17212b; color:#fff; border-radius:6px; font-size:13px; font-weight:700; text-decoration:none; }.pdf-document object { display:block; width:100%; height:820px; border:0; background:#e8edeb; }.pdf-document object p { padding:24px; }
     .invoice-document { margin-top:22px; padding:34px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 12px 36px rgba(23,33,43,.07); }
     .invoice-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding-bottom:26px; border-bottom:2px solid #17212b; }
     .invoice-kicker { color:#087b75; font-size:11px; font-weight:800; }.invoice-header h2 { margin:5px 0 4px; font-size:24px; }.invoice-header p { margin:0; color:var(--muted); font-size:13px; }
@@ -700,8 +707,8 @@ function sendDokuResultPage(
     .invoice-bottom { display:grid; grid-template-columns:1fr 260px; gap:32px; padding-top:25px; }.accounts>div { margin-bottom:12px; }.accounts>div span,.accounts>div strong,.accounts>div small { display:block; }.accounts>div span,.accounts>div small { color:var(--muted); font-size:12px; }.accounts>div strong { margin:3px 0; font-size:14px; }.totals>div { display:flex; justify-content:space-between; gap:20px; padding:7px 0; font-size:13px; }.grand-total { margin-top:6px; padding-top:13px!important; border-top:2px solid #17212b; font-size:16px!important; }
     .notes { margin-top:24px; padding:15px; background:#f5f8f7; border-left:3px solid #d5a62e; }.notes p { margin:0; color:#53605c; font-size:13px; line-height:1.55; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    @media (max-width:560px) { .shell{padding-top:32px}.content,.invoice-document{padding:26px 22px}.status-row{gap:14px}h1{font-size:22px}.detail{display:block}.detail strong{display:block;text-align:left;margin-top:6px}.footer{display:block}.footer a{display:inline-block;margin-top:12px}.parties,.invoice-bottom{grid-template-columns:1fr}.invoice-header{display:block}.invoice-header button{margin-top:16px}.invoice-bottom{gap:18px} }
-    @media print { body{background:#fff}.shell{width:100%;padding:0}.brand,.receipt,.invoice-header button{display:none}.invoice-document{margin:0;border:0;box-shadow:none}.invoice-document{padding:0} }
+    @media (max-width:560px) { .shell{padding-top:32px}.content,.invoice-document{padding:26px 22px}.status-row{gap:14px}h1{font-size:22px}.detail{display:block}.detail strong{display:block;text-align:left;margin-top:6px}.parties,.invoice-bottom{grid-template-columns:1fr}.invoice-header{display:block}.invoice-header button{margin-top:16px}.invoice-bottom{gap:18px}.pdf-document object{height:620px}.pdf-header{align-items:flex-start}.pdf-header a{white-space:nowrap} }
+    @media print { body{background:#fff}.shell{width:100%;padding:0}.brand,.receipt,.invoice-header button,.pdf-header{display:none}.invoice-document,.pdf-document{margin:0;border:0;box-shadow:none}.invoice-document{padding:0}.pdf-document object{height:100vh} }
     @media (prefers-reduced-motion:reduce) { .spinner,.pending .status-mark::after { animation:none; } }
   </style>
 </head>
@@ -714,7 +721,7 @@ function sendDokuResultPage(
         <div class="status-row"><div class="status-mark" aria-hidden="true"></div><div><div class="eyebrow">${statusLabel}</div><h1>${escapeHtml(options.title)}</h1><p class="message">${escapeHtml(options.message)}</p></div></div>
         ${(invoiceRow || amountRow) ? `<div class="details">${invoiceRow}${amountRow}</div>` : ''}
         ${refreshText}
-        <div class="footer"><span>Status diperiksa langsung melalui DOKU</span><a href="/">Kembali ke aplikasi</a></div>
+        <div class="footer"><span>Status diperiksa langsung melalui DOKU</span></div>
       </div>
     </section>
     ${invoiceSection}
@@ -845,6 +852,43 @@ export const handleDokuCallbackResult = async (req: Request, res: Response) => {
       refreshSeconds: 5,
       statusCode: 202,
     });
+  }
+};
+
+export const uploadInvoicePdfs = async (req: Request, res: Response) => {
+  try {
+    const invoiceNumber = String(req.params.invoiceNumber || '').trim();
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const originalFile = files?.original?.[0];
+    const paidFile = files?.paid?.[0];
+    if (!invoiceNumber || !originalFile || !paidFile) {
+      return res.status(400).json({ message: 'File PDF original dan LUNAS wajib diunggah.' });
+    }
+
+    const pdfOriginalUrl = `/uploads/vps-invoices/${originalFile.filename}`;
+    const pdfPaidUrl = `/uploads/vps-invoices/${paidFile.filename}`;
+    const result = await TTVpsDetail.updateMany(
+      { 'invoice_meta.invoice_number': invoiceNumber },
+      {
+        $set: {
+          'invoice_meta.pdf_original_url': pdfOriginalUrl,
+          'invoice_meta.pdf_paid_url': pdfPaidUrl,
+          update_date: new Date(),
+          update_by: (req as any).user?.username || (req as any).user?._id || 'system',
+        },
+      }
+    );
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'Invoice tidak ditemukan.' });
+    }
+
+    return res.status(201).json({
+      pdf_original_url: pdfOriginalUrl,
+      pdf_paid_url: pdfPaidUrl,
+    });
+  } catch (err: any) {
+    console.error('Upload invoice PDF error:', err);
+    return res.status(500).json({ message: 'Gagal menyimpan file PDF invoice.' });
   }
 };
 

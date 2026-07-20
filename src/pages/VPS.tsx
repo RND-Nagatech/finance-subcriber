@@ -978,7 +978,7 @@ export default function VPS() {
               generated_at: String(meta.generated_at || new Date().toISOString()),
               generated_by: String(meta.generated_by || 'RE-DOWNLOAD'),
               sender: meta.sender || {
-                name: 'PT. GRAHA INTEGRA APLIKASI',
+                name: 'PT. NAGATECH SISTEM INTEGRATOR',
                 address: '',
                 phone: '',
               },
@@ -1020,9 +1020,9 @@ export default function VPS() {
               generated_at: new Date().toISOString(),
               generated_by: 'DEBUG_PRINT_ONLY',
               sender: {
-                name: 'PT. GRAHA INTEGRA APLIKASI',
-                address: '',
-                phone: '',
+                name: 'PT. NAGATECH SISTEM INTEGRATOR',
+                address: 'JL.CILENGKRANG 1 , CIBIRU, KOTA BANDUNG, JAWA BARAT',
+                phone: '0811-2286-6660',
               },
               customer: {
                 name: payload.customer.name,
@@ -2010,9 +2010,9 @@ function InvoiceGenerateDialog({
               .map((r) => [
                 (r?.kode_bank || '-').toString(),
                 (r?.no_rekening || '-').toString(),
-                (r?.nama_rekening || snapshot.sender.name || 'PT. GRAHA INTEGRA APLIKASI').toString(),
+                (r?.nama_rekening || snapshot.sender.name || 'PT. NAGATECH SISTEM INTEGRATOR').toString(),
               ])
-          : [['BCA', '2839016888', snapshot.sender.name || 'PT. GRAHA INTEGRA APLIKASI']]
+          : [['BCA', '2839016888', snapshot.sender.name || 'PT. NAGATECH SISTEM INTEGRATOR']]
         ) as string[][];
         const paymentBlockH = 92 + rekeningRows.length * 20;
         if (y + paymentBlockH > contentBottom) {
