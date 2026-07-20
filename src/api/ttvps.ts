@@ -55,6 +55,31 @@ export interface TTVpsDetailItemDTO {
     notes?: string;
     display_date: string;
   };
+  doku_payment?: DokuPaymentDTO;
+}
+
+export interface DokuPaymentDTO {
+  invoice_number: string;
+  payment_url: string;
+  token_id?: string;
+  expired_date?: string;
+  amount: number;
+  request_id: string;
+  generated_at: string;
+  generated_by: string;
+  status?: 'PENDING' | 'SUCCESS';
+  paid_at?: string;
+  notification_request_id?: string;
+  transaction_original_request_id?: string;
+  channel_id?: string;
+  customer?: {
+    id?: string;
+    name: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+  };
 }
 
 export async function fetchDetailsByPeriode(periode: string): Promise<TTVpsDetailItemDTO[]> {
@@ -139,6 +164,18 @@ export async function updateItemActive(params: { periode: string; itemId: string
   return data;
 }
 
+export async function generateDokuPaymentLink(params: { periode: string; itemId: string }): Promise<{
+  message: string;
+  reused: boolean;
+  payment: DokuPaymentDTO;
+}> {
+  const { periode, itemId } = params;
+  const { data } = await axiosInstance.post(
+    `/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/doku/payment-link`
+  );
+  return data;
+}
+
 export async function fetchLastPeriod(): Promise<string | null> {
   const { data } = await axiosInstance.get('/tt-vps/last-period');
   return data?.periode || null;
@@ -201,6 +238,7 @@ export interface GenerateInvoiceVpsResponse {
   }>;
   affected_periodes?: string[];
   invoice: NonNullable<TTVpsDetailItemDTO['invoice_meta']>;
+  doku_payment: DokuPaymentDTO;
 }
 
 export async function generateInvoiceVps(params: { payload: GenerateInvoiceVpsPayload; periode?: string; itemId?: string }): Promise<GenerateInvoiceVpsResponse> {

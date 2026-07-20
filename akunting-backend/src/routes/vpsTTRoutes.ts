@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authMiddleware';
-import { createSchedule, deleteItem, generateInvoiceAndMarkProcess, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive } from '../controllers/vpsTTController2';
+import { createSchedule, deleteItem, generateDokuPaymentLink, generateInvoiceAndMarkProcess, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, handleDokuNotification, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive } from '../controllers/vpsTTController2';
 
 const router = Router();
+
+// DOKU calls this route directly, so signature verification replaces user authentication.
+router.post('/doku/notification', handleDokuNotification);
 
 router.use(authenticate);
 
@@ -22,6 +25,7 @@ router.get('/generate-next-year/status', getGenerateStatus);
 router.patch('/details/:periode/item/:itemId/status', updateItemStatus);
 router.patch('/details/:periode/item/:itemId/active', updateItemActive);
 router.patch('/details/:periode/item/:itemId', updateItem);
+router.post('/details/:periode/item/:itemId/doku/payment-link', generateDokuPaymentLink);
 router.post('/invoice/generate', generateInvoiceAndMarkProcess);
 router.post('/details/:periode/item/:itemId/invoice/generate', generateInvoiceAndMarkProcess);
 router.delete('/details/:periode/item/:itemId', deleteItem);

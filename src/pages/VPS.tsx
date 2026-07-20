@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, generateInvoiceVps, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, updateSubscriberPhoneByKode } from '@/api/ttvps';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox, ComboboxOption } from '@/components/ui/Combobox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown } from 'lucide-react';
+import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import axiosInstance from '@/api/axiosInstance';
 
@@ -29,6 +29,47 @@ function parseCurrencyInput(value: string): number {
 
 function formatCurrencyInput(n: number): string {
   return currency(n);
+}
+
+function formatDokuExpiredDate(value?: string): string {
+  if (!value || !/^\d{14}$/.test(value)) return '-';
+  return `${value.slice(6, 8)}/${value.slice(4, 6)}/${value.slice(0, 4)} ${value.slice(8, 10)}:${value.slice(10, 12)}:${value.slice(12, 14)} WIB`;
+}
+
+function buildDokuPaymentMessage(paymentUrl: string): string {
+  return `Untuk Pembayaran dapat melalui channel pembayaran resmi PT Nagatech Sistem Integrator dibawah ini:\n${paymentUrl}`;
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Continue with the compatibility fallback below.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.inset = '0 auto auto 0';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } finally {
+    textarea.remove();
+    activeElement?.focus();
+  }
+  return copied;
 }
 
 function enumerateMonths(from: string, to: string): string[] {
@@ -145,6 +186,10 @@ export default function VPS() {
   const [invoiceItems, setInvoiceItems] = useState<VpsInvoiceItem[]>([]);
   const [invoiceDialogMode, setInvoiceDialogMode] = useState<'generate' | 'download'>('generate');
   const [selectedInvoiceItems, setSelectedInvoiceItems] = useState<Record<string, VpsInvoiceItem>>({});
+  const [dokuDialogOpen, setDokuDialogOpen] = useState(false);
+  const [selectedDokuItem, setSelectedDokuItem] = useState<VpsInvoiceItem | null>(null);
+  const [selectedDokuPayment, setSelectedDokuPayment] = useState<DokuPaymentDTO | null>(null);
+  const pendingInvoiceDokuRef = useRef<{ item: VpsInvoiceItem; payment: DokuPaymentDTO } | null>(null);
 
   // Filters: period (from/to month), status, and search term
   const currentMonth = useMemo(() => format(new Date(), 'yyyy-MM'), []);
@@ -162,6 +207,7 @@ export default function VPS() {
     queries: months.map((p) => ({
       queryKey: ['tt-vps-details', p],
       queryFn: () => fetchDetailsByPeriode(p),
+      refetchInterval: 15000,
     })),
     combine: (results) => ({
       data: results.flatMap(r => (Array.isArray(r.data) ? r.data : []) ) as any,
@@ -323,6 +369,7 @@ export default function VPS() {
   const startCreate = () => { setEditItem(null); setOpen(true); };
   const startEdit = (item: VpsInvoiceItem) => { setEditItem(item); setOpenEdit(true); };
   const startGenerateInvoice = (item: VpsInvoiceItem) => {
+    pendingInvoiceDokuRef.current = null;
     setInvoiceDialogMode('generate');
     setInvoiceItems([item]);
     setInvoiceDialogOpen(true);
@@ -332,6 +379,7 @@ export default function VPS() {
       toast.error('Data invoice belum tersedia untuk item ini.');
       return;
     }
+    pendingInvoiceDokuRef.current = null;
     setInvoiceDialogMode('download');
     setInvoiceItems([item]);
     setInvoiceDialogOpen(true);
@@ -341,6 +389,7 @@ export default function VPS() {
       toast.warn('Pilih minimal 1 data OPEN & aktif untuk generate invoice gabungan.');
       return;
     }
+    pendingInvoiceDokuRef.current = null;
     setInvoiceDialogMode('generate');
     setInvoiceItems(selectedVisibleItems);
     setInvoiceDialogOpen(true);
@@ -415,13 +464,45 @@ export default function VPS() {
       );
       setLocalItems((prev) => prev.map((item) =>
         affectedKeys.has(`${item.__periode}::${item._id}`)
-          ? { ...item, status: 'PROCESS' }
+          ? { ...item, status: 'PROCESS', doku_payment: _data.doku_payment }
           : item
       ));
       qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
       qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
     },
   });
+
+  const generateDokuMut = useMutation({
+    mutationFn: ({ periode, itemId }: { periode: string; itemId: string }) => generateDokuPaymentLink({ periode, itemId }),
+    onSuccess: (data, variables) => {
+      setSelectedDokuPayment(data.payment);
+      setDokuDialogOpen(true);
+      setLocalItems((prev) => prev.map((item) =>
+        item.__periode === variables.periode && item._id === variables.itemId
+          ? { ...item, doku_payment: data.payment }
+          : item
+      ));
+      toast.success(data.reused ? 'Link pembayaran DOKU masih aktif.' : 'Link pembayaran DOKU berhasil dibuat.');
+      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal membuat link pembayaran DOKU.'),
+  });
+
+  const handleDokuPayment = (item: VpsInvoiceItem) => {
+    setSelectedDokuItem(item);
+    generateDokuMut.mutate({ periode: item.__periode, itemId: item._id });
+  };
+
+  const copyDokuPaymentUrl = async () => {
+    if (!selectedDokuPayment?.payment_url) return;
+    try {
+      const copied = await copyTextToClipboard(buildDokuPaymentMessage(selectedDokuPayment.payment_url));
+      if (!copied) throw new Error('Clipboard tidak tersedia');
+      toast.success('Pesan pembayaran berhasil disalin.');
+    } catch {
+      toast.error('Pesan tidak dapat disalin otomatis. Silakan blok dan salin link secara manual.');
+    }
+  };
 
   // Summary for current table view
   const summary = useMemo(() => {
@@ -629,6 +710,18 @@ export default function VPS() {
                         )}
                       </td>
                       <td className="py-2 pr-4 flex gap-2">
+                        {item.status !== 'DONE' && (
+                          <Button
+                            size="icon"
+                            aria-label="Link pembayaran DOKU"
+                            title="Generate atau lihat link pembayaran DOKU"
+                            className="rounded-full bg-cyan-600 hover:bg-cyan-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                            disabled={generateDokuMut.isPending || ((item.is_active ?? true) === false)}
+                            onClick={() => handleDokuPayment(item)}
+                          >
+                            <CreditCard className="h-5 w-5" />
+                          </Button>
+                        )}
                         {item.status === 'OPEN' && (
                           <Button
                             size="icon"
@@ -850,7 +943,16 @@ export default function VPS() {
         open={invoiceDialogOpen}
         onOpenChange={(v) => {
           setInvoiceDialogOpen(v);
-          if (!v) setInvoiceItems([]);
+          if (!v) {
+            setInvoiceItems([]);
+            const pendingPayment = pendingInvoiceDokuRef.current;
+            pendingInvoiceDokuRef.current = null;
+            if (pendingPayment) {
+              setSelectedDokuItem(pendingPayment.item);
+              setSelectedDokuPayment(pendingPayment.payment);
+              window.setTimeout(() => setDokuDialogOpen(true), 0);
+            }
+          }
         }}
         mode={invoiceDialogMode}
         items={invoiceItems}
@@ -968,9 +1070,66 @@ export default function VPS() {
               target_items: targetItems,
             },
           });
+          pendingInvoiceDokuRef.current = {
+            item: firstItem,
+            payment: resp.doku_payment,
+          };
           return resp.invoice;
         }}
       />
+
+      <Dialog open={dokuDialogOpen} onOpenChange={setDokuDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Link Pembayaran DOKU</DialogTitle>
+          </DialogHeader>
+          {selectedDokuPayment && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <div className="text-slate-500">Toko</div>
+                  <div className="font-medium">{selectedDokuItem?.toko || '-'}</div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Nominal</div>
+                  <div className="font-medium">{currency(selectedDokuPayment.amount)}</div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-slate-500">Invoice DOKU</div>
+                  <div className="font-medium">{selectedDokuPayment.invoice_number}</div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-slate-500">Berlaku Sampai</div>
+                  <div className="font-medium">{formatDokuExpiredDate(selectedDokuPayment.expired_date)}</div>
+                </div>
+              </div>
+              <div className="space-y-2 rounded-md border border-cyan-200 bg-cyan-50 p-4 text-sm text-slate-800">
+                <p className="font-medium leading-relaxed">
+                  Untuk Pembayaran dapat melalui channel pembayaran resmi PT Nagatech Sistem Integrator dibawah ini:
+                </p>
+                <a
+                  href={selectedDokuPayment.payment_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block break-all font-semibold text-cyan-700 underline underline-offset-2"
+                >
+                  {selectedDokuPayment.payment_url}
+                </a>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={copyDokuPaymentUrl}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Salin Pesan Pembayaran
+                </Button>
+                <Button type="button" onClick={() => window.open(selectedDokuPayment.payment_url, '_blank', 'noopener,noreferrer')}>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Buka DOKU
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <VpsFormDialog
         open={open}

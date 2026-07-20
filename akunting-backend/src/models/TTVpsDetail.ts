@@ -57,6 +57,29 @@ export interface ITTVpsDetail extends Document {
     notes?: string;
     display_date: string;
   };
+  doku_payment?: {
+    invoice_number: string;
+    payment_url: string;
+    token_id?: string;
+    expired_date?: string;
+    amount: number;
+    request_id: string;
+    generated_at: Date;
+    generated_by: string;
+    status?: 'PENDING' | 'SUCCESS';
+    paid_at?: Date;
+    notification_request_id?: string;
+    transaction_original_request_id?: string;
+    channel_id?: string;
+    customer?: {
+      id?: string;
+      name: string;
+      phone?: string;
+      address?: string;
+      city?: string;
+      country?: string;
+    };
+  };
   input_date: Date;
   update_date: Date;
   delete_date: Date | null;
@@ -122,6 +145,29 @@ const TTVpsDetailSchema: Schema = new Schema(
       notes: { type: String, required: false, default: '' },
       display_date: { type: String, required: false },
     },
+    doku_payment: {
+      invoice_number: { type: String, required: false },
+      payment_url: { type: String, required: false },
+      token_id: { type: String, required: false },
+      expired_date: { type: String, required: false },
+      amount: { type: Number, required: false, min: 0 },
+      request_id: { type: String, required: false },
+      generated_at: { type: Date, required: false },
+      generated_by: { type: String, required: false },
+      status: { type: String, enum: ['PENDING', 'SUCCESS'], required: false, default: 'PENDING' },
+      paid_at: { type: Date, required: false },
+      notification_request_id: { type: String, required: false },
+      transaction_original_request_id: { type: String, required: false },
+      channel_id: { type: String, required: false },
+      customer: {
+        id: { type: String, required: false },
+        name: { type: String, required: false },
+        phone: { type: String, required: false },
+        address: { type: String, required: false },
+        city: { type: String, required: false },
+        country: { type: String, required: false },
+      },
+    },
     status: { type: String, enum: ['OPEN', 'PROCESS', 'DONE'], default: 'OPEN' },
     tgl_lunas: { type: String, required: false },
     input_date: { type: Date, default: Date.now },
@@ -147,6 +193,10 @@ TTVpsDetailSchema.index({ chain_id: 1 });
 TTVpsDetailSchema.index({ status: 1, tgl_lunas: 1 });
 TTVpsDetailSchema.index(
   { 'invoice_meta.invoice_number': 1 },
+  { sparse: true }
+);
+TTVpsDetailSchema.index(
+  { 'doku_payment.invoice_number': 1 },
   { sparse: true }
 );
 

@@ -5,6 +5,12 @@ import Subscriber from '../models/Subscriber';
 import InvoiceCounter from '../models/InvoiceCounter';
 import { addDays, calcTempo, enumerateMonthsInclusive, toPeriod, formatYMD } from '../utils/vpsPeriod';
 import mongoose from 'mongoose';
+import {
+  createDokuCheckout,
+  DokuApiError,
+  normalizeDokuCustomer,
+  verifyDokuNotificationSignature,
+} from '../services/dokuService';
 
 function sum(arr: number[]): number { return arr.reduce((a, b) => a + b, 0); }
 
@@ -38,6 +44,96 @@ async function generateMonthlyInvoiceNumber(): Promise<string> {
   );
   const seq = String(counter?.last_seq || 1).padStart(4, '0');
   return `FJ${dateKey}-${seq}`;
+}
+
+function generateDokuInvoiceNumber(itemId: string, sourceInvoiceNumber?: string): string {
+  const sourceKey = String(sourceInvoiceNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  if (sourceKey) return `VPS${sourceKey}`.slice(0, 30);
+  const dateKey = getDateKeyYYMMDD(new Date());
+  const itemKey = itemId.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+  const randomKey = new mongoose.Types.ObjectId().toHexString().slice(-6).toUpperCase();
+  return `VPS${dateKey}${itemKey}${randomKey}`.slice(0, 30);
+}
+
+function isDokuLinkStillActive(expiredDate?: string): boolean {
+  if (!expiredDate || !/^\d{14}$/.test(expiredDate)) return false;
+  const year = Number(expiredDate.slice(0, 4));
+  const month = Number(expiredDate.slice(4, 6));
+  const day = Number(expiredDate.slice(6, 8));
+  const hour = Number(expiredDate.slice(8, 10));
+  const minute = Number(expiredDate.slice(10, 12));
+  const second = Number(expiredDate.slice(12, 14));
+  const expiresAt = Date.UTC(year, month - 1, day, hour - 7, minute, second);
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+}
+
+async function resolveDokuCustomer(
+  item: ITTVpsDetail,
+  fallback?: { phone?: string; address?: string }
+) {
+  let subscriber = await Subscriber.findOne({
+    toko: item.toko,
+    program: item.program,
+    delete_date: null,
+  }).sort({ update_date: -1 });
+  if (!subscriber) {
+    subscriber = await Subscriber.findOne({ toko: item.toko, delete_date: null }).sort({ update_date: -1 });
+  }
+
+  return normalizeDokuCustomer({
+    id: subscriber?.kode,
+    name: item.toko,
+    phone: subscriber?.nomor_telepon
+      || subscriber?.no_hp_pic
+      || subscriber?.no_hp_owner
+      || fallback?.phone
+      || item.invoice_meta?.customer?.phone,
+    address: subscriber?.alamat
+      || fallback?.address
+      || item.invoice_meta?.customer?.address,
+    city: subscriber?.daerah || item.daerah,
+    country: 'ID',
+  });
+}
+
+function isSameDokuCustomer(
+  stored: NonNullable<ITTVpsDetail['doku_payment']>['customer'],
+  current: ReturnType<typeof normalizeDokuCustomer>
+): boolean {
+  if (!stored?.name) return false;
+  return JSON.stringify(normalizeDokuCustomer(stored)) === JSON.stringify(current);
+}
+
+function copyDokuPayment(payment: NonNullable<ITTVpsDetail['doku_payment']>) {
+  return {
+    invoice_number: payment.invoice_number,
+    payment_url: payment.payment_url,
+    token_id: payment.token_id,
+    expired_date: payment.expired_date,
+    amount: payment.amount,
+    request_id: payment.request_id,
+    generated_at: payment.generated_at,
+    generated_by: payment.generated_by,
+    status: payment.status,
+    paid_at: payment.paid_at,
+    notification_request_id: payment.notification_request_id,
+    transaction_original_request_id: payment.transaction_original_request_id,
+    channel_id: payment.channel_id,
+    customer: payment.customer ? normalizeDokuCustomer(payment.customer) : undefined,
+  };
+}
+
+function formatJakartaDate(value?: string): string {
+  const date = value ? new Date(value) : new Date();
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(validDate);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || '';
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
 }
 
 async function recalcAggregateForPeriode(periode: string, user: any) {
@@ -311,6 +407,196 @@ export const updateItemStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const generateDokuPaymentLink = async (req: Request, res: Response) => {
+  try {
+    const { periode, itemId } = req.params as { periode: string; itemId: string };
+    const item = await TTVpsDetail.findOne({ _id: itemId, periode });
+    if (!item) return res.status(404).json({ message: 'item not found' });
+    if ((item as any).is_active === false) {
+      return res.status(400).json({ message: 'Data nonaktif. Aktifkan terlebih dahulu sebelum membuat link pembayaran.' });
+    }
+    if (item.status === 'DONE') {
+      return res.status(400).json({ message: 'Pembayaran VPS sudah selesai.' });
+    }
+
+    const amount = Math.round(Number(item.invoice_meta?.grand_total ?? item.total_harga));
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      return res.status(400).json({ message: 'Total tagihan harus lebih dari 0.' });
+    }
+
+    const customer = await resolveDokuCustomer(item);
+
+    const currentPayment = item.doku_payment;
+    if (
+      currentPayment?.payment_url
+      && currentPayment.amount === amount
+      && currentPayment.status !== 'SUCCESS'
+      && isDokuLinkStillActive(currentPayment.expired_date)
+      && isSameDokuCustomer(currentPayment.customer, customer)
+    ) {
+      return res.json({
+        message: 'payment link masih aktif',
+        reused: true,
+        payment: currentPayment,
+      });
+    }
+
+    const invoiceNumber = generateDokuInvoiceNumber(item._id.toString());
+    const result = await createDokuCheckout({
+      amount,
+      invoiceNumber,
+      customer,
+    });
+    const now = new Date();
+    const userTag = (req as any).user?.username || (req as any).user?._id || 'system';
+
+    item.doku_payment = {
+      invoice_number: invoiceNumber,
+      payment_url: result.paymentUrl,
+      token_id: result.tokenId,
+      expired_date: result.expiredDate,
+      amount,
+      request_id: result.requestId,
+      generated_at: now,
+      generated_by: userTag,
+      status: 'PENDING',
+      customer: result.customer,
+    };
+    item.update_date = now;
+    item.update_by = userTag;
+    await item.save();
+
+    return res.status(201).json({
+      message: 'payment link berhasil dibuat',
+      reused: false,
+      payment: item.doku_payment,
+    });
+  } catch (err: any) {
+    if (err instanceof DokuApiError) {
+      console.error('DOKU payment link error:', {
+        message: err.message,
+        status: err.status,
+        request_id: err.requestId,
+        details: err.details,
+      });
+      return res.status(502).json({
+        message: err.message,
+        doku_status: err.status,
+        doku_request_id: err.requestId,
+        doku_details: err.details,
+      });
+    }
+    console.error('DOKU payment link error:', err);
+    return res.status(502).json({ message: err?.message || 'Gagal membuat payment link DOKU.' });
+  }
+};
+
+export const handleDokuNotification = async (req: Request, res: Response) => {
+  const clientId = String(req.get('Client-Id') || '');
+  const requestId = String(req.get('Request-Id') || '');
+  const requestTimestamp = String(req.get('Request-Timestamp') || '');
+  const signature = String(req.get('Signature') || '');
+  const rawBody = (req as Request & { rawBody?: string }).rawBody;
+  const requestTarget = req.originalUrl.split('?')[0];
+
+  if (!clientId || !requestId || !requestTimestamp || !signature || rawBody === undefined) {
+    return res.status(400).json({ message: 'Header atau raw body notification DOKU tidak lengkap.' });
+  }
+
+  try {
+    const signatureValid = verifyDokuNotificationSignature({
+      clientId,
+      requestId,
+      requestTimestamp,
+      requestTarget,
+      requestBody: rawBody,
+      signature,
+    });
+    if (!signatureValid) {
+      return res.status(401).json({ message: 'Signature notification DOKU tidak valid.' });
+    }
+
+    const transactionStatus = String(req.body?.transaction?.status || '').toUpperCase();
+    const invoiceNumber = String(req.body?.order?.invoice_number || '').trim();
+    if (!invoiceNumber) {
+      return res.status(400).json({ message: 'Invoice number DOKU tidak tersedia.' });
+    }
+    if (transactionStatus !== 'SUCCESS') {
+      return res.status(200).json({ message: 'Notification diterima dan tidak mengubah status.', ignored: true });
+    }
+
+    const paymentAmount = Math.round(Number(req.body?.order?.amount));
+    if (!Number.isSafeInteger(paymentAmount) || paymentAmount <= 0) {
+      return res.status(400).json({ message: 'Nominal notification DOKU tidak valid.' });
+    }
+
+    const docs = await TTVpsDetail.find({ 'doku_payment.invoice_number': invoiceNumber });
+    if (docs.length === 0) {
+      return res.status(404).json({ message: 'Invoice DOKU tidak ditemukan.' });
+    }
+    const amountMismatch = docs.some((doc) => Math.round(Number(doc.doku_payment?.amount)) !== paymentAmount);
+    if (amountMismatch) {
+      return res.status(409).json({ message: 'Nominal pembayaran DOKU tidak sesuai dengan invoice.' });
+    }
+
+    const transactionDateRaw = String(req.body?.transaction?.date || '');
+    const paidAtCandidate = new Date(transactionDateRaw);
+    const paidAt = Number.isNaN(paidAtCandidate.getTime()) ? new Date() : paidAtCandidate;
+    const paymentDate = formatJakartaDate(paidAt.toISOString());
+    const updateTag = `DOKU:${requestId}`;
+    const channelId = String(req.body?.channel?.id || '').trim();
+    const originalRequestId = String(req.body?.transaction?.original_request_id || '').trim();
+
+    await TTVpsDetail.updateMany(
+      { 'doku_payment.invoice_number': invoiceNumber },
+      {
+        $set: {
+          'doku_payment.status': 'SUCCESS',
+          'doku_payment.paid_at': paidAt,
+          'doku_payment.notification_request_id': requestId,
+          ...(originalRequestId ? { 'doku_payment.transaction_original_request_id': originalRequestId } : {}),
+          ...(channelId ? { 'doku_payment.channel_id': channelId } : {}),
+        },
+      }
+    );
+
+    const pendingIds = docs.filter((doc) => doc.status !== 'DONE').map((doc) => doc._id);
+    if (pendingIds.length === 0) {
+      return res.status(200).json({ message: 'Pembayaran DOKU sudah pernah diproses.', already_processed: true });
+    }
+
+    await TTVpsDetail.updateMany(
+      { _id: { $in: pendingIds }, status: { $ne: 'DONE' } },
+      {
+        $set: {
+          status: 'DONE',
+          tgl_lunas: paymentDate,
+          update_date: new Date(),
+          update_by: updateTag,
+        },
+      }
+    );
+
+    const affectedPeriodes = new Set(docs.map((doc) => doc.periode));
+    affectedPeriodes.add(paymentDate.slice(0, 7));
+    for (const periode of affectedPeriodes) {
+      await recalcAggregateForPeriode(periode, { username: updateTag });
+    }
+
+    return res.status(200).json({
+      message: 'Pembayaran DOKU berhasil diproses.',
+      invoice_number: invoiceNumber,
+      updated_items: pendingIds.length,
+    });
+  } catch (err: any) {
+    console.error('DOKU notification error:', {
+      message: err?.message || err,
+      request_id: requestId,
+    });
+    return res.status(500).json({ message: 'Gagal memproses notification DOKU.' });
+  }
+};
+
 export const generateInvoiceAndMarkProcess = async (req: Request, res: Response) => {
   let session: mongoose.ClientSession | null = null;
   try {
@@ -440,6 +726,9 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     const discountPercent =
       subtotalCalculated > 0 ? Math.round((discountRp / subtotalCalculated) * 10000) / 100 : 0;
     const grandTotal = Math.max(0, subtotalCalculated - discountRp - extraDeductionRp);
+    if (!Number.isSafeInteger(grandTotal) || grandTotal <= 0) {
+      return res.status(400).json({ message: 'Total invoice harus lebih dari 0 untuk membuat link pembayaran DOKU.' });
+    }
 
     const invoiceNumber = await generateMonthlyInvoiceNumber();
     const now = new Date();
@@ -469,10 +758,47 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       display_date: displayDate,
     };
 
+    const dokuCustomer = await resolveDokuCustomer(firstItem, {
+      phone: customerPhone,
+      address: customerAddress,
+    });
+    const currentPayment = firstItem.doku_payment;
+    let sharedDokuPayment: NonNullable<ITTVpsDetail['doku_payment']>;
+
+    if (
+      currentPayment?.payment_url
+      && currentPayment.amount === grandTotal
+      && currentPayment.status !== 'SUCCESS'
+      && isDokuLinkStillActive(currentPayment.expired_date)
+      && isSameDokuCustomer(currentPayment.customer, dokuCustomer)
+    ) {
+      sharedDokuPayment = copyDokuPayment(currentPayment);
+    } else {
+      const dokuInvoiceNumber = generateDokuInvoiceNumber(firstItem._id.toString(), invoiceNumber);
+      const dokuResult = await createDokuCheckout({
+        amount: grandTotal,
+        invoiceNumber: dokuInvoiceNumber,
+        customer: dokuCustomer,
+      });
+      sharedDokuPayment = {
+        invoice_number: dokuInvoiceNumber,
+        payment_url: dokuResult.paymentUrl,
+        token_id: dokuResult.tokenId,
+        expired_date: dokuResult.expiredDate,
+        amount: grandTotal,
+        request_id: dokuResult.requestId,
+        generated_at: now,
+        generated_by: userTag,
+        status: 'PENDING',
+        customer: dokuResult.customer,
+      };
+    }
+
     session = await mongoose.startSession();
     await session.withTransaction(async () => {
       for (const doc of sortedDocs) {
         doc.invoice_meta = sharedInvoiceMeta as any;
+        doc.doku_payment = sharedDokuPayment;
         doc.status = 'PROCESS';
         doc.tgl_lunas = undefined;
         doc.update_date = now;
@@ -490,6 +816,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       message: 'invoice generated',
       status: 'PROCESS',
       invoice: sharedInvoiceMeta,
+      doku_payment: sharedDokuPayment,
       item_id: firstItem._id,
       periode: firstItem.periode,
       affected_items: sortedDocs.map((doc) => ({
@@ -499,6 +826,20 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       affected_periodes: affectedPeriodes,
     });
   } catch (err: any) {
+    if (err instanceof DokuApiError) {
+      console.error('DOKU invoice checkout error:', {
+        message: err.message,
+        status: err.status,
+        request_id: err.requestId,
+        details: err.details,
+      });
+      return res.status(502).json({
+        message: err.message,
+        doku_status: err.status,
+        doku_request_id: err.requestId,
+        doku_details: err.details,
+      });
+    }
     console.error(err);
     return res.status(500).json({ message: 'internal error', error: err?.message });
   } finally {
