@@ -72,6 +72,7 @@ export interface DokuPaymentDTO {
   notification_request_id?: string;
   transaction_original_request_id?: string;
   channel_id?: string;
+  callback_verified_at?: string;
   customer?: {
     id?: string;
     name: string;

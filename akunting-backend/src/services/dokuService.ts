@@ -32,6 +32,21 @@ export interface DokuCheckoutResult {
   customer: DokuCheckoutCustomer;
 }
 
+export interface DokuCallbackTokenPayload {
+  invoiceNumber: string;
+  amount: number;
+  issuedAt: number;
+}
+
+export interface DokuTransactionStatus {
+  invoiceNumber: string;
+  amount: number;
+  status: string;
+  transactionDate?: string;
+  originalRequestId?: string;
+  channelId?: string;
+}
+
 export class DokuApiError extends Error {
   constructor(
     message: string,
@@ -65,11 +80,12 @@ function getDokuConfig() {
   };
 }
 
-function getDokuNotificationUrl(): string | undefined {
+function getDokuCallbackUrl(token: string): string {
   const configuredUrl = String(process.env.CALLBACK_DOKU || '').trim().replace(/\/+$/, '');
-  if (!configuredUrl) return undefined;
-  if (configuredUrl.endsWith('/tt-vps/doku/notification')) return configuredUrl;
-  return `${configuredUrl}/tt-vps/doku/notification`;
+  if (!configuredUrl) {
+    throw new Error('Konfigurasi CALLBACK_DOKU belum tersedia.');
+  }
+  return `${configuredUrl}/tt-vps/doku/result?token=${encodeURIComponent(token)}`;
 }
 
 export function generateDokuDigest(requestBody: string): string {
@@ -81,7 +97,7 @@ export function generateDokuSignature(params: {
   requestId: string;
   requestTimestamp: string;
   requestTarget: string;
-  digest: string;
+  digest?: string;
   secretKey: string;
 }): string {
   const component = [
@@ -89,7 +105,7 @@ export function generateDokuSignature(params: {
     `Request-Id:${params.requestId}`,
     `Request-Timestamp:${params.requestTimestamp}`,
     `Request-Target:${params.requestTarget}`,
-    `Digest:${params.digest}`,
+    ...(params.digest ? [`Digest:${params.digest}`] : []),
   ].join('\n');
 
   const signature = crypto
@@ -98,6 +114,84 @@ export function generateDokuSignature(params: {
     .digest('base64');
 
   return `HMACSHA256=${signature}`;
+}
+
+export function createDokuCallbackToken(params: { invoiceNumber: string; amount: number }): string {
+  const config = getDokuConfig();
+  const payload = Buffer.from(JSON.stringify({
+    inv: params.invoiceNumber,
+    amt: params.amount,
+    iat: Date.now(),
+  }), 'utf8').toString('base64url');
+  const signature = crypto.createHmac('sha256', config.secretKey).update(payload, 'utf8').digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+export function verifyDokuCallbackToken(token: string): DokuCallbackTokenPayload | null {
+  const config = getDokuConfig();
+  const [payload, signature, extra] = String(token || '').split('.');
+  if (!payload || !signature || extra) return null;
+  const expected = crypto.createHmac('sha256', config.secretKey).update(payload, 'utf8').digest('base64url');
+  const actualBuffer = Buffer.from(signature, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) {
+    return null;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    const invoiceNumber = String(decoded?.inv || '').trim();
+    const amount = Math.round(Number(decoded?.amt));
+    const issuedAt = Number(decoded?.iat);
+    const maxAgeMs = 24 * 60 * 60 * 1000;
+    if (!invoiceNumber || !Number.isSafeInteger(amount) || amount <= 0 || !Number.isFinite(issuedAt)) return null;
+    if (issuedAt > Date.now() + 60_000 || Date.now() - issuedAt > maxAgeMs) return null;
+    return { invoiceNumber, amount, issuedAt };
+  } catch {
+    return null;
+  }
+}
+
+export async function getDokuTransactionStatus(invoiceNumber: string): Promise<DokuTransactionStatus> {
+  const config = getDokuConfig();
+  const requestTarget = `/orders/v1/status/${encodeURIComponent(invoiceNumber)}`;
+  const requestId = crypto.randomUUID();
+  const requestTimestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const signature = generateDokuSignature({
+    clientId: config.clientId,
+    requestId,
+    requestTimestamp,
+    requestTarget,
+    secretKey: config.secretKey,
+  });
+
+  const response = await fetch(`${config.baseUrl}${requestTarget}`, {
+    method: 'GET',
+    headers: {
+      'Client-Id': config.clientId,
+      'Request-Id': requestId,
+      'Request-Timestamp': requestTimestamp,
+      Signature: signature,
+    },
+  });
+  const body = await response.json().catch(() => ({})) as any;
+  if (!response.ok) {
+    const message = Array.isArray(body?.error_messages)
+      ? body.error_messages.join('; ')
+      : String(body?.message || `DOKU mengembalikan HTTP ${response.status}`);
+    throw new DokuApiError(message, response.status, requestId);
+  }
+
+  return {
+    invoiceNumber: String(body?.order?.invoice_number || ''),
+    amount: Math.round(Number(body?.order?.amount)),
+    status: String(body?.transaction?.status || '').toUpperCase(),
+    transactionDate: body?.transaction?.date ? String(body.transaction.date) : undefined,
+    originalRequestId: body?.transaction?.original_request_id
+      ? String(body.transaction.original_request_id)
+      : undefined,
+    channelId: body?.channel?.id ? String(body.channel.id) : undefined,
+  };
 }
 
 export function verifyDokuNotificationSignature(params: {
@@ -167,9 +261,13 @@ export async function createDokuCheckout(request: DokuCheckoutRequest): Promise<
   }
 
   const dueMinutes = Math.max(1, Math.min(999999, Number(process.env.DOKU_PAYMENT_DUE_MINUTES) || 60));
+  const callbackToken = createDokuCallbackToken({ invoiceNumber: request.invoiceNumber, amount });
+  const callbackUrl = getDokuCallbackUrl(callbackToken);
   const order = {
     amount,
     invoice_number: request.invoiceNumber,
+    callback_url: callbackUrl,
+    auto_redirect: true,
   };
 
   const customer = normalizeDokuCustomer(request.customer);
@@ -179,10 +277,6 @@ export async function createDokuCheckout(request: DokuCheckoutRequest): Promise<
     payment: { payment_due_date: dueMinutes },
     customer,
   };
-  const notificationUrl = getDokuNotificationUrl();
-  if (notificationUrl) {
-    body.additional_info = { override_notification_url: notificationUrl };
-  }
   const requestBody = JSON.stringify(body);
   const requestId = crypto.randomUUID();
   const requestTimestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -200,7 +294,7 @@ export async function createDokuCheckout(request: DokuCheckoutRequest): Promise<
     invoice_number: request.invoiceNumber,
     amount,
     request_id: requestId,
-    notification_url: notificationUrl || null,
+    callback_url: callbackUrl.split('?')[0],
   });
 
   const controller = new AbortController();
@@ -232,7 +326,9 @@ export async function createDokuCheckout(request: DokuCheckoutRequest): Promise<
     invoice_number: request.invoiceNumber,
     status: response.status,
     request_id: requestId,
-    notification_url: responseBody?.response?.additional_info?.override_notification_url || null,
+    callback_url: responseBody?.response?.order?.callback_url
+      ? String(responseBody.response.order.callback_url).split('?')[0]
+      : null,
   });
   if (!response.ok) {
     const rawMessages = responseBody?.error_messages

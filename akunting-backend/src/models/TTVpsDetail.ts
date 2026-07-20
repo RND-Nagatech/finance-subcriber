@@ -71,6 +71,7 @@ export interface ITTVpsDetail extends Document {
     notification_request_id?: string;
     transaction_original_request_id?: string;
     channel_id?: string;
+    callback_verified_at?: Date;
     customer?: {
       id?: string;
       name: string;
@@ -159,6 +160,7 @@ const TTVpsDetailSchema: Schema = new Schema(
       notification_request_id: { type: String, required: false },
       transaction_original_request_id: { type: String, required: false },
       channel_id: { type: String, required: false },
+      callback_verified_at: { type: Date, required: false },
       customer: {
         id: { type: String, required: false },
         name: { type: String, required: false },

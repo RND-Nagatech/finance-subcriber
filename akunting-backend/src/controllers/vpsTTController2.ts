@@ -8,7 +8,9 @@ import mongoose from 'mongoose';
 import {
   createDokuCheckout,
   DokuApiError,
+  getDokuTransactionStatus,
   normalizeDokuCustomer,
+  verifyDokuCallbackToken,
   verifyDokuNotificationSignature,
 } from '../services/dokuService';
 
@@ -575,6 +577,157 @@ export const handleDokuNotification = async (req: Request, res: Response) => {
       request_id: requestId,
     });
     return res.status(500).json({ message: 'Gagal memproses notification DOKU.' });
+  }
+};
+
+function sendDokuResultPage(
+  res: Response,
+  options: { title: string; message: string; success?: boolean; refreshSeconds?: number; statusCode?: number }
+) {
+  if (options.refreshSeconds) res.setHeader('Refresh', String(options.refreshSeconds));
+  const color = options.success ? '#047857' : '#0f766e';
+  const refreshMeta = options.refreshSeconds
+    ? `<meta http-equiv="refresh" content="${options.refreshSeconds}">`
+    : '';
+  return res.status(options.statusCode || 200).type('html').send(`<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  ${refreshMeta}
+  <title>${options.title}</title>
+</head>
+<body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a">
+  <main style="max-width:560px;margin:12vh auto;padding:32px;border:1px solid #cbd5e1;background:#fff">
+    <h1 style="margin:0 0 16px;font-size:24px;color:${color}">${options.title}</h1>
+    <p style="margin:0;line-height:1.6">${options.message}</p>
+  </main>
+</body>
+</html>`);
+}
+
+export const handleDokuCallbackResult = async (req: Request, res: Response) => {
+  const token = String(req.query?.token || '');
+  const payload = verifyDokuCallbackToken(token);
+  if (!payload) {
+    return sendDokuResultPage(res, {
+      title: 'Callback tidak valid',
+      message: 'Token pembayaran tidak valid atau sudah kedaluwarsa.',
+      statusCode: 400,
+    });
+  }
+
+  try {
+    const docs = await TTVpsDetail.find({ 'doku_payment.invoice_number': payload.invoiceNumber });
+    if (docs.length === 0) {
+      return sendDokuResultPage(res, {
+        title: 'Invoice tidak ditemukan',
+        message: 'Data invoice pembayaran tidak ditemukan.',
+        statusCode: 404,
+      });
+    }
+    if (docs.some((doc) => Math.round(Number(doc.doku_payment?.amount)) !== payload.amount)) {
+      return sendDokuResultPage(res, {
+        title: 'Nominal tidak sesuai',
+        message: 'Nominal callback tidak sesuai dengan data invoice.',
+        statusCode: 409,
+      });
+    }
+    if (docs.every((doc) => doc.status === 'DONE')) {
+      return sendDokuResultPage(res, {
+        title: 'Pembayaran berhasil',
+        message: 'Pembayaran sudah tercatat dan tagihan telah diselesaikan.',
+        success: true,
+      });
+    }
+    const processDocs = docs.filter((doc) => doc.status === 'PROCESS');
+    if (processDocs.length === 0) {
+      return sendDokuResultPage(res, {
+        title: 'Invoice belum diproses',
+        message: 'Status invoice harus PROCESS sebelum pembayaran dapat diselesaikan.',
+        statusCode: 409,
+      });
+    }
+
+    const minimumCheckAgeMs = 60_000;
+    const remainingMs = minimumCheckAgeMs - (Date.now() - payload.issuedAt);
+    if (remainingMs > 0) {
+      const refreshSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
+      return sendDokuResultPage(res, {
+        title: 'Memverifikasi pembayaran',
+        message: 'Status pembayaran sedang diverifikasi ke DOKU. Halaman ini akan diperbarui otomatis.',
+        refreshSeconds,
+      });
+    }
+
+    const dokuStatus = await getDokuTransactionStatus(payload.invoiceNumber);
+    if (
+      dokuStatus.invoiceNumber !== payload.invoiceNumber
+      || dokuStatus.amount !== payload.amount
+    ) {
+      return sendDokuResultPage(res, {
+        title: 'Verifikasi gagal',
+        message: 'Data transaksi DOKU tidak sesuai dengan invoice.',
+        statusCode: 409,
+      });
+    }
+    if (dokuStatus.status !== 'SUCCESS') {
+      return sendDokuResultPage(res, {
+        title: 'Pembayaran belum selesai',
+        message: `Status pembayaran saat ini: ${dokuStatus.status || 'PENDING'}. Halaman ini akan diperbarui otomatis.`,
+        refreshSeconds: 15,
+        statusCode: 202,
+      });
+    }
+
+    const paidAtCandidate = new Date(dokuStatus.transactionDate || '');
+    const paidAt = Number.isNaN(paidAtCandidate.getTime()) ? new Date() : paidAtCandidate;
+    const paymentDate = formatJakartaDate(paidAt.toISOString());
+    const updateTag = 'DOKU_CALLBACK';
+    await TTVpsDetail.updateMany(
+      {
+        'doku_payment.invoice_number': payload.invoiceNumber,
+        status: 'PROCESS',
+      },
+      {
+        $set: {
+          status: 'DONE',
+          tgl_lunas: paymentDate,
+          update_date: new Date(),
+          update_by: updateTag,
+          'doku_payment.status': 'SUCCESS',
+          'doku_payment.paid_at': paidAt,
+          'doku_payment.callback_verified_at': new Date(),
+          ...(dokuStatus.originalRequestId
+            ? { 'doku_payment.transaction_original_request_id': dokuStatus.originalRequestId }
+            : {}),
+          ...(dokuStatus.channelId ? { 'doku_payment.channel_id': dokuStatus.channelId } : {}),
+        },
+      }
+    );
+
+    const affectedPeriodes = new Set(processDocs.map((doc) => doc.periode));
+    affectedPeriodes.add(paymentDate.slice(0, 7));
+    for (const periode of affectedPeriodes) {
+      await recalcAggregateForPeriode(periode, { username: updateTag });
+    }
+
+    return sendDokuResultPage(res, {
+      title: 'Pembayaran berhasil',
+      message: 'Pembayaran telah diverifikasi dan tagihan sudah diselesaikan.',
+      success: true,
+    });
+  } catch (err: any) {
+    console.error('DOKU callback result error:', {
+      message: err?.message || err,
+      invoice_number: payload.invoiceNumber,
+    });
+    return sendDokuResultPage(res, {
+      title: 'Verifikasi masih diproses',
+      message: 'Status pembayaran belum dapat diverifikasi. Halaman ini akan mencoba kembali otomatis.',
+      refreshSeconds: 15,
+      statusCode: 502,
+    });
   }
 };
 

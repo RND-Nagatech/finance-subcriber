@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authMiddleware';
-import { createSchedule, deleteItem, generateDokuPaymentLink, generateInvoiceAndMarkProcess, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, handleDokuNotification, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive } from '../controllers/vpsTTController2';
+import { createSchedule, deleteItem, generateDokuPaymentLink, generateInvoiceAndMarkProcess, getAggregateByPeriode, getDetailsByPeriode, getDetailsByToko, handleDokuCallbackResult, updateItemStatus, updateItem, getLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive } from '../controllers/vpsTTController2';
 
 const router = Router();
 
-// DOKU calls this route directly, so signature verification replaces user authentication.
-router.post('/doku/notification', handleDokuNotification);
+router.get('/doku/result', handleDokuCallbackResult);
 
 router.use(authenticate);
 
