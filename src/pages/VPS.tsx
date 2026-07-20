@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, uploadInvoiceVpsPdfs, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -1782,7 +1782,7 @@ function InvoiceGenerateDialog({
     const tokoName = sanitizeFilename(snapshot.customer.name || items?.[0]?.toko || 'INVOICE');
     const baseName = `FM${yy}${mm}${dd}-${nomor} ${tokoName}`;
 
-    const generatePdfFile = (withWatermark: boolean, suffix: string) => {
+    const generatePdfFile = (withWatermark: boolean) => {
       const fileName = `${baseName}${withWatermark ? ' (LUNAS)' : ''}.pdf`;
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
       const pageWidth = pdf.internal.pageSize.getWidth();
@@ -2066,11 +2066,14 @@ function InvoiceGenerateDialog({
       renderInvoiceSet('ASLI');
       pdf.addPage();
       renderInvoiceSet('COPY');
+      const blob = pdf.output('blob');
       pdf.save(fileName);
+      return { blob, fileName };
     };
 
-    generatePdfFile(true, 'WATERMARK');
-    generatePdfFile(false, 'NO WATERMARK');
+    const paid = generatePdfFile(true);
+    const original = generatePdfFile(false);
+    return { paid, original };
   };
 
   const handleSubmit = async () => {
@@ -2118,8 +2121,15 @@ function InvoiceGenerateDialog({
         display_date: displayDate,
       });
 
-      await handleGeneratePdf(snapshot, selectedPaymentAccounts);
-      toast.success('Invoice berhasil digenerate.');
+      const pdfFiles = await handleGeneratePdf(snapshot, selectedPaymentAccounts);
+      await uploadInvoiceVpsPdfs({
+        invoiceNumber: snapshot.invoice_number,
+        original: pdfFiles.original.blob,
+        originalFileName: pdfFiles.original.fileName,
+        paid: pdfFiles.paid.blob,
+        paidFileName: pdfFiles.paid.fileName,
+      });
+      toast.success('Invoice berhasil digenerate dan disimpan.');
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || 'Gagal generate invoice.');
