@@ -1,5 +1,253 @@
 import { Request, Response } from 'express';
 
+const MARGIN_KATEGORI = ['PENDAPATAN', 'BIAYA', 'PEMBELIAN'];
+const ASET_GAJI_SUBS = ['ASET', 'ASET INVESTASI', 'CICILAN GEDUNG', 'CICILAN KENDARAAN', 'GAJI'];
+const IMPLEMENTASI_MARKETING_LAINNYA_SUBS = ['IMPLEMENTASI', 'MARKETING', 'LAIN LAIN'];
+const BIAYA_BIAYA_SUBS = ['PPH21', 'PAJAK PPH 21', 'VPS', 'BIAYA VPS', 'RND', 'BIAYA RND', 'BPJS', 'BIAYA BPJS', 'RETUR PENJUALAN'];
+
+function fiscalMonthFromParams(tahun: string, bulan?: string | null) {
+  if (!bulan) return null;
+  const month = String(bulan).slice(0, 3).toUpperCase();
+  const thNum = parseInt(tahun, 10);
+  const yyShort = month === 'DEC'
+    ? String((thNum - 1) % 100).padStart(2, '0')
+    : String(thNum % 100).padStart(2, '0');
+  return `${month}-${yyShort}`;
+}
+
+function sumRows(rows: any[], predicate: (row: any) => boolean) {
+  return rows.reduce((sum, row) => sum + (predicate(row) ? Number(row.total || 0) : 0), 0);
+}
+
+function marginFromTotals(totals: Record<string, number>) {
+  return Number(totals.PENDAPATAN || 0) - Number(totals.BIAYA || 0) - Number(totals.PEMBELIAN || 0);
+}
+
+function groupNameForBiaya(subKategori: string) {
+  if (ASET_GAJI_SUBS.includes(subKategori)) return subKategori === 'GAJI' ? 'ASET_GAJI:GAJI' : 'ASET_GAJI:ASET';
+  if (IMPLEMENTASI_MARKETING_LAINNYA_SUBS.includes(subKategori)) return 'IMPLEMENTASI_MARKETING_LAINNYA';
+  if (BIAYA_BIAYA_SUBS.includes(subKategori)) return 'BIAYA_BIAYA';
+  return 'BIAYA_LAINNYA';
+}
+
+function totalsByKategori(rows: any[]) {
+  return rows.reduce((acc: Record<string, number>, row) => {
+    const kategori = String(row.kategori || '');
+    acc[kategori] = (acc[kategori] || 0) + Number(row.total || 0);
+    return acc;
+  }, {});
+}
+
+export const compareFinanceDaily = async (req: Request, res: Response) => {
+  try {
+    const tahun = String(req.query.tahun || new Date().getFullYear());
+    const bulan = req.query.bulan ? String(req.query.bulan).toUpperCase() : null;
+    const tanggal = req.query.tanggal ? String(req.query.tanggal).slice(0, 10) : null;
+    const expectedMargin = req.query.expected_margin !== undefined ? Number(req.query.expected_margin) : null;
+    const includeDetails = String(req.query.include_details || 'false').toLowerCase() === 'true';
+
+    const TtFinanceDaily = require('../models/TtFinanceDaily').default;
+    const ThFinanceDaily = require('../models/ThFinanceDaily').default;
+    const TtFinanceDetail = require('../models/TtFinanceDetail').default;
+    const ThFinance = require('../models/ThFinance').default;
+
+    const thFinanceCount = await ThFinance.countDocuments({ tahun_fiskal: tahun });
+    const DailyModel = thFinanceCount > 0 ? ThFinanceDaily : TtFinanceDaily;
+    const bulanFiskal = fiscalMonthFromParams(tahun, bulan);
+
+    const dailyMatch: any = {
+      tahun_fiskal: tahun,
+      kategori: { $in: MARGIN_KATEGORI },
+    };
+    if (bulanFiskal) dailyMatch.bulan_fiskal = bulanFiskal;
+    if (tanggal) dailyMatch.tanggal = tanggal;
+
+    const detailMatch: any = {
+      tahun_fiskal: tahun,
+      kategori: { $in: MARGIN_KATEGORI },
+      status_deleted: { $ne: true },
+      is_validated: true,
+      is_special_transaction: { $ne: true },
+      transaction_mode: { $ne: 'SPECIAL' },
+    };
+    if (bulan) detailMatch.bulan = bulanFiskal || new RegExp(`^${bulan}`, 'i');
+    if (tanggal) detailMatch.tanggal = tanggal;
+
+    const rekeningOnlyMatch: any = {
+      tahun_fiskal: tahun,
+      kategori: { $in: MARGIN_KATEGORI },
+      status_deleted: { $ne: true },
+      is_validated: true,
+      $or: [
+        { is_special_transaction: true },
+        { transaction_mode: 'SPECIAL' },
+      ],
+    };
+    if (bulan) rekeningOnlyMatch.bulan = bulanFiskal || new RegExp(`^${bulan}`, 'i');
+    if (tanggal) rekeningOnlyMatch.tanggal = tanggal;
+
+    const [
+      dashboardRows,
+      detailRows,
+      rekeningOnlyRows,
+      dashboardBySub,
+      detailBySub,
+      rekeningOnlyBySub,
+      detailItems,
+    ] = await Promise.all([
+      DailyModel.aggregate([
+        { $match: dailyMatch },
+        { $group: { _id: '$kategori', total: { $sum: '$total_nilai' } } },
+        { $project: { _id: 0, kategori: '$_id', total: 1 } },
+        { $sort: { kategori: 1 } },
+      ]),
+      TtFinanceDetail.aggregate([
+        { $match: detailMatch },
+        { $group: { _id: '$kategori', total: { $sum: '$nilai' }, count: { $sum: 1 } } },
+        { $project: { _id: 0, kategori: '$_id', total: 1, count: 1 } },
+        { $sort: { kategori: 1 } },
+      ]),
+      TtFinanceDetail.aggregate([
+        { $match: rekeningOnlyMatch },
+        { $group: { _id: '$kategori', total: { $sum: '$nilai' }, count: { $sum: 1 } } },
+        { $project: { _id: 0, kategori: '$_id', total: 1, count: 1 } },
+        { $sort: { kategori: 1 } },
+      ]),
+      DailyModel.aggregate([
+        { $match: { ...dailyMatch, kategori: 'BIAYA' } },
+        { $group: { _id: '$sub_kategori', total: { $sum: '$total_nilai' } } },
+        { $project: { _id: 0, sub_kategori: '$_id', total: 1 } },
+        { $sort: { sub_kategori: 1 } },
+      ]),
+      TtFinanceDetail.aggregate([
+        { $match: { ...detailMatch, kategori: 'BIAYA' } },
+        { $group: { _id: '$sub_kategori', total: { $sum: '$nilai' }, count: { $sum: 1 } } },
+        { $project: { _id: 0, sub_kategori: '$_id', total: 1, count: 1 } },
+        { $sort: { sub_kategori: 1 } },
+      ]),
+      TtFinanceDetail.aggregate([
+        { $match: { ...rekeningOnlyMatch, kategori: 'BIAYA' } },
+        { $group: { _id: '$sub_kategori', total: { $sum: '$nilai' }, count: { $sum: 1 } } },
+        { $project: { _id: 0, sub_kategori: '$_id', total: 1, count: 1 } },
+        { $sort: { sub_kategori: 1 } },
+      ]),
+      includeDetails
+        ? TtFinanceDetail.find({ ...detailMatch, kategori: 'BIAYA' })
+          .select('tanggal bulan kategori sub_kategori akun nilai transaction_mode is_special_transaction created_by keterangan')
+          .sort({ tanggal: 1, sub_kategori: 1, nilai: -1 })
+          .lean()
+        : Promise.resolve([]),
+    ]);
+
+    const dashboardTotals = totalsByKategori(dashboardRows);
+    const detailTotals = totalsByKategori(detailRows);
+    const rekeningOnlyTotals = totalsByKategori(rekeningOnlyRows);
+    const dashboardMargin = marginFromTotals(dashboardTotals);
+    const detailMargin = marginFromTotals(detailTotals);
+
+    const subMap: Record<string, any> = {};
+    for (const row of dashboardBySub) {
+      const sub = String(row.sub_kategori || '-');
+      subMap[sub] = subMap[sub] || { sub_kategori: sub, group: groupNameForBiaya(sub), dashboard_total: 0, detail_total: 0, rekening_only_total: 0, diff: 0 };
+      subMap[sub].dashboard_total += Number(row.total || 0);
+    }
+    for (const row of detailBySub) {
+      const sub = String(row.sub_kategori || '-');
+      subMap[sub] = subMap[sub] || { sub_kategori: sub, group: groupNameForBiaya(sub), dashboard_total: 0, detail_total: 0, rekening_only_total: 0, diff: 0 };
+      subMap[sub].detail_total += Number(row.total || 0);
+      subMap[sub].detail_count = Number(row.count || 0);
+    }
+    for (const row of rekeningOnlyBySub) {
+      const sub = String(row.sub_kategori || '-');
+      subMap[sub] = subMap[sub] || { sub_kategori: sub, group: groupNameForBiaya(sub), dashboard_total: 0, detail_total: 0, rekening_only_total: 0, diff: 0 };
+      subMap[sub].rekening_only_total += Number(row.total || 0);
+      subMap[sub].rekening_only_count = Number(row.count || 0);
+    }
+
+    const biayaBySubKategori = Object.values(subMap)
+      .map((row: any) => ({
+        ...row,
+        diff: Number(row.dashboard_total || 0) - Number(row.detail_total || 0),
+      }))
+      .sort((a: any, b: any) => Math.abs(b.diff) - Math.abs(a.diff));
+
+    const breakdownGroups = ['ASET_GAJI:ASET', 'ASET_GAJI:GAJI', 'IMPLEMENTASI_MARKETING_LAINNYA', 'BIAYA_BIAYA', 'BIAYA_LAINNYA']
+      .map((group) => {
+        const rows = biayaBySubKategori.filter((row: any) => row.group === group);
+        const dashboardTotal = rows.reduce((sum: number, row: any) => sum + Number(row.dashboard_total || 0), 0);
+        const detailTotal = rows.reduce((sum: number, row: any) => sum + Number(row.detail_total || 0), 0);
+        const rekeningOnlyTotal = rows.reduce((sum: number, row: any) => sum + Number(row.rekening_only_total || 0), 0);
+        return {
+          group,
+          dashboard_total: dashboardTotal,
+          detail_total: detailTotal,
+          rekening_only_total: rekeningOnlyTotal,
+          diff: dashboardTotal - detailTotal,
+        };
+      });
+
+    return res.json({
+      success: true,
+      source: thFinanceCount > 0 ? 'archive' : 'active',
+      filter: {
+        tahun,
+        bulan,
+        bulan_fiskal: bulanFiskal,
+        tanggal,
+        detail_basis: 'tt_finance_detail active + validated + dashboard-affecting; rekening only/SPECIAL excluded',
+        dashboard_basis: thFinanceCount > 0 ? 'th_finance_daily' : 'tt_finance_daily',
+      },
+      margin: {
+        dashboard: {
+          pendapatan: Number(dashboardTotals.PENDAPATAN || 0),
+          biaya: Number(dashboardTotals.BIAYA || 0),
+          pembelian: Number(dashboardTotals.PEMBELIAN || 0),
+          gross_margin: dashboardMargin,
+        },
+        detail: {
+          pendapatan: Number(detailTotals.PENDAPATAN || 0),
+          biaya: Number(detailTotals.BIAYA || 0),
+          pembelian: Number(detailTotals.PEMBELIAN || 0),
+          gross_margin: detailMargin,
+        },
+        diff: {
+          pendapatan: Number(dashboardTotals.PENDAPATAN || 0) - Number(detailTotals.PENDAPATAN || 0),
+          biaya: Number(dashboardTotals.BIAYA || 0) - Number(detailTotals.BIAYA || 0),
+          pembelian: Number(dashboardTotals.PEMBELIAN || 0) - Number(detailTotals.PEMBELIAN || 0),
+          gross_margin: dashboardMargin - detailMargin,
+          expected_margin: expectedMargin,
+          expected_margin_diff: expectedMargin === null ? null : dashboardMargin - expectedMargin,
+        },
+      },
+      transaksi_rekening_only_excluded: {
+        pendapatan: Number(rekeningOnlyTotals.PENDAPATAN || 0),
+        biaya: Number(rekeningOnlyTotals.BIAYA || 0),
+        pembelian: Number(rekeningOnlyTotals.PEMBELIAN || 0),
+        gross_margin_effect_if_included: marginFromTotals(rekeningOnlyTotals),
+        rows: rekeningOnlyRows,
+        biaya_by_sub_kategori: rekeningOnlyBySub,
+      },
+      biaya_compare: {
+        dashboard_total: sumRows(dashboardRows, (row) => row.kategori === 'BIAYA'),
+        detail_total: sumRows(detailRows, (row) => row.kategori === 'BIAYA'),
+        diff: sumRows(dashboardRows, (row) => row.kategori === 'BIAYA') - sumRows(detailRows, (row) => row.kategori === 'BIAYA'),
+        groups: breakdownGroups,
+        by_sub_kategori: biayaBySubKategori,
+      },
+      raw: {
+        dashboard_by_kategori: dashboardRows,
+        detail_by_kategori: detailRows,
+        dashboard_biaya_by_sub_kategori: dashboardBySub,
+        detail_biaya_by_sub_kategori: detailBySub,
+        ...(includeDetails ? { detail_biaya_items: detailItems } : {}),
+      },
+    });
+  } catch (error: any) {
+    console.error('Error compareFinanceDaily:', error);
+    return res.status(500).json({ message: 'Gagal compare finance daily.', error: error?.message || String(error) });
+  }
+};
+
 export const rekapAggregate = async (req: Request, res: Response) => {
   const tahun = String(req.query.tahun || new Date().getFullYear());
   const filterBulan = req.query.bulan ? String(req.query.bulan).toUpperCase() : null;

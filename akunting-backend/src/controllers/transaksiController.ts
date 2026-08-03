@@ -290,6 +290,109 @@ async function updateTtFinanceDaily(tanggal: string, bulan: string, kategori: st
   }
 }
 
+function buildTtFinanceDailyFilter(tanggal: string, bulan: string, kategori: string, sub_kategori: string, akun: string) {
+  let tahunFiskal: string | undefined = undefined;
+  if (bulan) {
+    const match = bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+    if (match) {
+      const bulanStr = match[1].toUpperCase();
+      const tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2], 10) : parseInt(match[2], 10);
+      const bulanMap: Record<string, number> = {
+        JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+        JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
+      };
+      const bulanAngka = bulanMap[bulanStr] || 1;
+      tahunFiskal = bulanAngka >= 12 ? String(tahunNum + 1) : String(tahunNum);
+    }
+  }
+  if (!tahunFiskal) return null;
+
+  const [yyyy, mm] = String(tanggal || '').split('-');
+  if (!yyyy || !mm) return null;
+
+  const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const monthIdx = Math.max(0, Math.min(11, parseInt(mm, 10) - 1));
+  const bulanFiskal = `${monthNames[monthIdx]}-${yyyy.slice(2)}`;
+
+  return {
+    tanggal,
+    bulan_fiskal: bulanFiskal,
+    tahun_fiskal: tahunFiskal,
+    kategori,
+    sub_kategori,
+    akun,
+  };
+}
+
+async function reconcileTtFinanceDailyFromDetails(detail: any, inputBy?: string, inputAt?: Date) {
+  if (!shouldAffectDashboard(detail)) return;
+
+  const filter = buildTtFinanceDailyFilter(
+    String(detail.tanggal || ''),
+    String(detail.bulan || ''),
+    String(detail.kategori || ''),
+    String(detail.sub_kategori || ''),
+    String(detail.akun || '')
+  );
+  if (!filter) return;
+
+  const sumDetail = await TtFinanceDetail.aggregate([
+    {
+      $match: {
+        tanggal: filter.tanggal,
+        kategori: filter.kategori,
+        sub_kategori: filter.sub_kategori,
+        akun: filter.akun,
+        status_deleted: { $ne: true },
+        is_validated: true,
+        is_special_transaction: { $ne: true },
+        transaction_mode: { $ne: 'SPECIAL' },
+      },
+    },
+    { $group: { _id: null, total: { $sum: '$nilai' } } },
+  ]);
+
+  const totalNilaiBaru = Number(sumDetail[0]?.total || 0);
+  const existingDaily = await TtFinanceDaily.findOne(filter);
+  const nilaiAwal = Number(existingDaily?.total_nilai || 0);
+  const delta = totalNilaiBaru - nilaiAwal;
+
+  if (existingDaily) {
+    const updateObj: any = {
+      $set: { total_nilai: Math.max(0, totalNilaiBaru) },
+    };
+    if (delta !== 0) {
+      updateObj.$push = {
+        history: {
+          nilai: delta,
+          nilai_awal: nilaiAwal,
+          tanggal: filter.tanggal,
+          input_by: inputBy || '',
+          input_at: inputAt || new Date(),
+          action: delta >= 0 ? 'increment' : 'decrement',
+        },
+      };
+    }
+    await TtFinanceDaily.findOneAndUpdate(filter, updateObj, { new: true });
+  } else if (totalNilaiBaru > 0) {
+    await TtFinanceDaily.create({
+      ...filter,
+      total_nilai: totalNilaiBaru,
+      created_at: new Date(),
+      history: [
+        {
+          nilai: totalNilaiBaru,
+          nilai_awal: 0,
+          tanggal: filter.tanggal,
+          input_by: inputBy || '',
+          input_at: inputAt || new Date(),
+          action: 'increment',
+        },
+      ],
+    });
+  }
+}
+
 async function recalculateTransaksiAggregation(kategori: string, sub_kategori: string, akun: string, bulan: string, nilai: number, input_by: string, operation: 'increment' | 'decrement') {
   // Find tt_finance doc
     let tahunFiskal: string | undefined = undefined;
@@ -360,6 +463,107 @@ async function recalculateTransaksiAggregation(kategori: string, sub_kategori: s
     await doc.save();
 }
 
+async function reconcileTransaksiAggregationFromDetails(detail: any, inputBy?: string, inputAt?: Date) {
+  if (!shouldAffectDashboard(detail)) return;
+
+  const kategori = String(detail.kategori || '');
+  const sub_kategori = String(detail.sub_kategori || '');
+  const akun = String(detail.akun || '');
+  const bulan = String(detail.bulan || '');
+  if (!kategori || !sub_kategori || !akun || !bulan) return;
+
+  let tahunFiskal: string | undefined = detail.tahun_fiskal ? String(detail.tahun_fiskal) : undefined;
+  if (!tahunFiskal) {
+    const match = bulan.match(/([A-Z]+)\s*-\s*(\d{2,4})$/i);
+    if (match) {
+      const bulanStr = match[1].toUpperCase();
+      const tahunNum = match[2].length === 2 ? 2000 + parseInt(match[2], 10) : parseInt(match[2], 10);
+      const bulanMap: Record<string, number> = {
+        JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+        JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12
+      };
+      const bulanAngka = bulanMap[bulanStr] || 1;
+      tahunFiskal = bulanAngka >= 12 ? String(tahunNum + 1) : String(tahunNum);
+    }
+  }
+  if (!tahunFiskal) return;
+
+  const sumDetail = await TtFinanceDetail.aggregate([
+    {
+      $match: {
+        kategori,
+        sub_kategori,
+        akun,
+        bulan,
+        status_deleted: { $ne: true },
+        is_validated: true,
+        is_special_transaction: { $ne: true },
+        transaction_mode: { $ne: 'SPECIAL' },
+      },
+    },
+    { $group: { _id: null, total: { $sum: '$nilai' } } },
+  ]);
+
+  const totalNilaiBaru = Number(sumDetail[0]?.total || 0);
+  let doc = await Transaksi.findOne({ kategori, sub_kategori, akun, tahun_fiskal: tahunFiskal });
+
+  if (!doc) {
+    if (totalNilaiBaru <= 0) return;
+    doc = new Transaksi({
+      kategori,
+      sub_kategori,
+      akun,
+      data_bulanan: [{ bulan, nilai: totalNilaiBaru }],
+      total_tahunan: totalNilaiBaru,
+      input_by: inputBy || '',
+      tahun_fiskal: tahunFiskal,
+      created_at: new Date(),
+      updated_at: new Date(),
+      history: [{
+        bulan,
+        nilai: totalNilaiBaru,
+        nilai_awal: 0,
+        input_by: inputBy || '',
+        input_at: inputAt || new Date(),
+        action: 'increment',
+      }],
+    });
+    await doc.save();
+    return;
+  }
+
+  const idx = doc.data_bulanan.findIndex((d: any) => d.bulan === bulan);
+  const nilaiAwal = idx >= 0 ? Number((doc.data_bulanan[idx] as any).nilai || 0) : 0;
+  const delta = totalNilaiBaru - nilaiAwal;
+
+  if (idx >= 0) {
+    if (totalNilaiBaru > 0) {
+      (doc.data_bulanan[idx] as any).nilai = totalNilaiBaru;
+    } else {
+      doc.data_bulanan.splice(idx, 1);
+    }
+  } else if (totalNilaiBaru > 0) {
+    doc.data_bulanan.push({ bulan, nilai: totalNilaiBaru } as any);
+  }
+
+  if (delta !== 0) {
+    if (!Array.isArray((doc as any).history)) (doc as any).history = [];
+    (doc as any).history.push({
+      bulan,
+      nilai: delta,
+      nilai_awal: nilaiAwal,
+      input_by: inputBy || '',
+      input_at: inputAt || new Date(),
+      action: delta >= 0 ? 'increment' : 'decrement',
+    });
+  }
+
+  doc.total_tahunan = doc.data_bulanan.reduce((sum: number, d: any) => sum + Number(d.nilai || 0), 0);
+  doc.updated_at = new Date();
+  doc.tahun_fiskal = tahunFiskal;
+  await doc.save();
+}
+
 export const deleteTransaksi = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
@@ -372,6 +576,7 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
     const detailDelta = calculateSignedDelta(detail.kategori, Number(detail.nilai || 0));
     const user = req.user as any;
     const userRole = String(user?.role || '').toLowerCase();
+    const deleteActor = String(user?.username || user?.name || user?.email || user?._id || deleted_by || 'SYSTEM');
     if (detail.is_validated) {
       if (!user || userRole !== 'superuser') {
         return res.status(403).json({ message: 'Hanya superuser yang bisa menghapus transaksi tervalidasi.' });
@@ -386,7 +591,7 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
         return res.status(403).json({ message: 'Secret code tidak valid.' });
       }
 
-      const rollbackBy = user?.username || user?.name || user?.email || user?._id || deleted_by || 'SYSTEM';
+      const rollbackBy = deleteActor;
       const rollbackAt = new Date();
 
       // Rollback saldo rekening jika transaksi sebelumnya pernah memengaruhi saldo saat validasi.
@@ -483,8 +688,11 @@ export const deleteTransaksi = async (req: AuthRequest, res: Response, next: Nex
     // Soft delete: set status_deleted, deleted_at, deleted_by
     detail.status_deleted = true;
     detail.deleted_at = new Date();
-    detail.deleted_by = deleted_by;
+    detail.deleted_by = deleteActor;
     await detail.save();
+
+    await reconcileTtFinanceDailyFromDetails(detail, deleteActor, detail.deleted_at);
+    await reconcileTransaksiAggregationFromDetails(detail, deleteActor, detail.deleted_at);
 
     res.json({ success: true, message: 'Transaksi soft deleted', detail });
   } catch (error) {
@@ -566,8 +774,8 @@ export const deleteAttachment = async (req: Request, res: Response, next: NextFu
     doc.updated_at = new Date();
     await doc.save();
 
-    // If this was the last attachment, update tt_finance_daily
-    if (wasLastAttachment && shouldAffectDashboard(doc)) {
+    // Dashboard harian hanya berubah setelah transaksi divalidasi.
+    if (wasLastAttachment && doc.is_validated && shouldAffectDashboard(doc)) {
       const user = req.user as any;
       const inputBy = user?.username || user?.email || doc.deleted_by || 'SYSTEM';
       const inputAt = new Date();
@@ -928,9 +1136,11 @@ export const updateTransaksi = async (req: Request, res: Response, next: NextFun
     detail.deleted_at = new Date();
     detail.deleted_by = input_by || 'SYSTEM';
     await detail.save();
+    await reconcileTtFinanceDailyFromDetails(detail, input_by || 'SYSTEM', detail.deleted_at);
+    await reconcileTransaksiAggregationFromDetails(detail, input_by || 'SYSTEM', detail.deleted_at);
 
     // 2. Decrement/rekap tt_finance_daily untuk tanggal lama (aggregate ulang)
-    if (oldAffectDashboard && oldTanggal && oldKategori && oldSubKategori && oldAkun && oldBulan && oldNilai && oldTahunFiskal) {
+    if (detail.is_validated && oldAffectDashboard && oldTanggal && oldKategori && oldSubKategori && oldAkun && oldBulan && oldNilai && oldTahunFiskal) {
       const [yyyyOld, mmOld, ddOld] = oldTanggal.split('-');
       const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
       const monthIdxOld = parseInt(mmOld, 10) - 1;

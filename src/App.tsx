@@ -39,6 +39,7 @@ import UpdateLog from "./pages/UpdateLog";
 import RiwayatSaldoRekening from "./pages/RiwayatSaldoRekening";
 import SaldoHarianRekening from "./pages/SaldoHarianRekening";
 import SaldoHarianGenerator from "./pages/SaldoHarianGenerator";
+import FinanceDailyCompare from "./pages/FinanceDailyCompare";
 import PerjalananDinas from "./pages/PerjalananDinas";
 import PerjalananDinasTransaksi from "./pages/PerjalananDinasTransaksi";
 import PerjalananDinasDana from "./pages/PerjalananDinasDana";
@@ -339,6 +340,17 @@ const App = () => (
               <ProtectedRoute>
                 <MainLayout>
                   <SaldoHarianGenerator />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/finance-daily-compare"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <FinanceDailyCompare />
                 </MainLayout>
               </ProtectedRoute>
             }

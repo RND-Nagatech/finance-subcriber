@@ -14,6 +14,7 @@ import {
   FileText,
   History,
   Calculator,
+  BarChart3,
   KeyRound,
   Gem,
 } from "lucide-react";
@@ -621,6 +622,31 @@ export default function AppSidebar() {
                         <Calculator className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
                         <span className="font-medium">Generator Saldo Harian</span>
                         {location.pathname === "/saldo-harian-generator" && (
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-blue-400 to-indigo-500 rounded-r-full" />
+                        )}
+                      </SidebarMenuButton>
+                    </NavLink>
+                  </SidebarMenuItem>
+                )}
+
+                {user?.role === 'superuser' && (
+                  <SidebarMenuItem>
+                    <NavLink to="/finance-daily-compare">
+                      <SidebarMenuButton
+                        isActive={location.pathname === "/finance-daily-compare"}
+                        className={cn(
+                          "group relative rounded-xl px-4 py-4 text-slate-300 hover:text-white transition-all duration-300",
+                          "hover:bg-gradient-to-r hover:from-blue-600/20 hover:to-indigo-600/20",
+                          "hover:shadow-lg hover:shadow-blue-500/10",
+                          "data-[active=true]:bg-gradient-to-r data-[active=true]:from-blue-600/30 data-[active=true]:to-indigo-600/30",
+                          "data-[active=true]:text-white data-[active=true]:shadow-lg data-[active=true]:shadow-blue-500/20",
+                          "border border-transparent data-[active=true]:border-blue-500/30",
+                          "py-5"
+                        )}
+                      >
+                        <BarChart3 className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                        <span className="font-medium">Compare Daily Finance</span>
+                        {location.pathname === "/finance-daily-compare" && (
                           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-gradient-to-b from-blue-400 to-indigo-500 rounded-r-full" />
                         )}
                       </SidebarMenuButton>

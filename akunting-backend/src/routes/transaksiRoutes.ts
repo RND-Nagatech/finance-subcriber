@@ -70,7 +70,7 @@ router.delete('/:id/bulan/:bulan', deleteTransaksiBulanan);
 
 // Attachments
 router.post('/:id/attachments', upload.array('attachments'), uploadAttachments);
-router.delete('/:id/attachments/:filename', deleteAttachment);
+router.delete('/:id/attachments/:filename', authenticate, deleteAttachment);
 
 // Riwayat Saldo Rekening
 router.get('/riwayat-saldo-rekening', getRiwayatSaldoRekening);
