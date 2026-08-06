@@ -72,6 +72,7 @@ interface Transaksi {
   input_by: string;
   keterangan?: string;
   created_at?: string;
+  validated_at?: string;
   tanggal?: string; // tambahkan tanggal untuk date picker
   attachments?: IAttachment[];
   is_validated?: boolean;
@@ -1429,6 +1430,19 @@ export default function Transaksi() {
     }).format(value);
   };
 
+  const formatDateTimeShort = (value?: string | Date | null) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return new Intl.DateTimeFormat('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  };
+
   const resolveTransactionMode = (row: any): 'NORMAL' | 'SPECIAL' | 'FINANCE_ONLY' => {
     const mode = String(row?.transaction_mode || '').toUpperCase();
     if (mode === 'SPECIAL' || mode === 'FINANCE_ONLY' || mode === 'NORMAL') return mode as any;
@@ -2138,6 +2152,8 @@ export default function Transaksi() {
                   <>
                     <TableHead className="w-28 px-6 py-4 font-semibold text-gray-900">Tanggal</TableHead>
                     <TableHead className="w-24 px-6 py-4 font-semibold text-gray-900">Bulan Fiskal</TableHead>
+                    <TableHead className="w-36 px-6 py-4 font-semibold text-gray-900">Input Date</TableHead>
+                    <TableHead className="w-36 px-6 py-4 font-semibold text-gray-900">Validated Date</TableHead>
                   </>
                 ) : (
                   <TableHead className="w-24 px-6 py-4 font-semibold text-gray-900">Bulan Fiskal</TableHead>
@@ -2177,7 +2193,7 @@ export default function Transaksi() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={typeData === 'Detail' ? 10 : 7} className="text-center py-12">
+                  <TableCell colSpan={typeData === 'Detail' ? 12 : 7} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data transaksi...</p>
@@ -2186,7 +2202,7 @@ export default function Transaksi() {
                 </TableRow>
               ) : transaksiList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={typeData === 'Detail' ? 10 : 7} className="text-center py-12">
+                  <TableCell colSpan={typeData === 'Detail' ? 12 : 7} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2219,6 +2235,8 @@ export default function Transaksi() {
                       <>
                         <TableCell className="w-28 px-6 py-4 font-semibold text-gray-900">{row.tanggal}</TableCell>
                         <TableCell className="w-24 px-6 py-4 font-semibold text-gray-900">{row.bulan}</TableCell>
+                        <TableCell className="w-36 px-6 py-4 text-xs font-medium text-gray-700">{formatDateTimeShort(row.created_at)}</TableCell>
+                        <TableCell className="w-36 px-6 py-4 text-xs font-medium text-gray-700">{formatDateTimeShort(row.validated_at)}</TableCell>
                       </>
                     ) : (
                       <TableCell className="w-24 px-6 py-4 font-semibold text-gray-900">{row.bulan}</TableCell>
@@ -2346,7 +2364,7 @@ export default function Transaksi() {
                   </TableRow>
                   {typeData === 'Detail' && expandedRows[row._id || String(idx)] && (
                     <TableRow className="bg-transparent">
-                      <TableCell colSpan={typeData === 'Detail' ? 9 : 8} className="">
+                      <TableCell colSpan={typeData === 'Detail' ? 11 : 8} className="">
                         <div className="bg-white rounded-lg border border-slate-200 my-0 p-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px]">
                           <div className="flex flex-col min-w-[120px]">
                             <span className="text-[11px] text-slate-500 leading-tight">Jenis</span>

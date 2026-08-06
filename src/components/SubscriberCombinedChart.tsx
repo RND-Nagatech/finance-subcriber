@@ -149,7 +149,20 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
             name="Total Subscribers"
             dot={{ fill: '#3b82f6', strokeWidth: 2, r: 5 }}
             activeDot={{ r: 7, stroke: '#3b82f6', strokeWidth: 2, fill: '#fff' }}
-          />
+          >
+            <LabelList
+              dataKey="total"
+              position="top"
+              offset={14}
+              formatter={(value: number) => value.toLocaleString('id-ID')}
+              style={{
+                fontSize: 10,
+                fill: '#1d4ed8',
+                fontWeight: 700,
+                textShadow: '0 1px 2px rgba(255,255,255,0.9)'
+              }}
+            />
+          </Line>
         </ComposedChart>
       </ResponsiveContainer>
     </div>

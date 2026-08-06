@@ -170,6 +170,7 @@ export default function DashboardV2() {
   const [exporting, setExporting] = useState<boolean>(false);
   const userSelectedYearRef = useRef(false);
   const vpsCardRef = useRef<HTMLDivElement | null>(null);
+  const isAllYearsScope = month === 'ALL_YEARS';
 
   // Helper function to check if user can view restricted content
   const canViewRestrictedContent = () => {
@@ -393,6 +394,13 @@ export default function DashboardV2() {
     enabled: !!year,
   });
 
+  const previousFiscalYear = String((parseInt(year || '0', 10) || new Date().getFullYear()) - 1);
+  const { data: previousSubscriberCombinedData } = useQuery({
+    queryKey: ['subscriber-combined-previous', previousFiscalYear],
+    queryFn: () => fetchSubscriberCombined(previousFiscalYear),
+    enabled: !!year && !isAllYearsScope,
+  });
+
   // Query untuk subscriber by program
   const { data: subscriberByProgramData, isLoading: isSubscriberByProgramLoading } = useQuery({
     queryKey: ['subscriber-by-program', year, month],
@@ -421,6 +429,21 @@ export default function DashboardV2() {
 
   const totalAkumulasiSaldoRekening = rekeningDashboardList.reduce(
     (sum: number, item: any) => sum + Number(item?.saldo || 0),
+    0
+  );
+
+  const subscriberGrowthComparisonData = FISCAL_MONTH_ORDER.map((bulanCode) => {
+    const current = (subscriberCombinedData || []).find((item: any) => item.bulan === bulanCode);
+    const previous = (previousSubscriberCombinedData || []).find((item: any) => item.bulan === bulanCode);
+    return {
+      bulan: bulanCode,
+      current: Number(current?.count || 0),
+      previous: Number(previous?.count || 0),
+    };
+  });
+  const hasSubscriberGrowthComparison = subscriberGrowthComparisonData.some((item) => item.current || item.previous);
+  const subscriberByProgramTotalCost = (subscriberByProgramData || []).reduce(
+    (sum: number, item: any) => sum + Number(item?.total_biaya || 0),
     0
   );
 
@@ -457,7 +480,6 @@ export default function DashboardV2() {
   const subscriberData = data?.subscriber || [];
 
   const shouldUseWeeklyGrouping = month !== 'ANNUAL' && month !== 'ALL_YEARS' && grouping === 'weekly';
-  const isAllYearsScope = month === 'ALL_YEARS';
   const shouldPadDailyMonthScope = month !== 'ANNUAL' && month !== 'ALL_YEARS';
   const monthDateSeries = shouldPadDailyMonthScope ? buildMonthDateSeries({ fiscalYear: year, monthCode: month }) : [];
 
@@ -1434,9 +1456,14 @@ export default function DashboardV2() {
                     <CardHeader className="pb-4">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-2xl font-bold text-gray-900">Subscriber by Program</CardTitle>
-                        <span className="font-semibold text-blue-600">
-                          Total Subscribers: {subscriberByProgramData.reduce((sum, item) => sum + item.total_subscriber, 0).toLocaleString('id-ID')}
-                        </span>
+                        <div className="flex flex-col items-end gap-1 text-sm">
+                          <span className="font-semibold text-blue-600">
+                            Total Subscribers: {subscriberByProgramData.reduce((sum, item) => sum + item.total_subscriber, 0).toLocaleString('id-ID')}
+                          </span>
+                          <span className="font-semibold text-emerald-700">
+                            Total Subscriber Cost: {formatCurrency(subscriberByProgramTotalCost)}
+                          </span>
+                        </div>
                       </div>
                       <CardDescription className="text-gray-600 text-sm">
                         Cumulative subscribers by program up to {month} {year}
@@ -1444,6 +1471,64 @@ export default function DashboardV2() {
                     </CardHeader>
                     <CardContent>
                       <SubscriberByProgramChart data={subscriberByProgramData} />
+                    </CardContent>
+                  </Card>
+                  {!canViewRestrictedContent() && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+                        <div className="text-gray-500 text-lg font-semibold mb-2">Access Restricted</div>
+                        <div className="text-gray-400 text-sm">Only CORSEC and Super Admin can view this content</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isAllYearsScope && hasSubscriberGrowthComparison && (
+              <div className="mb-8">
+                <div className="relative">
+                  <Card className={dashboardCardClass}>
+                    <CardHeader className="pb-4">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-2xl font-bold text-gray-900">Pertumbuhan Subscriber vs Tahun Sebelumnya</CardTitle>
+                        <div className="flex flex-col items-end gap-1 text-sm">
+                          <span className="font-semibold text-blue-600">Tahun Aktif: {year}</span>
+                          <span className="font-semibold text-slate-600">Pembanding: {previousFiscalYear}</span>
+                        </div>
+                      </div>
+                      <CardDescription className="text-gray-600 text-sm">
+                        Perbandingan penambahan subscriber per bulan fiskal. Data ditampilkan dalam bar chart agar mudah dibandingkan.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={400}>
+                        <BarChart data={subscriberGrowthComparisonData} margin={{ top: 26, right: 30, left: 20, bottom: 20 }}>
+                          <XAxis dataKey="bulan" interval={0} tick={{ fontSize: 12, fill: '#374151', fontWeight: 600 }} />
+                          <YAxis tickFormatter={(value) => Number(value || 0).toLocaleString('id-ID')} fontSize={12} allowDecimals={false} />
+                          <Tooltip formatter={(value: any, name: string) => [Number(value || 0).toLocaleString('id-ID'), name === 'current' ? `Growth ${year}` : `Growth ${previousFiscalYear}`]} />
+                          <Legend formatter={(value) => value === 'current' ? `Growth ${year}` : `Growth ${previousFiscalYear}`} />
+                          <Bar dataKey="previous" name={`Growth ${previousFiscalYear}`} fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={28}>
+                            <LabelList
+                              dataKey="previous"
+                              position="top"
+                              offset={8}
+                              formatter={(value: number) => Number(value || 0).toLocaleString('id-ID')}
+                              style={{ fontSize: 10, fill: '#475569', fontWeight: 700, textShadow: '0 1px 2px rgba(255,255,255,0.9)' }}
+                            />
+                          </Bar>
+                          <Bar dataKey="current" name={`Growth ${year}`} fill="#2563eb" radius={[4, 4, 0, 0]} barSize={28}>
+                            <LabelList
+                              dataKey="current"
+                              position="top"
+                              offset={8}
+                              formatter={(value: number) => Number(value || 0).toLocaleString('id-ID')}
+                              style={{ fontSize: 10, fill: '#1d4ed8', fontWeight: 700, textShadow: '0 1px 2px rgba(255,255,255,0.9)' }}
+                            />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
                     </CardContent>
                   </Card>
                   {!canViewRestrictedContent() && (

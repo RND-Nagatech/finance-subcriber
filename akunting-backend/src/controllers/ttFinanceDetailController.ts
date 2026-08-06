@@ -93,12 +93,11 @@ export const listTtFinanceDetail = async (req: Request, res: Response) => {
       return res.json({ totalNilai: doc.totalNilai || 0, totalCount: doc.totalCount || 0 });
     }
 
-    // Default sort by tanggal ascending; apply kategori sort when provided
+    // Default sort by input date so edited transaction data keeps its table position.
     const sortObj: any = {};
     if (sortKategori === 'asc') sortObj.kategori = 1;
     else if (sortKategori === 'desc') sortObj.kategori = -1;
-    // Always sort by tanggal ascending after kategori (stable ordering)
-    sortObj.tanggal = 1;
+    sortObj.created_at = 1;
     sortObj._id = 1; // Stable tiebreaker to avoid duplicates across pages
 
     const totalCount = await TtFinanceDetail.countDocuments(filter);
