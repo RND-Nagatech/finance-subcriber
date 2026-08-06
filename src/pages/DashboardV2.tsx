@@ -1507,8 +1507,21 @@ export default function DashboardV2() {
                         <BarChart data={subscriberGrowthComparisonData} margin={{ top: 26, right: 30, left: 20, bottom: 20 }}>
                           <XAxis dataKey="bulan" interval={0} tick={{ fontSize: 12, fill: '#374151', fontWeight: 600 }} />
                           <YAxis tickFormatter={(value) => Number(value || 0).toLocaleString('id-ID')} fontSize={12} allowDecimals={false} />
-                          <Tooltip formatter={(value: any, name: string) => [Number(value || 0).toLocaleString('id-ID'), name === 'current' ? `Growth ${year}` : `Growth ${previousFiscalYear}`]} />
-                          <Legend formatter={(value) => value === 'current' ? `Growth ${year}` : `Growth ${previousFiscalYear}`} />
+                          <Tooltip
+                            formatter={(value: any, name: string) => {
+                              const label = String(name || '').includes(year) || name === 'current'
+                                ? `Growth ${year}`
+                                : `Growth ${previousFiscalYear}`;
+                              return [Number(value || 0).toLocaleString('id-ID'), label];
+                            }}
+                          />
+                          <Legend
+                            formatter={(value) => {
+                              const label = String(value || '');
+                              if (label === 'current' || label.includes(year)) return `Growth ${year}`;
+                              return `Growth ${previousFiscalYear}`;
+                            }}
+                          />
                           <Bar dataKey="previous" name={`Growth ${previousFiscalYear}`} fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={28}>
                             <LabelList
                               dataKey="previous"
