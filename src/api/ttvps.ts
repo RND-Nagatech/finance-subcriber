@@ -241,7 +241,8 @@ export interface GenerateInvoiceVpsResponse {
   }>;
   affected_periodes?: string[];
   invoice: NonNullable<TTVpsDetailItemDTO['invoice_meta']>;
-  doku_payment: DokuPaymentDTO;
+  doku_auto_generate_enabled?: boolean;
+  doku_payment: DokuPaymentDTO | null;
 }
 
 export async function generateInvoiceVps(params: { payload: GenerateInvoiceVpsPayload; periode?: string; itemId?: string }): Promise<GenerateInvoiceVpsResponse> {

@@ -464,7 +464,7 @@ export default function VPS() {
       );
       setLocalItems((prev) => prev.map((item) =>
         affectedKeys.has(`${item.__periode}::${item._id}`)
-          ? { ...item, status: 'PROCESS', doku_payment: _data.doku_payment }
+          ? { ...item, status: 'PROCESS', doku_payment: _data.doku_payment || undefined }
           : item
       ));
       qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
@@ -1070,10 +1070,12 @@ export default function VPS() {
               target_items: targetItems,
             },
           });
-          pendingInvoiceDokuRef.current = {
-            item: firstItem,
-            payment: resp.doku_payment,
-          };
+          pendingInvoiceDokuRef.current = resp.doku_payment
+            ? {
+                item: firstItem,
+                payment: resp.doku_payment,
+              }
+            : null;
           return resp.invoice;
         }}
       />
