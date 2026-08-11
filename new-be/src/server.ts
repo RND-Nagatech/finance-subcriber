@@ -6,28 +6,14 @@ import dotenv from 'dotenv';
 dotenv.config();
 import { connectDB } from './config/db';
 import authRoutes from './routes/authRoutes';
-import transaksiRoutes from './routes/transaksiRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import masterRoutes from './routes/masterRoutes';
-import perusahaanRoutes from './routes/perusahaanRoutes';
 import fiscalRoutes from './routes/fiscalRoutes';
 import subscriberRoutes from './routes/subscriberRoutes';
-import budgetRoutes from './routes/budgetRoutes';
 import vpsRoutes from './routes/vpsRoutes';
 import vpsTTRoutes from './routes/vpsTTRoutes';
 import userRoutes from './routes/userRoutes';
-import perjalananDinasRoutes from './routes/perjalananDinasRoutes';
-import assetRoutes from './routes/assetRoutes';
 import { errorLoggerMiddleware } from './middleware/errorLoggerMiddleware';
-
-// Import models to ensure they are registered with Mongoose
-import './models/TtFinanceDetail';
-import './models/RiwayatSaldoRekening';
-import './models/Asset';
-import './models/AssetType';
-import './models/AssetLedger';
-import './models/AssetTransfer';
-import './models/AssetTypePriceHistory';
 
 const app = express();
 const PORT = process.env.PORT || 5003;
@@ -67,18 +53,13 @@ app.get('/api/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
-app.use('/api/transaksi', transaksiRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/master', masterRoutes);
-app.use('/api/master/perusahaan', perusahaanRoutes);
 app.use('/api/fiscal', fiscalRoutes);
 app.use('/api/subscriber', subscriberRoutes);
-app.use('/api/budget', budgetRoutes);
 app.use('/api/vps', vpsRoutes);
 app.use('/api/tt-vps', vpsTTRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/perjalanan-dinas', perjalananDinasRoutes);
-app.use('/api', assetRoutes);
 
 // Error logging middleware
 app.use(errorLoggerMiddleware);

@@ -1,15 +1,15 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "subscriber-vps-frontend",
   "private": true,
   "version": "1.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:backend": "npm --prefix akunting-backend run dev",
+    "dev:backend": "npm --prefix ../new-be run dev",
     "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
     "start": "npm run start:all",
     "start:frontend": "vite preview",
-    "start:backend": "npm --prefix akunting-backend run start",
+    "start:backend": "npm --prefix ../new-be run start",
     "start:all": "concurrently \"npm run start:backend\" \"npm run start:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",

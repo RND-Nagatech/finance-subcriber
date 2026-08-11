@@ -1,13 +1,11 @@
 {
-  "name": "akunting-backend",
+  "name": "subscriber-vps-backend",
   "version": "0.2.0",
   "private": true,
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "seed-data": "ts-node src/seed_runner.ts",
     "seed-subscriber": "ts-node src/scripts/migrate_subscriber.ts",
-    "backfill-saldo-harian": "ts-node src/scripts/backfill_rekening_saldo_harian.ts",
     "sync-indexes": "ts-node src/scripts/sync_indexes.ts",
     "dedupe-ttvps": "ts-node src/scripts/dedupe_tt_vps_details.ts",
     "build": "tsc -p .",
