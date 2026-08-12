@@ -8,9 +8,14 @@ import Budget from '../models/Budget';
 import Program, { IProgram } from '../models/Program';
 import GroupProgram from '../models/GroupProgram';
 import Subscriber, { ISubscriber } from '../models/Subscriber';
+import SubscriberTahun from '../models/SubscriberTahun';
+import Subscription from '../models/Subscription';
+import SubscriptionDetail from '../models/SubscriptionDetail';
 import Group from '../models/Group';
 import CustomDashboard, { ICustomDashboard } from '../models/CustomDashboard';
 import Transaksi from '../models/Transaksi';
+import { addDays, getTempo, parseDateOnly, toPeriode } from '../utils/subscriptionPeriod';
+import { rebuildSubscriberTahun } from '../services/subscriberTahunService';
 
 
 // Resolve acting user from authenticated request only. Ignore client-supplied audit fields.
@@ -76,6 +81,132 @@ const parseDateOnlyToNoonUtc = (value: unknown): Date | null => {
   }
   const parsed = new Date(raw);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getFiscalYearFromDate = (date: Date) => date.getUTCMonth() === 11 ? date.getUTCFullYear() + 1 : date.getUTCFullYear();
+
+const buildSubscriptionFiscalSchedule = (params: {
+  startDate: Date;
+  jumlahBulan: number;
+  biayaPerBulan: number;
+  firstDiskon?: number;
+}) => {
+  const entries: Array<{ periode: string; tahun: number; totalBiaya: number }> = [];
+  const fiscalEndDate = new Date(Date.UTC(getFiscalYearFromDate(params.startDate), 11, 0, 12, 0, 0, 0));
+  let cursorStart = params.startDate;
+  let isFirst = true;
+
+  while (cursorStart <= fiscalEndDate) {
+    const tempo = getTempo(cursorStart, params.jumlahBulan);
+    const nextStart = addDays(tempo, 1);
+    const jumlahBiaya = params.biayaPerBulan * params.jumlahBulan;
+    const diskon = isFirst ? Math.max(0, Math.min(jumlahBiaya, Number(params.firstDiskon || 0))) : 0;
+    entries.push({
+      periode: toPeriode(cursorStart),
+      tahun: getFiscalYearFromDate(cursorStart),
+      totalBiaya: Math.max(0, jumlahBiaya - diskon),
+    });
+    cursorStart = nextStart;
+    isFirst = false;
+  }
+
+  return entries;
+};
+
+const applySubscriptionScheduleDelta = async (
+  entries: ReturnType<typeof buildSubscriptionFiscalSchedule>,
+  multiplier: 1 | -1,
+  userTag: string
+) => {
+  const now = new Date();
+  for (const entry of entries) {
+    await Subscription.updateOne(
+      { periode: entry.periode },
+      {
+        $set: {
+          periode: entry.periode,
+          tahun: entry.tahun,
+          updated_at: now,
+          update_date: now,
+          update_by: userTag,
+        },
+        $inc: {
+          estimasi: entry.totalBiaya * multiplier,
+        },
+        $setOnInsert: {
+          realisasi: 0,
+          total_subscriber_estimasi: 0,
+          total_subscriber_realisasi: 0,
+          input_date: now,
+          input_by: userTag,
+          delete_date: null,
+          delete_by: null,
+        },
+      },
+      { upsert: true }
+    );
+  }
+};
+
+const syncOpenSubscriptionDetailsFromSubscriber = async (subscriber: any, userTag: string) => {
+  const openDetails: any[] = await SubscriptionDetail.find({
+    subscriber_id: subscriber._id,
+    status: 'OPEN',
+    is_active: { $ne: false },
+    delete_date: null,
+  });
+  const affectedYears = new Set<number>();
+
+  for (const detail of openDetails) {
+    const startDate = parseDateOnly(detail.tgl_mulai_tagihan);
+    if (!startDate) continue;
+
+    const oldSchedule = buildSubscriptionFiscalSchedule({
+      startDate,
+      jumlahBulan: Math.max(1, Number(detail.jumlah_bulan || 1)),
+      biayaPerBulan: Math.max(0, Number(detail.biaya_per_bulan || 0)),
+      firstDiskon: Number(detail.diskon || 0),
+    });
+    await applySubscriptionScheduleDelta(oldSchedule, -1, userTag);
+
+    const jumlahBulan = Math.max(1, Number(detail.jumlah_bulan || 1));
+    const biayaPerBulan = Math.max(0, Number(subscriber.biaya || 0));
+    const jumlahBiaya = biayaPerBulan * jumlahBulan;
+    const diskon = Math.max(0, Math.min(jumlahBiaya, Number(detail.diskon || 0)));
+
+    detail.kode_subscriber = subscriber.kode;
+    detail.toko = subscriber.toko;
+    detail.program = subscriber.program;
+    detail.daerah = subscriber.daerah || null;
+    detail.biaya_per_bulan = biayaPerBulan;
+    detail.jumlah_biaya = jumlahBiaya;
+    detail.diskon = diskon;
+    detail.total_biaya = Math.max(0, jumlahBiaya - diskon);
+    detail.update_date = new Date();
+    detail.update_by = userTag;
+    await detail.save();
+
+    const newSchedule = buildSubscriptionFiscalSchedule({
+      startDate,
+      jumlahBulan,
+      biayaPerBulan,
+      firstDiskon: diskon,
+    });
+    await applySubscriptionScheduleDelta(newSchedule, 1, userTag);
+    oldSchedule.concat(newSchedule).forEach((entry) => affectedYears.add(entry.tahun));
+  }
+
+  const existingYears = await SubscriptionDetail.distinct('tahun', {
+    subscriber_id: subscriber._id,
+    delete_date: null,
+  });
+  existingYears.forEach((year) => affectedYears.add(Number(year)));
+
+  for (const year of affectedYears) {
+    await rebuildSubscriberTahun(subscriber._id, year, userTag);
+  }
+
+  return { synced: openDetails.length, affectedYears: Array.from(affectedYears) };
 };
 
 const formatDateOnly = (date: Date): string => {
@@ -778,6 +909,9 @@ export const listSubscriber = async (req: Request, res: Response) => {
     const pageNum = Number(page) || 1;
     const limitNum = Math.min(Number(limit) || 10, 100);
     const skip = (pageNum - 1) * limitNum;
+    const summaryYear = year && String(year) !== 'ALL'
+      ? Number(year)
+      : getFiscalYearFromDate(new Date());
 
     // ===============================
     // BASE MATCH
@@ -820,7 +954,40 @@ export const listSubscriber = async (req: Request, res: Response) => {
       ...buildTanggalPipeline(month as string, year as string),
       { $sort: { tanggalDate: -1, tanggal: -1 } },
       { $skip: skip },
-      { $limit: limitNum }
+      { $limit: limitNum },
+      {
+        $lookup: {
+          from: SubscriberTahun.collection.name,
+          let: { subscriberId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$subscriber_id', '$$subscriberId'] },
+                    { $eq: ['$tahun', summaryYear] },
+                    { $eq: ['$delete_date', null] },
+                  ],
+                },
+              },
+            },
+            { $limit: 1 },
+          ],
+          as: 'summary_tahun',
+        },
+      },
+      { $unwind: { path: '$summary_tahun', preserveNullAndEmptyArrays: true } },
+      {
+        $addFields: {
+          summary_tahun: {
+            tahun: summaryYear,
+            total_rencana_tagihan: { $ifNull: ['$summary_tahun.total_rencana_tagihan', 0] },
+            tagihan_terbayar: { $ifNull: ['$summary_tahun.tagihan_terbayar', 0] },
+            sisa_tagihan: { $ifNull: ['$summary_tahun.sisa_tagihan', 0] },
+            last_rebuild_at: '$summary_tahun.last_rebuild_at',
+          },
+        },
+      },
     ];
 
     const data = await Subscriber.aggregate(listPipeline);
@@ -1314,6 +1481,9 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       },
       { new: true }
     );
+    if (updated && updated.status_subscriber !== 'OUTSTAND') {
+      await syncOpenSubscriptionDetailsFromSubscriber(updated, userId);
+    }
     res.status(200).json({ success: true, message: 'Data berhasil disimpan.', data: updated });
   } catch (error) {
     console.error('❌ Error in updateSubscriber:', error);

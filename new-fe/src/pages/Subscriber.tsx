@@ -1,4 +1,5 @@
 import { Fragment, useState, useMemo, useEffect } from 'react';
+import type { ComponentProps } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
@@ -24,7 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ModalForm } from '@/components/ModalForm';
-import { Plus, Pencil, Trash2, Check, ChevronDown, ChevronRight, Search, X, Server } from 'lucide-react';
+import { Plus, Pencil, Trash2, Check, ChevronDown, ChevronRight, Search, X, Server, Calendar as CalendarIcon } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -36,6 +37,8 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Calendar as DatePickerCalendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface Subscriber {
   _id?: string;
@@ -80,9 +83,73 @@ interface Subscriber {
   input_date?: string;
   update_date?: string;
   delete_date?: string | null;
+  summary_tahun?: {
+    tahun: number;
+    total_rencana_tagihan: number;
+    tagihan_terbayar: number;
+    sisa_tagihan: number;
+    last_rebuild_at?: string | null;
+  };
   input_by: string;
   update_by?: string | null;
   delete_by?: string | null;
+}
+
+function ymdToDmy(value?: string | null): string {
+  if (!value) return '';
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
+function DateTextInput({
+  value,
+  onChange,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Input>, 'value' | 'onChange' | 'type'> & {
+  value?: string | null;
+  onChange: (value: string) => void;
+}) {
+  const displayValue = ymdToDmy(value);
+  const [open, setOpen] = useState(false);
+  const selectedDate = value ? new Date(`${String(value).slice(0, 10)}T00:00:00`) : undefined;
+  const toYmdLocal = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          id={props.id}
+          disabled={props.disabled}
+          title={props.title}
+          variant="outline"
+          className={`h-10 w-full justify-between rounded-md border bg-white px-3 text-left font-normal text-gray-900 hover:bg-white ${className || ''}`}
+        >
+          <span className={displayValue ? '' : 'text-gray-400'}>{displayValue || 'dd/mm/yyyy'}</span>
+          <CalendarIcon className="h-4 w-4 text-gray-700" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="z-[80] w-auto p-0">
+        <DatePickerCalendar
+          mode="single"
+          selected={selectedDate}
+          onSelect={(date) => {
+            if (!date) return;
+            onChange(toYmdLocal(date));
+            setOpen(false);
+          }}
+          initialFocus
+          className="rounded-md bg-white"
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 interface Program {
@@ -1072,6 +1139,26 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                               </div>
                             </div>
                             <div className="space-y-2">
+                              {!isOutstandMode && (
+                                <>
+                                  <div className="flex justify-between">
+                                    <span className="font-medium text-gray-600">Summary Tahun:</span>
+                                    <span className="text-gray-900">{item.summary_tahun?.tahun || filterYear}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="font-medium text-gray-600">Total Rencana Tagihan:</span>
+                                    <span className="font-semibold text-gray-900">{formatCurrency(item.summary_tahun?.total_rencana_tagihan || 0)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="font-medium text-gray-600">Tagihan Terbayar:</span>
+                                    <span className="font-semibold text-emerald-700">{formatCurrency(item.summary_tahun?.tagihan_terbayar || 0)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="font-medium text-gray-600">Sisa Tagihan:</span>
+                                    <span className="font-semibold text-blue-700">{formatCurrency(item.summary_tahun?.sisa_tagihan || 0)}</span>
+                                  </div>
+                                </>
+                              )}
                               <div className="flex justify-between">
                                 <span className="font-medium text-gray-600">Input By:</span>
                                 <span className="text-gray-900">{item.input_by}</span>
@@ -1239,9 +1326,9 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                 <Input
                   id="alamat"
                   value={formData.alamat || ''}
-                  placeholder="Terisi otomatis dari master group"
-                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                  readOnly
+                  onChange={(e) => setFormData({ ...formData, alamat: e.target.value || null })}
+                  placeholder="Terisi otomatis dari master group, bisa diubah"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
               </div>
 
@@ -1323,9 +1410,13 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                   id="biaya"
                   type="text"
                   value={formattedBiaya}
-                  placeholder="Terisi otomatis dari program"
-                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                  readOnly
+                  onChange={(e) => {
+                    const nextValue = formatNumberInput(e.target.value);
+                    setFormattedBiaya(nextValue);
+                    setFormData({ ...formData, biaya: parseFormattedInput(nextValue) });
+                  }}
+                  placeholder="Terisi otomatis dari program, bisa diubah"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   required
                 />
               </div>
@@ -1394,11 +1485,10 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="tgl_implementasi" className="text-sm font-semibold text-gray-700">Tgl Implementasi</Label>
-                <Input
+                <DateTextInput
                   id="tgl_implementasi"
-                  type="date"
                   value={formData.tgl_implementasi || formData.tanggal}
-                  onChange={(e) => setFormData({ ...formData, tanggal: e.target.value, tgl_implementasi: e.target.value })}
+                  onChange={(value) => setFormData({ ...formData, tanggal: value, tgl_implementasi: value })}
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   required={!isOutstandMode}
                 />
@@ -1406,22 +1496,20 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="tgl_dijalankan" className="text-sm font-semibold text-gray-700">Tgl Dijalankan</Label>
-                <Input
+                <DateTextInput
                   id="tgl_dijalankan"
-                  type="date"
                   value={formData.tgl_dijalankan || ''}
-                  onChange={(e) => setFormData({ ...formData, tgl_dijalankan: e.target.value || null })}
+                  onChange={(value) => setFormData({ ...formData, tgl_dijalankan: value || null })}
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="tgl_terbayar" className="text-sm font-semibold text-gray-700">Tgl Terbayar</Label>
-                <Input
+                <DateTextInput
                   id="tgl_terbayar"
-                  type="date"
                   value={formData.tgl_terbayar || ''}
-                  onChange={(e) => setFormData({ ...formData, tgl_terbayar: e.target.value || null })}
+                  onChange={(value) => setFormData({ ...formData, tgl_terbayar: value || null })}
                   className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   title="Nanti otomatis dari pelunasan subscription"
                 />
@@ -1429,11 +1517,10 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="tgl_berakhir_langganan" className="text-sm font-semibold text-gray-700">Tgl Berakhir Langganan</Label>
-                <Input
+                <DateTextInput
                   id="tgl_berakhir_langganan"
-                  type="date"
                   value={formData.tgl_berakhir_langganan || ''}
-                  onChange={(e) => setFormData({ ...formData, tgl_berakhir_langganan: e.target.value || null })}
+                  onChange={(value) => setFormData({ ...formData, tgl_berakhir_langganan: value || null })}
                   className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   title="Nanti otomatis dari periode subscription"
                 />
@@ -1441,11 +1528,10 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="tgl_bayar_selanjutnya" className="text-sm font-semibold text-gray-700">Tgl Bayar Selanjutnya</Label>
-                <Input
+                <DateTextInput
                   id="tgl_bayar_selanjutnya"
-                  type="date"
                   value={formData.tgl_bayar_selanjutnya || ''}
-                  onChange={(e) => setFormData({ ...formData, tgl_bayar_selanjutnya: e.target.value || null })}
+                  onChange={(value) => setFormData({ ...formData, tgl_bayar_selanjutnya: value || null })}
                   className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   title="Nanti otomatis dari periode subscription berikutnya"
                 />
@@ -1585,11 +1671,10 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="vps-start-date">Mulai Langganan</Label>
-                  <Input
+                  <DateTextInput
                     id="vps-start-date"
-                    type="date"
                     value={vpsStartDate}
-                    onChange={(e) => setVpsStartDate(e.target.value)}
+                    onChange={setVpsStartDate}
                     className="border-2 border-gray-200"
                   />
                 </div>

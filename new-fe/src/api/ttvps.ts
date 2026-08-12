@@ -124,6 +124,8 @@ export interface SubscriberDTO {
   alamat?: string | null;
   no_ok?: string | null;
   nomor_telepon?: string | null;
+  no_hp_owner?: string | null;
+  no_hp_pic?: string | null;
 }
 export async function fetchSubscribers(all = true): Promise<SubscriberDTO[]> {
   const params = all ? { all: 1, limit: 10000 } : {};
@@ -139,6 +141,39 @@ export async function fetchSubscribers(all = true): Promise<SubscriberDTO[]> {
 export async function fetchAggregatesByPeriode(periode: string) {
   const { data } = await axiosInstance.get('/tt-vps/aggregate', { params: { periode } });
   return data as { _id: string; periode: string; estimasi: number; realisasi: number; total_toko_estimasi: number; total_toko_realisasi: number } | null;
+}
+
+export interface SubscriberTahunSummaryDTO {
+  _id: string;
+  subscriber_id: string;
+  kode_subscriber: string;
+  toko: string;
+  kode_group?: string | null;
+  nama_group?: string | null;
+  program?: string | null;
+  status_subscriber: 'OUTSTAND' | 'AKTIF' | 'NON_AKTIF';
+  tahun: number;
+  total_rencana_tagihan: number;
+  tagihan_terbayar: number;
+  sisa_tagihan: number;
+  last_rebuild_at?: string;
+}
+
+export async function fetchSubscriberTahunSummary(params: {
+  tahun?: number;
+  subscriber_id?: string;
+  kode_group?: string;
+  status_subscriber?: 'OUTSTAND' | 'AKTIF' | 'NON_AKTIF' | 'ALL';
+  page?: number;
+  limit?: number;
+}): Promise<{ data: SubscriberTahunSummaryDTO[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
+  const { data } = await axiosInstance.get('/tt-vps/subscriber-tahun', { params });
+  return data;
+}
+
+export async function rebuildSubscriberTahunSummary(params: { tahun: number; subscriber_id?: string }) {
+  const { data } = await axiosInstance.post('/tt-vps/subscriber-tahun/rebuild', params);
+  return data as { message: string; total?: number; rebuilt?: number; data?: SubscriberTahunSummaryDTO };
 }
 
 export async function createSchedule(payload: { subscriber_id?: string; toko?: string; program?: string; harga?: number; start: string; bulan: number; diskon?: number; diskon_percent?: number; daerah?: string; keterangan?: string; }) {
@@ -166,6 +201,10 @@ export interface VpsSubscriberOption {
   biaya: number;
   program: string;
   daerah: string;
+  suggested_start?: string | null;
+  latest_start?: string | null;
+  latest_status?: TTVpsStatus | null;
+  latest_is_active?: boolean | null;
 }
 
 export async function fetchAvailableSubscribers(): Promise<VpsSubscriberOption[]> {
@@ -214,6 +253,22 @@ export async function startGenerateNextFiscal(): Promise<{ jobId: string; nextFi
 
 export async function getGenerateStatus(jobId: string): Promise<{ status: 'running'|'done'|'error'; nextFiscalLabel: number; total: number; done: number; startedAt: number; finishedAt?: number; error?: string }> {
   const { data } = await axiosInstance.get('/tt-vps/generate-next-year/status', { params: { jobId } });
+  return data;
+}
+
+export interface RenewSubscriptionResponse {
+  message: string;
+  tahun: number;
+  dibuat: number;
+  dilewati: number;
+  detail: {
+    dibuat: Array<{ toko: string; periode: string; start: string }>;
+    dilewati: Array<{ toko: string; alasan: string }>;
+  };
+}
+
+export async function renewSubscriptionNextYear(tahun: number): Promise<RenewSubscriptionResponse> {
+  const { data } = await axiosInstance.post('/tt-vps/renew-next-year', { tahun });
   return data;
 }
 

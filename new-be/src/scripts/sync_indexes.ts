@@ -4,6 +4,7 @@ import TTVpsDetail from '../models/TTVpsDetail';
 import TTVps from '../models/TTVps';
 import VpsSubscription from '../models/Vps';
 import Subscriber from '../models/Subscriber';
+import SubscriptionDetail from '../models/SubscriptionDetail';
 
 async function run() {
   try {
@@ -17,6 +18,7 @@ async function run() {
       { name: 'tt_vps', fn: () => TTVps.syncIndexes() },
       { name: 'vps_subscriptions', fn: () => VpsSubscription.syncIndexes() },
       { name: 'tm_subscriber', fn: () => Subscriber.syncIndexes() },
+      { name: 'tt_subscription_detail', fn: () => SubscriptionDetail.syncIndexes() },
     ];
 
     for (const t of tasks) {

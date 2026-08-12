@@ -15,6 +15,10 @@ import {
   getDetailsByToko,
   getGenerateStatus,
   getLastPeriod,
+  listSubscriberTahun,
+  rebuildSubscriptionMonthlyRekapEndpoint,
+  rebuildSubscriberTahunEndpoint,
+  renewSubscriptionNextFiscal,
   searchDetails,
   startGenerateNextFiscal,
   updateItem,
@@ -47,8 +51,12 @@ router.get('/details', getDetailsByPeriode);
 router.get('/details-search', searchDetails);
 router.get('/details-by-toko', getDetailsByToko);
 router.get('/aggregate', getAggregateByPeriode);
+router.post('/aggregate/rebuild', rebuildSubscriptionMonthlyRekapEndpoint);
+router.get('/subscriber-tahun', listSubscriberTahun);
+router.post('/subscriber-tahun/rebuild', rebuildSubscriberTahunEndpoint);
 router.get('/last-period', getLastPeriod);
 router.post('/generate-next-year', generateNextFiscal);
+router.post('/renew-next-year', renewSubscriptionNextFiscal);
 router.post('/generate-next-year/start', startGenerateNextFiscal);
 router.get('/generate-next-year/status', getGenerateStatus);
 router.patch('/details/:periode/item/:itemId/status', updateItemStatus);

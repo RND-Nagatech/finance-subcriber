@@ -13,6 +13,10 @@ import {
   verifyDokuCallbackToken,
   verifyDokuNotificationSignature,
 } from '../services/dokuService';
+import {
+  rebuildSubscriberTahun,
+  rebuildSubscriberTahunForDetails,
+} from '../services/subscriberTahunService';
 
 const INVOICE_SENDER = {
   name: 'PT. NAGATECH SISTEM INTEGRATOR',
@@ -296,6 +300,42 @@ const createOpenDetail = async (
   return detail;
 };
 
+const isSubscriberSubscriptionActive = async (subscriberId: any) => {
+  if (!subscriberId) return false;
+  const subscriber: any = await Subscriber.findOne({ _id: subscriberId, delete_date: null }).lean();
+  if (!subscriber) return false;
+  if (subscriber.status_aktv === false || subscriber.active === false) return false;
+  return subscriber.status_subscriber !== 'NON_AKTIF';
+};
+
+const validateNewSubscriptionStart = async (subscriberId: any, startDate: Date) => {
+  const startYmd = formatDateOnly(startDate);
+  const duplicate = await SubscriptionDetail.findOne({
+    subscriber_id: subscriberId,
+    tgl_mulai_tagihan: startYmd,
+    delete_date: null,
+  }).lean();
+  if (duplicate) {
+    throw new Error(`Periode subscription dengan tanggal mulai ${startYmd} sudah ada untuk subscriber ini.`);
+  }
+
+  const latest: any = await SubscriptionDetail.findOne({
+    subscriber_id: subscriberId,
+    delete_date: null,
+  }).sort({ tgl_mulai_tagihan: -1, input_date: -1 }).lean();
+
+  if (!latest) return;
+
+  if ((latest.status === 'OPEN' || latest.status === 'PROCESS') && latest.is_active !== false) {
+    throw new Error('Subscriber sudah memiliki subscription aktif.');
+  }
+
+  const minStart = parseDateOnly(latest.tgl_bayar_selanjutnya) || parseDateOnly(latest.tgl_mulai_tagihan);
+  if (minStart && startDate < minStart) {
+    throw new Error(`Periode sebelumnya sudah ada. Lanjutkan dari tanggal tagihan selanjutnya (${formatDateOnly(minStart)}).`);
+  }
+};
+
 const syncSubscriberPaymentDatesFromLatestDone = async (subscriberId: any, userTag: string) => {
   const latestDone: any = await SubscriptionDetail.findOne({
     subscriber_id: subscriberId,
@@ -338,13 +378,28 @@ const markDetailLunas = async (params: {
   await syncSubscriberPaymentDatesFromLatestDone(detail.subscriber_id, userTag);
 
   let nextDetail = null;
-  if (detail.tgl_bayar_selanjutnya <= getFiscalEndDate(detail.tgl_mulai_tagihan)) {
+  const nextStartDate = parseDateOnly(detail.tgl_bayar_selanjutnya);
+  if (nextStartDate && detail.is_active !== false && await isSubscriberSubscriptionActive(detail.subscriber_id)) {
     const existingOpen = await SubscriptionDetail.findOne({
       chain_id: detail.chain_id,
       status: { $in: ['OPEN', 'PROCESS'] },
       delete_date: null,
     });
-    if (!existingOpen) {
+    const existingNext = await SubscriptionDetail.findOne({
+      chain_id: detail.chain_id,
+      tgl_mulai_tagihan: formatDateOnly(nextStartDate),
+      delete_date: null,
+    });
+    if (!existingOpen && !existingNext) {
+      const nextFiscalYear = getFiscalYear(nextStartDate);
+      if (nextFiscalYear !== Number(previousYear || 0)) {
+        const nextSchedule = buildFiscalSchedule({
+          startDate: nextStartDate,
+          jumlahBulan: Math.max(1, Number(detail.jumlah_bulan || 1)),
+          biayaPerBulan: Math.max(0, Number(detail.biaya_per_bulan || 0)),
+        });
+        await applyScheduleDeltaToMonthlyRekap(nextSchedule, 1, userTag);
+      }
       nextDetail = await createOpenDetail(
         {
           chain_id: detail.chain_id,
@@ -355,7 +410,7 @@ const markDetailLunas = async (params: {
           biaya_per_bulan: detail.biaya_per_bulan,
           jumlah_bulan: detail.jumlah_bulan,
         },
-        detail.tgl_bayar_selanjutnya,
+        nextStartDate,
         userTag
       );
     }
@@ -366,6 +421,7 @@ const markDetailLunas = async (params: {
   if (nextDetail && nextDetail.tahun !== previousYear) {
     await recalcRekapTahun(nextDetail.tahun, userTag);
   }
+  await rebuildSubscriberTahunForDetails([detail, nextDetail], userTag);
 
   return { detail, nextDetail, alreadyPaid: false };
 };
@@ -463,8 +519,13 @@ export const createSubscription = async (req: Request, res: Response) => {
     const subscriber = await Subscriber.findById(subscriber_id);
     if (!subscriber) return res.status(404).json({ message: 'Subscriber tidak ditemukan.' });
 
-    const active = await SubscriptionDetail.findOne({ subscriber_id, status: { $in: ['OPEN', 'PROCESS'] }, delete_date: null });
+    const active = await SubscriptionDetail.findOne({ subscriber_id, status: { $in: ['OPEN', 'PROCESS'] }, is_active: { $ne: false }, delete_date: null });
     if (active) return res.status(400).json({ message: 'Subscriber sudah memiliki subscription aktif.' });
+    try {
+      await validateNewSubscriptionStart(subscriber._id, startDate);
+    } catch (error: any) {
+      return res.status(400).json({ message: error?.message || 'Tanggal mulai subscription tidak valid.' });
+    }
 
     const userTag = resolveUserId(req);
     const months = Math.max(1, Number(jumlah_bulan || 1));
@@ -494,6 +555,7 @@ export const createSubscription = async (req: Request, res: Response) => {
     for (const entry of scheduleEntries) {
       await recalcRekapTahun(entry.tahun, userTag);
     }
+    await rebuildSubscriberTahun(subscriber._id, detail.tahun, userTag);
     res.status(201).json({ success: true, message: 'Subscription berhasil dibuat.', data: { rekap: scheduleEntries, detail } });
   } catch (error: any) {
     if (error?.code === 11000) {
@@ -563,7 +625,16 @@ export const updateSubscriptionDetailStatus = async (req: Request, res: Response
         delete_date: null,
       });
       if (nextDetail) {
-        removedNextDetail = { periode: nextDetail.periode, tahun: nextDetail.tahun };
+        removedNextDetail = { periode: nextDetail.periode, tahun: nextDetail.tahun, subscriber_id: nextDetail.subscriber_id };
+        if (Number(nextDetail.tahun || 0) !== Number(detail.tahun || 0)) {
+          const nextSchedule = buildFiscalSchedule({
+            startDate: parseDateOnly(nextDetail.tgl_mulai_tagihan) || new Date(nextDetail.tgl_mulai_tagihan),
+            jumlahBulan: Math.max(1, Number(nextDetail.jumlah_bulan || 1)),
+            biayaPerBulan: Math.max(0, Number(nextDetail.biaya_per_bulan || 0)),
+            firstDiskon: Number(nextDetail.diskon || 0),
+          });
+          await applyScheduleDeltaToMonthlyRekap(nextSchedule, -1, userTag);
+        }
         await SubscriptionDetail.deleteOne({ _id: nextDetail._id });
       }
       detail.tgl_lunas = null;
@@ -583,6 +654,7 @@ export const updateSubscriptionDetailStatus = async (req: Request, res: Response
       await recalcSubscriptionPeriode(removedNextDetail.periode, userTag);
       await recalcRekapTahun(removedNextDetail.tahun, userTag);
     }
+    await rebuildSubscriberTahunForDetails([detail, removedNextDetail], userTag);
     res.json({ success: true, message: 'Status diperbarui.', data: detail });
   } catch (error: any) {
     if (error?.code === 11000) {
@@ -610,6 +682,7 @@ export const updateSubscriptionDetail = async (req: Request, res: Response) => {
     const oldJumlahBulan = Number(detail.jumlah_bulan || 1);
     const oldBiayaPerBulan = Number(detail.biaya_per_bulan || 0);
     const oldDiskon = Number(detail.diskon || 0);
+    const oldSummaryTarget = { subscriber_id: detail.subscriber_id, tahun: detail.tahun };
     const oldSchedule = buildFiscalSchedule({
       startDate: oldStartDate,
       jumlahBulan: oldJumlahBulan,
@@ -652,6 +725,7 @@ export const updateSubscriptionDetail = async (req: Request, res: Response) => {
     await detail.save();
 
     await applyScheduleDeltaToMonthlyRekap(newSchedule, 1, userTag);
+    await rebuildSubscriberTahunForDetails([oldSummaryTarget, detail], userTag);
 
     res.json({ success: true, message: 'Detail subscription berhasil diupdate.', data: detail });
   } catch (error: any) {
@@ -687,6 +761,7 @@ export const deleteSubscriptionDetail = async (req: Request, res: Response) => {
     await detail.save();
 
     await applyScheduleDeltaToMonthlyRekap(oldSchedule, -1, userTag);
+    await rebuildSubscriberTahunForDetails([detail], userTag);
 
     res.json({ success: true, message: 'Detail subscription berhasil dihapus.' });
   } catch (error) {

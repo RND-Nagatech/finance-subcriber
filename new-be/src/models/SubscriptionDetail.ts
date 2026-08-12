@@ -193,5 +193,9 @@ SubscriptionDetailSchema.index(
   { chain_id: 1, tgl_mulai_tagihan: 1, delete_date: 1 },
   { unique: true }
 );
+SubscriptionDetailSchema.index(
+  { subscriber_id: 1, tgl_mulai_tagihan: 1, delete_date: 1 },
+  { unique: true }
+);
 
 export default mongoose.model<ISubscriptionDetail>('SubscriptionDetail', SubscriptionDetailSchema, 'tt_subscription_detail');

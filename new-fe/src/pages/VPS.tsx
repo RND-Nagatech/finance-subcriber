@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { ComponentProps } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsSearch, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, uploadInvoiceVpsPdfs, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsSearch, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, uploadInvoiceVpsPdfs, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,9 +14,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox, ComboboxOption } from '@/components/ui/Combobox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink, ChevronDown, Ban } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink, ChevronDown, Ban, Calendar as CalendarIcon } from 'lucide-react';
 import axiosInstance from '@/api/axiosInstance';
+import { fetchActiveFiscalYear } from '@/api/fiscal';
+import { Calendar as DatePickerCalendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -149,6 +152,63 @@ function formatInvoiceDateLong(value?: string): string {
   return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+function ymdToDmy(value?: string | null): string {
+  if (!value) return '';
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+}
+
+function DateTextInput({
+  value,
+  onChange,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Input>, 'value' | 'onChange' | 'type'> & {
+  value?: string | null;
+  onChange: (value: string) => void;
+}) {
+  const displayValue = ymdToDmy(value);
+  const [open, setOpen] = useState(false);
+  const selectedDate = value ? new Date(`${String(value).slice(0, 10)}T00:00:00`) : undefined;
+  const toYmdLocal = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          id={props.id}
+          disabled={props.disabled}
+          title={props.title}
+          variant="outline"
+          className={`h-10 w-full justify-between rounded-md border bg-white px-3 text-left font-normal text-gray-900 hover:bg-white ${className || ''}`}
+        >
+          <span className={displayValue ? '' : 'text-gray-400'}>{displayValue || 'dd/mm/yyyy'}</span>
+          <CalendarIcon className="h-4 w-4 text-gray-700" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="z-[80] w-auto p-0">
+        <DatePickerCalendar
+          mode="single"
+          selected={selectedDate}
+          onSelect={(date) => {
+            if (!date) return;
+            onChange(toYmdLocal(date));
+            setOpen(false);
+          }}
+          initialFocus
+          className="rounded-md bg-white"
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function resolveInvoiceStartDate(item: {
   start_date?: string | null;
   start?: string | null;
@@ -193,6 +253,7 @@ export default function VPS() {
   const pendingInvoiceDokuRef = useRef<{ item: VpsInvoiceItem; payment: DokuPaymentDTO } | null>(null);
 
   // Filters: period (from/to month), status, and search term
+  const [fiscalYearFilter, setFiscalYearFilter] = useState<number>(new Date().getFullYear());
   const [periodFrom, setPeriodFrom] = useState<string>('');
   const [periodTo, setPeriodTo] = useState<string>('');
   const [groupTokoFilter, setGroupTokoFilter] = useState<string>('ALL');
@@ -200,13 +261,28 @@ export default function VPS() {
   const [statusFilter, setStatusFilter] = useState<'OPEN'|'PROCESS'|'DONE'|'ALL'>('OPEN');
   const [showInactiveItems, setShowInactiveItems] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const { data: activeFiscalYear } = useQuery({ queryKey: ['fiscal-active-year'], queryFn: fetchActiveFiscalYear });
+  const fiscalYearInitializedRef = useRef(false);
 
-  const isUnsafeWideAllFilter = statusFilter === 'ALL' && groupTokoFilter === 'ALL' && tokoFilter === 'ALL' && !periodFrom && !periodTo;
+  useEffect(() => {
+    const activeYear = Number(activeFiscalYear || 0);
+    if (activeYear && !fiscalYearInitializedRef.current) {
+      setFiscalYearFilter(activeYear);
+      fiscalYearInitializedRef.current = true;
+    }
+  }, [activeFiscalYear]);
+
+  const defaultFiscalPeriodFrom = `${fiscalYearFilter - 1}-12`;
+  const defaultFiscalPeriodTo = `${fiscalYearFilter}-11`;
+  const effectivePeriodFrom = periodFrom || defaultFiscalPeriodFrom;
+  const effectivePeriodTo = periodTo || defaultFiscalPeriodTo;
+
+  const isUnsafeWideAllFilter = statusFilter === 'ALL' && groupTokoFilter === 'ALL' && tokoFilter === 'ALL' && !effectivePeriodFrom && !effectivePeriodTo;
   const detailQuery = useQuery({
-    queryKey: ['tt-vps-details-search', periodFrom, periodTo, groupTokoFilter, tokoFilter, statusFilter, showInactiveItems, searchTerm],
+    queryKey: ['tt-vps-details-search', fiscalYearFilter, effectivePeriodFrom, effectivePeriodTo, groupTokoFilter, tokoFilter, statusFilter, showInactiveItems, searchTerm],
     queryFn: () => fetchDetailsSearch({
-      periode_from: periodFrom || undefined,
-      periode_to: periodTo || undefined,
+      periode_from: effectivePeriodFrom,
+      periode_to: effectivePeriodTo,
       kode_group: groupTokoFilter,
       toko: tokoFilter,
       status: statusFilter,
@@ -241,6 +317,16 @@ export default function VPS() {
     });
     return [{ value: 'ALL', label: 'ALL' }, ...Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], 'id-ID')).map(([value, label]) => ({ value, label }))];
   }, [subsAll]);
+
+  const fiscalYearOptions = useMemo(() => {
+    const baseYear = Number(activeFiscalYear || fiscalYearFilter || new Date().getFullYear());
+    return Array.from(new Set([
+      baseYear - 1,
+      baseYear,
+      baseYear + 1,
+      baseYear + 2,
+    ])).filter(Boolean);
+  }, [activeFiscalYear, fiscalYearFilter]);
 
   const [localItems, setLocalItems] = useState<any[]>([]);
   useEffect(() => {
@@ -353,47 +439,6 @@ export default function VPS() {
   const toggleExpand = (id: string, periode: string) => {
     setExpanded((prev) => ({ ...prev, [`${periode}-${id}`]: !prev[`${periode}-${id}`] }));
   };
-
-  // Next fiscal caption based on last period in backend
-  const { data: lastPeriodData } = useQuery({ queryKey: ['tt-vps-last-period'], queryFn: fetchLastPeriod });
-  const nextFiscalLabel = useMemo(() => {
-    if (!lastPeriodData) return '';
-    const y = parseInt(String(lastPeriodData).slice(0,4), 10);
-    if (!y) return '';
-    return String(y + 1);
-  }, [lastPeriodData]);
-
-  const [genJob, setGenJob] = useState<{ jobId: string; total: number; done: number; label: number; status: 'running'|'done'|'error' } | null>(null);
-  const handleStartGenerate = async () => {
-    try {
-      const res = await startGenerateNextFiscal();
-      setGenJob({ jobId: res.jobId, total: res.total || 0, done: 0, label: res.nextFiscalLabel, status: 'running' });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Gagal mulai generate data');
-    }
-  };
-  useEffect(() => {
-    if (!genJob || genJob.status !== 'running') return;
-    const id = setInterval(async () => {
-      try {
-        const st = await getGenerateStatus(genJob.jobId);
-        setGenJob((prev) => prev ? { ...prev, done: st.done, status: st.status } : prev);
-        if (st.status === 'done') {
-          clearInterval(id);
-          toast.success(`Generate ${st.nextFiscalLabel} berhasil (${st.total} toko)`);
-          invalidateVpsDetails();
-          qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
-        } else if (st.status === 'error') {
-          clearInterval(id);
-          toast.error(st.error || 'Generate gagal');
-        }
-      } catch (e: any) {
-        clearInterval(id);
-        toast.error('Gagal memantau progres generate');
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [genJob?.jobId, genJob?.status]);
 
   const startCreate = () => { setEditItem(null); setOpen(true); };
   const startEdit = (item: VpsInvoiceItem) => { setEditItem(item); setOpenEdit(true); };
@@ -732,55 +777,36 @@ export default function VPS() {
           </h1>
           <p className="text-gray-600 mt-2">Kelola tagihan subscription dan proses pelunasannya</p>
         </div>
-        <Button
-          onClick={startCreate}
-          className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
-        >
-          Tambah Subscription
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <Button
+            onClick={startCreate}
+            className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+          >
+            Tambah Subscription
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white/50 rounded-lg p-4 border-2 border-dashed border-blue-200">
         <div className="space-y-3">
           <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[220px] flex-1">
-            <Label>Group Toko</Label>
-            <Select value={groupTokoFilter} onValueChange={(v) => {
-              setGroupTokoFilter(v);
-              setTokoFilter('ALL');
-            }}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {groupTokoOptions.map((group) => (
-                  <SelectItem key={group.value} value={group.value}>{group.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-[220px] flex-1">
-            <Label>Toko</Label>
-            <Select value={tokoFilter} onValueChange={setTokoFilter}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {tokoOptions.map((name) => (
-                  <SelectItem key={name} value={name}>{name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-full sm:w-[130px]">
-            <Label>Status</Label>
-            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="OPEN">OPEN</SelectItem>
-                <SelectItem value="PROCESS">PROCESS</SelectItem>
-                <SelectItem value="DONE">DONE</SelectItem>
-                <SelectItem value="ALL">ALL</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="w-full sm:w-[150px]">
+              <Label>Tahun Fiskal</Label>
+              <Select value={String(fiscalYearFilter)} onValueChange={(value) => {
+                fiscalYearInitializedRef.current = true;
+                setFiscalYearFilter(Number(value));
+                setPeriodFrom('');
+                setPeriodTo('');
+              }}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {fiscalYearOptions.map((year) => (
+                    <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="w-full sm:w-[180px]">
               <Label>Periode Dari</Label>
               <Input
@@ -797,8 +823,43 @@ export default function VPS() {
                 onChange={(e) => setPeriodTo(e.target.value)}
               />
             </div>
-          </div>
-          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="min-w-[220px] flex-1">
+              <Label>Group Toko</Label>
+              <Select value={groupTokoFilter} onValueChange={(v) => {
+                setGroupTokoFilter(v);
+                setTokoFilter('ALL');
+              }}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {groupTokoOptions.map((group) => (
+                    <SelectItem key={group.value} value={group.value}>{group.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-[220px] flex-1">
+              <Label>Toko</Label>
+              <Select value={tokoFilter} onValueChange={setTokoFilter}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {tokoOptions.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-full sm:w-[130px]">
+              <Label>Status</Label>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OPEN">OPEN</SelectItem>
+                  <SelectItem value="PROCESS">PROCESS</SelectItem>
+                  <SelectItem value="DONE">DONE</SelectItem>
+                  <SelectItem value="ALL">ALL</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <label className="flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border-2 border-gray-200 bg-white px-3 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -808,7 +869,9 @@ export default function VPS() {
               />
               Include Nonaktif
             </label>
-            <div className="w-full sm:min-w-[320px] sm:max-w-[380px] lg:max-w-none lg:flex-1">
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full sm:w-[360px]">
               <Label>Search Data</Label>
               <Input
                 placeholder="Cari berdasarkan toko/program/daerah..."
@@ -1019,7 +1082,7 @@ export default function VPS() {
                           ) : (
                             <ConfirmAction
                               title="Aktifkan kembali?"
-                              description="Data akan diaktifkan kembali dan kembali dihitung dalam estimasi."
+                              description="Data akan diaktifkan kembali untuk periode yang sama dan kembali dihitung dalam estimasi."
                               actionText="Ya, Aktifkan"
                               preview={<VpsItemPreview item={item} />}
                               onConfirm={() => updateActiveMut.mutate({ periode: item.__periode, itemId: item._id, is_active: true })}
@@ -1222,11 +1285,10 @@ export default function VPS() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="bulk-tanggal-lunas">Tanggal Lunas</Label>
-              <Input
+              <DateTextInput
                 id="bulk-tanggal-lunas"
-                type="date"
                 value={bulkTanggalLunas}
-                onChange={(e) => setBulkTanggalLunas(e.target.value)}
+                onChange={setBulkTanggalLunas}
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -1256,11 +1318,10 @@ export default function VPS() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="tanggal-nonaktif">Tanggal Non Aktif</Label>
-              <Input
+              <DateTextInput
                 id="tanggal-nonaktif"
-                type="date"
                 value={tanggalNonAktif}
-                onChange={(e) => setTanggalNonAktif(e.target.value)}
+                onChange={setTanggalNonAktif}
               />
             </div>
             <div className="space-y-2">
@@ -1289,20 +1350,6 @@ export default function VPS() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {genJob?.status === 'running' && (
-        <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center">
-          <div className="bg-white rounded-lg p-5 shadow-xl w-[460px]">
-            <div className="mb-3 font-semibold">Generate data {genJob?.label || nextFiscalLabel || ''}...</div>
-            <Progress value={genJob?.total ? Math.round(((genJob?.done || 0) / genJob.total) * 100) : 0} />
-            <div className="mt-2 text-sm text-gray-600 flex justify-between">
-              <span>{genJob?.done || 0} / {genJob?.total || 0} toko</span>
-              <span>{genJob?.total ? Math.round(((genJob?.done || 0) / genJob.total) * 100) : 0}%</span>
-            </div>
-            <div className="mt-1 text-xs text-gray-400">Mohon tunggu, proses bisa memakan waktu.</div>
-          </div>
-        </div>
-      )}
 
       <InvoiceGenerateDialog
         open={invoiceDialogOpen}
@@ -1559,6 +1606,13 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !selectedSub) return;
+    if (selectedSub.suggested_start) {
+      setStartDate(selectedSub.suggested_start);
+    }
+  }, [open, selectedSub?._id, selectedSub?.suggested_start]);
+
   // Prefill values when editing and dialog opens
   // No edit prefill for TT yet
 
@@ -1611,7 +1665,11 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
           <div className="space-y-2">
             <Label>Toko</Label>
             <Combobox
-              options={subs?.map(s => ({ value: s._id, label: `${s.toko} — ${currency(s.biaya)}`, extra: s })) || []}
+              options={subs?.map(s => ({
+                value: s._id,
+                label: `${s.toko} — ${currency(s.biaya)}`,
+                extra: s,
+              })) || []}
               value={subscriberId}
               onChange={setSubscriberId}
               placeholder="Pilih Toko"
@@ -1636,10 +1694,9 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
           </div>
           <div className="space-y-1">
             <Label>Mulai Langganan</Label>
-            <Input
-              type="date"
+            <DateTextInput
               value={startDate}
-              onChange={e => setStartDate(e.target.value)}
+              onChange={setStartDate}
             />
           </div>
           <div className="space-y-1">
@@ -1793,10 +1850,9 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Mulai Langganan</Label>
-                <Input
-                  type="date"
+                <DateTextInput
                   value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
+                  onChange={setStartDate}
                 />
                 {startDate && (
                   <div className="text-xs text-gray-500 mt-1">
@@ -1933,7 +1989,7 @@ function InvoiceGenerateDialog({
   onOpenChange: (v: boolean) => void;
   mode: 'generate' | 'download';
   items: Array<TTVpsDetailItemDTO & { __periode: string }>;
-  subscribers: Array<{ kode?: string; toko: string; alamat?: string | null; no_ok?: string | null; nomor_telepon?: string | null }>;
+  subscribers: Array<{ _id?: string; kode?: string; toko: string; alamat?: string | null; no_ok?: string | null; nomor_telepon?: string | null; no_hp_owner?: string | null; no_hp_pic?: string | null }>;
   paymentAccounts: Array<{ kode_bank?: string; no_rekening?: string; nama_rekening?: string }>;
   onAutoSavePhone: (params: { kode: string; nomor_telepon: string }) => Promise<unknown>;
   onGenerate: (payload: {
@@ -1977,14 +2033,15 @@ function InvoiceGenerateDialog({
   useEffect(() => {
     if (!open || !items.length) return;
     const firstItem = items[0];
-    const sub = subscribers.find((s) => (s.toko || '').trim() === (firstItem.toko || '').trim());
+    const sub = subscribers.find((s) => String(s._id || '') === String((firstItem as any).ref_id || ''))
+      || subscribers.find((s) => (s.toko || '').trim() === (firstItem.toko || '').trim());
     const meta = (firstItem as any)?.invoice_meta;
     const isDownloadMode = mode === 'download' && !!meta;
     setCustomerName(isDownloadMode ? String(meta.customer?.name || firstItem.toko || '') : (firstItem.toko || ''));
     setCustomerAddress(isDownloadMode ? String(meta.customer?.address || '') : (sub?.alamat || '').toString());
     const defaultPhone = isDownloadMode
       ? String(meta.customer?.phone || '')
-      : (sub?.nomor_telepon || sub?.no_ok || '').toString();
+      : (sub?.no_hp_pic || sub?.nomor_telepon || sub?.no_hp_owner || '').toString();
     setCustomerPhone(defaultPhone);
     setInitialPhone(defaultPhone);
     setSubscriberKode((sub?.kode || '').toString());
@@ -2529,7 +2586,7 @@ function InvoiceGenerateDialog({
             </div>
             <div className="space-y-1 md:col-span-1">
               <Label>Tanggal</Label>
-              <Input type="date" value={displayDate} onChange={(e) => setDisplayDate(e.target.value)} />
+              <DateTextInput value={displayDate} onChange={setDisplayDate} />
             </div>
             <div className="space-y-1 md:col-span-3">
               <Label>Alamat Toko</Label>
@@ -2931,7 +2988,7 @@ function ConfirmAction({ title, description, actionText, onConfirm, children, sh
         {showDate && (
           <div className="my-2">
             <Label htmlFor="tanggal-lunas">Tanggal Lunas</Label>
-            <Input id="tanggal-lunas" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            <DateTextInput id="tanggal-lunas" value={date} onChange={setDate} />
           </div>
         )}
         <AlertDialogFooter>

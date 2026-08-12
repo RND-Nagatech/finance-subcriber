@@ -13,6 +13,10 @@ import {
   updateSubscriptionDetailStatus,
   updateSubscriptionDetail,
 } from '../controllers/subscriptionController';
+import {
+  listSubscriberTahun,
+  rebuildSubscriberTahunEndpoint,
+} from '../controllers/subscriptionVpsAdapterController';
 
 const router = Router();
 
@@ -23,6 +27,8 @@ router.use(authenticate);
 
 router.get('/', listSubscription);
 router.post('/', createSubscription);
+router.get('/subscriber-tahun', listSubscriberTahun);
+router.post('/subscriber-tahun/rebuild', rebuildSubscriberTahunEndpoint);
 router.get('/detail', listSubscriptionDetail);
 router.patch('/detail/:id', updateSubscriptionDetail);
 router.delete('/detail/:id', deleteSubscriptionDetail);
