@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import FiscalConfig from '../models/FiscalConfig';
 import Subscriber from '../models/Subscriber';
-import TTVpsDetail from '../models/TTVpsDetail';
+import SubscriptionDetail from '../models/SubscriptionDetail';
 import { fiscalMonthsForYear } from '../utils/fiscal';
 
 export const getFiscalYears = async (_req: Request, res: Response) => {
@@ -9,9 +9,28 @@ export const getFiscalYears = async (_req: Request, res: Response) => {
     const subscriberYears = await Subscriber.aggregate([
       { $match: { tanggal: { $exists: true, $ne: null } } },
       {
+        $addFields: {
+          tanggalDate: {
+            $cond: [
+              { $eq: [{ $type: '$tanggal' }, 'string'] },
+              {
+                $dateFromString: {
+                  dateString: '$tanggal',
+                  format: '%Y-%m-%d',
+                  onError: null,
+                  onNull: null,
+                },
+              },
+              '$tanggal',
+            ],
+          },
+        },
+      },
+      { $match: { tanggalDate: { $type: 'date' } } },
+      {
         $project: {
-          year: { $year: { date: '$tanggal', timezone: 'Asia/Jakarta' } },
-          month: { $month: { date: '$tanggal', timezone: 'Asia/Jakarta' } },
+          year: { $year: { date: '$tanggalDate', timezone: 'Asia/Jakarta' } },
+          month: { $month: { date: '$tanggalDate', timezone: 'Asia/Jakarta' } },
         },
       },
       {
@@ -24,7 +43,7 @@ export const getFiscalYears = async (_req: Request, res: Response) => {
       { $group: { _id: '$fiscalYear' } },
     ]);
 
-    const vpsYears = await TTVpsDetail.aggregate([
+    const subscriptionYears = await SubscriptionDetail.aggregate([
       { $match: { periode: { $type: 'string' } } },
       {
         $project: {
@@ -42,7 +61,7 @@ export const getFiscalYears = async (_req: Request, res: Response) => {
       { $group: { _id: '$fiscalYear' } },
     ]);
 
-    const years = Array.from(new Set([...subscriberYears, ...vpsYears].map((row: any) => Number(row._id))))
+    const years = Array.from(new Set([...subscriberYears, ...subscriptionYears].map((row: any) => Number(row._id))))
       .filter((year) => Number.isFinite(year))
       .sort((a, b) => b - a);
 
@@ -68,7 +87,7 @@ export const getActiveFiscalYear = async (_req: Request, res: Response) => {
       return res.json({ success: true, activeYear: cfg.active_year });
     }
 
-    const yearsResult = await TTVpsDetail.aggregate([
+    const yearsResult = await SubscriptionDetail.aggregate([
       { $match: { periode: { $type: 'string' } } },
       {
         $project: {

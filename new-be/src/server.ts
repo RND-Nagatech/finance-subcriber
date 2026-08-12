@@ -10,8 +10,9 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import masterRoutes from './routes/masterRoutes';
 import fiscalRoutes from './routes/fiscalRoutes';
 import subscriberRoutes from './routes/subscriberRoutes';
-import vpsRoutes from './routes/vpsRoutes';
-import vpsTTRoutes from './routes/vpsTTRoutes';
+import subscriptionRoutes from './routes/subscriptionRoutes';
+import subscriptionVpsAdapterRoutes from './routes/subscriptionVpsAdapterRoutes';
+import subscriptionVpsAvailableRoutes from './routes/subscriptionVpsAvailableRoutes';
 import userRoutes from './routes/userRoutes';
 import { errorLoggerMiddleware } from './middleware/errorLoggerMiddleware';
 
@@ -57,8 +58,9 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/master', masterRoutes);
 app.use('/api/fiscal', fiscalRoutes);
 app.use('/api/subscriber', subscriberRoutes);
-app.use('/api/vps', vpsRoutes);
-app.use('/api/tt-vps', vpsTTRoutes);
+app.use('/api/subscription', subscriptionRoutes);
+app.use('/api/tt-vps', subscriptionVpsAdapterRoutes);
+app.use('/api/vps', subscriptionVpsAvailableRoutes);
 app.use('/api/users', userRoutes);
 
 // Error logging middleware

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsByPeriode, fetchDetailsByToko, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, uploadInvoiceVpsPdfs, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsSearch, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, uploadInvoiceVpsPdfs, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, fetchLastPeriod, generateNextFiscal, startGenerateNextFiscal, getGenerateStatus, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,9 +13,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Combobox, ComboboxOption } from '@/components/ui/Combobox';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink } from 'lucide-react';
+import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink, ChevronDown, Ban } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import axiosInstance from '@/api/axiosInstance';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 function currency(n: number) {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
@@ -70,20 +77,6 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
     activeElement?.focus();
   }
   return copied;
-}
-
-function enumerateMonths(from: string, to: string): string[] {
-  const res: string[] = [];
-  const [fy, fm] = from.split('-').map(Number);
-  const [ty, tm] = to.split('-').map(Number);
-  if (!fy || !fm || !ty || !tm) return res;
-  let y = fy, m = fm;
-  while (y < ty || (y === ty && m <= tm)) {
-    res.push(`${y}-${String(m).padStart(2,'0')}`);
-    m += 1;
-    if (m > 12) { m = 1; y += 1; }
-  }
-  return res;
 }
 
 function sanitizeFilename(value: string): string {
@@ -189,30 +182,40 @@ export default function VPS() {
   const [dokuDialogOpen, setDokuDialogOpen] = useState(false);
   const [selectedDokuItem, setSelectedDokuItem] = useState<VpsInvoiceItem | null>(null);
   const [selectedDokuPayment, setSelectedDokuPayment] = useState<DokuPaymentDTO | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkLunasOpen, setBulkLunasOpen] = useState(false);
+  const [bulkTanggalLunas, setBulkTanggalLunas] = useState('');
+  const [nonaktifDialogOpen, setNonaktifDialogOpen] = useState(false);
+  const [nonaktifItems, setNonaktifItems] = useState<VpsInvoiceItem[]>([]);
+  const [tanggalNonAktif, setTanggalNonAktif] = useState('');
+  const [alasanNonAktif, setAlasanNonAktif] = useState('');
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const pendingInvoiceDokuRef = useRef<{ item: VpsInvoiceItem; payment: DokuPaymentDTO } | null>(null);
 
   // Filters: period (from/to month), status, and search term
-  const currentMonth = useMemo(() => format(new Date(), 'yyyy-MM'), []);
-  const [periodFrom, setPeriodFrom] = useState<string>(currentMonth);
-  const [periodTo, setPeriodTo] = useState<string>(currentMonth);
+  const [periodFrom, setPeriodFrom] = useState<string>('');
+  const [periodTo, setPeriodTo] = useState<string>('');
+  const [groupTokoFilter, setGroupTokoFilter] = useState<string>('ALL');
   const [tokoFilter, setTokoFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'OPEN'|'PROCESS'|'DONE'|'ALL'>('OPEN');
+  const [showInactiveItems, setShowInactiveItems] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  const months = useMemo(() => {
-    if (!periodFrom || !periodTo) return [];
-    return enumerateMonths(periodFrom, periodTo);
-  }, [periodFrom, periodTo]);
-  const detailQueries = useQueries({
-    queries: months.map((p) => ({
-      queryKey: ['tt-vps-details', p],
-      queryFn: () => fetchDetailsByPeriode(p),
-      refetchInterval: 15000,
-    })),
-    combine: (results) => ({
-      data: results.flatMap(r => (Array.isArray(r.data) ? r.data : []) ) as any,
-      pending: results.some(r => r.isLoading),
-    })
+  const isUnsafeWideAllFilter = statusFilter === 'ALL' && groupTokoFilter === 'ALL' && tokoFilter === 'ALL' && !periodFrom && !periodTo;
+  const detailQuery = useQuery({
+    queryKey: ['tt-vps-details-search', periodFrom, periodTo, groupTokoFilter, tokoFilter, statusFilter, showInactiveItems, searchTerm],
+    queryFn: () => fetchDetailsSearch({
+      periode_from: periodFrom || undefined,
+      periode_to: periodTo || undefined,
+      kode_group: groupTokoFilter,
+      toko: tokoFilter,
+      status: statusFilter,
+      search: searchTerm || undefined,
+      include_inactive: showInactiveItems,
+      limit: 1000,
+    }),
+    enabled: !isUnsafeWideAllFilter,
+    refetchInterval: 15000,
   });
 
   const { data: subsAll } = useQuery({ queryKey: ['subs-all'], queryFn: () => fetchSubscribers(true) });
@@ -224,32 +227,38 @@ export default function VPS() {
     },
   });
   const tokoOptions = useMemo(() => {
-    const names = Array.from(new Set((subsAll || []).map(s => s.toko))).sort();
+    const rows = groupTokoFilter === 'ALL'
+      ? (subsAll || [])
+      : (subsAll || []).filter((s) => (s.kode_group || '') === groupTokoFilter);
+    const names = Array.from(new Set(rows.map(s => s.toko))).sort();
     return ['ALL', ...names];
-  }, [subsAll]);
+  }, [subsAll, groupTokoFilter]);
 
-  const detailsByToko = useQuery({
-    queryKey: ['tt-vps-details-by-toko', tokoFilter],
-    queryFn: () => fetchDetailsByToko(tokoFilter),
-    enabled: !periodFrom && !periodTo && tokoFilter !== 'ALL'
-  });
+  const groupTokoOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (subsAll || []).forEach((sub) => {
+      if (sub.kode_group) map.set(sub.kode_group, sub.nama_group ? `${sub.kode_group} - ${sub.nama_group}` : sub.kode_group);
+    });
+    return [{ value: 'ALL', label: 'ALL' }, ...Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], 'id-ID')).map(([value, label]) => ({ value, label }))];
+  }, [subsAll]);
 
   const [localItems, setLocalItems] = useState<any[]>([]);
   useEffect(() => {
     // Sync localItems with fetched data
-    const docs = months.length > 0 ? ((detailQueries as any).data as any[]) : ((detailsByToko.data as any[]) || []);
+    const docs = detailQuery.data || [];
     if (!Array.isArray(docs)) return setLocalItems([]);
     const items = docs.map(doc => ({ ...doc, __periode: doc.periode }));
     setLocalItems(items);
-  }, [detailQueries, detailsByToko.data, months.length]);
+  }, [detailQuery.data]);
 
   const combinedItems = useMemo(() => {
     const containsText = (s: string, q: string) => s?.toLowerCase().includes(q.toLowerCase());
     const filtered = localItems.filter((it) => {
       const matchStatus = statusFilter === 'ALL' ? true : it.status === statusFilter;
+      const matchGroupToko = groupTokoFilter === 'ALL' ? true : it.kode_group === groupTokoFilter;
       const matchToko = tokoFilter === 'ALL' ? true : it.toko === tokoFilter;
       const matchSearch = !searchTerm || containsText(it.toko, searchTerm) || containsText(it.program, searchTerm) || containsText((it as any).daerah, searchTerm);
-      return matchStatus && matchToko && matchSearch;
+      return matchStatus && matchGroupToko && matchToko && matchSearch;
     });
     // Sort by start date ascending, then by toko name ascending
     return filtered.sort((a: any, b: any) => {
@@ -260,11 +269,12 @@ export default function VPS() {
       const tb = String(b?.toko || '');
       return ta.localeCompare(tb, 'id-ID', { sensitivity: 'base' });
     });
-  }, [localItems, statusFilter, tokoFilter, searchTerm]);
+  }, [localItems, statusFilter, groupTokoFilter, tokoFilter, searchTerm]);
 
   const itemKey = (item: VpsInvoiceItem) => `${item.__periode}-${item._id}`;
-  const isSelectableForBulk = (item: VpsInvoiceItem) => item.status === 'OPEN' && (item.is_active ?? true) !== false;
+  const isSelectableForBulk = (_item: VpsInvoiceItem) => true;
   const isSelected = (item: VpsInvoiceItem) => !!selectedInvoiceItems[itemKey(item)];
+  const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
 
   const visibleSelectableItems = useMemo(
     () => (combinedItems || []).filter((it: VpsInvoiceItem) => isSelectableForBulk(it)),
@@ -274,11 +284,26 @@ export default function VPS() {
     () => visibleSelectableItems.length > 0 && visibleSelectableItems.every((it: VpsInvoiceItem) => !!selectedInvoiceItems[itemKey(it)]),
     [visibleSelectableItems, selectedInvoiceItems]
   );
-  const selectedCount = useMemo(() => Object.keys(selectedInvoiceItems).length, [selectedInvoiceItems]);
-  const selectedVisibleItems = useMemo(
-    () => (combinedItems || []).filter((it: VpsInvoiceItem) => !!selectedInvoiceItems[itemKey(it)]),
-    [combinedItems, selectedInvoiceItems]
+  const someVisibleSelected = useMemo(
+    () => visibleSelectableItems.some((it: VpsInvoiceItem) => !!selectedInvoiceItems[itemKey(it)]),
+    [visibleSelectableItems, selectedInvoiceItems]
   );
+  const selectedCount = useMemo(() => Object.keys(selectedInvoiceItems).length, [selectedInvoiceItems]);
+  const selectedItems = useMemo(() => Object.values(selectedInvoiceItems), [selectedInvoiceItems]);
+  const selectedTotalHarga = useMemo(
+    () => selectedItems.reduce((sum, item) => sum + Number(item.total_harga || 0), 0),
+    [selectedItems]
+  );
+  const nonaktifTotalHarga = useMemo(
+    () => nonaktifItems.reduce((sum, item) => sum + Number(item.total_harga || 0), 0),
+    [nonaktifItems]
+  );
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someVisibleSelected && !allVisibleSelected;
+    }
+  }, [allVisibleSelected, someVisibleSelected]);
 
   const toggleSelected = (item: VpsInvoiceItem) => {
     if (!isSelectableForBulk(item)) return;
@@ -308,6 +333,10 @@ export default function VPS() {
   };
 
   const clearSelection = () => setSelectedInvoiceItems({});
+  const invalidateVpsDetails = () => {
+    qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+    qc.invalidateQueries({ queryKey: ['tt-vps-details-search'] });
+  };
 
   useEffect(() => {
     const visibleKeys = new Set((combinedItems || []).map((it: VpsInvoiceItem) => itemKey(it)));
@@ -352,7 +381,7 @@ export default function VPS() {
         if (st.status === 'done') {
           clearInterval(id);
           toast.success(`Generate ${st.nextFiscalLabel} berhasil (${st.total} toko)`);
-          qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+          invalidateVpsDetails();
           qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
         } else if (st.status === 'error') {
           clearInterval(id);
@@ -384,23 +413,12 @@ export default function VPS() {
     setInvoiceItems([item]);
     setInvoiceDialogOpen(true);
   };
-  const startGenerateBulkInvoice = () => {
-    if (selectedVisibleItems.length === 0) {
-      toast.warn('Pilih minimal 1 data OPEN & aktif untuk generate invoice gabungan.');
-      return;
-    }
-    pendingInvoiceDokuRef.current = null;
-    setInvoiceDialogMode('generate');
-    setInvoiceItems(selectedVisibleItems);
-    setInvoiceDialogOpen(true);
-  };
-
   const delMut = useMutation({
     mutationFn: ({ periode, itemId }: { periode: string; itemId: string }) => deleteTTItem({ periode, itemId }),
     onSuccess: (_data, variables) => {
       toast.success('Data dihapus');
       setLocalItems((prev) => prev.filter((item) => !(item.__periode === variables.periode && item._id === variables.itemId)));
-      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      invalidateVpsDetails();
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal hapus data'),
   });
@@ -414,8 +432,9 @@ export default function VPS() {
           ? { ...item, is_active: variables.is_active }
           : item
       ));
-      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      invalidateVpsDetails();
       qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
+      qc.invalidateQueries({ queryKey: ['subscriber'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal ubah status aktif'),
   });
@@ -429,7 +448,7 @@ export default function VPS() {
           ? { ...item, status: variables.status, tanggalLunas: variables.tanggalLunas ?? item.tanggalLunas }
           : item
       ));
-      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      invalidateVpsDetails();
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal ubah status'),
   });
@@ -467,7 +486,7 @@ export default function VPS() {
           ? { ...item, status: 'PROCESS', doku_payment: _data.doku_payment || undefined }
           : item
       ));
-      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      invalidateVpsDetails();
       qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
     },
   });
@@ -483,7 +502,7 @@ export default function VPS() {
           : item
       ));
       toast.success(data.reused ? 'Link pembayaran DOKU masih aktif.' : 'Link pembayaran DOKU berhasil dibuat.');
-      qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      invalidateVpsDetails();
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal membuat link pembayaran DOKU.'),
   });
@@ -491,6 +510,197 @@ export default function VPS() {
   const handleDokuPayment = (item: VpsInvoiceItem) => {
     setSelectedDokuItem(item);
     generateDokuMut.mutate({ periode: item.__periode, itemId: item._id });
+  };
+
+  const refreshVpsData = () => {
+    invalidateVpsDetails();
+    qc.invalidateQueries({ queryKey: ['vps-tt-aggregates'] });
+    qc.invalidateQueries({ queryKey: ['subscriber'] });
+  };
+
+  const runBulkAction = async (
+    actionLabel: string,
+    actionItems: VpsInvoiceItem[],
+    runner: (item: VpsInvoiceItem) => Promise<unknown>,
+    successMessage: (count: number) => string
+  ) => {
+    if (bulkActionLoading) return;
+    if (!actionItems.length) {
+      toast.warn(`Tidak ada data terpilih yang bisa diproses untuk ${actionLabel}.`);
+      return;
+    }
+
+    setBulkActionLoading(true);
+    let success = 0;
+    let failed = 0;
+    for (const item of actionItems) {
+      try {
+        await runner(item);
+        success += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setBulkActionLoading(false);
+    refreshVpsData();
+    clearSelection();
+    if (success) toast.success(failed ? `${success} berhasil diproses, ${failed} gagal.` : successMessage(success));
+    if (!success && failed) toast.error(`${failed} data gagal diproses.`);
+  };
+
+  const selectedOpenActiveItems = () => selectedItems.filter((item) => item.status === 'OPEN' && (item.is_active ?? true) !== false);
+  const selectedPaymentItems = () => selectedItems.filter((item) => item.status !== 'DONE' && (item.is_active ?? true) !== false);
+  const selectedInvoiceDownloadItems = () => selectedItems.filter((item) => !!item.invoice_meta);
+  const selectedProcessItems = () => selectedItems.filter((item) => item.status === 'PROCESS');
+  const selectedDoneItems = () => selectedItems.filter((item) => item.status === 'DONE');
+  const selectedOpenItems = () => selectedItems.filter((item) => item.status === 'OPEN');
+  const selectedOpenInactiveItems = () => selectedItems.filter((item) => item.status === 'OPEN' && (item.is_active ?? true) === false);
+
+  const validateExactBulk = (items: VpsInvoiceItem[], actionLabel: string) => {
+    if (items.length !== selectedCount) {
+      toast.error(`${actionLabel} hanya bisa diproses untuk data dengan status yang sesuai. Periksa pilihan Anda.`);
+      return false;
+    }
+    return true;
+  };
+
+  const handleBulkGenerateInvoice = () => {
+    const items = selectedOpenActiveItems();
+    if (!validateExactBulk(items, 'Generate Invoice')) return;
+    pendingInvoiceDokuRef.current = null;
+    setInvoiceDialogMode('generate');
+    setInvoiceItems(items);
+    setInvoiceDialogOpen(true);
+  };
+
+  const handleBulkDoku = () => {
+    const items = selectedPaymentItems();
+    if (!validateExactBulk(items, 'Link pembayaran DOKU')) return;
+    runBulkAction(
+      'link pembayaran DOKU',
+      items,
+      (item) => generateDokuPaymentLink({ periode: item.__periode, itemId: item._id }),
+      (count) => `${count} link pembayaran DOKU berhasil dibuat.`
+    );
+  };
+
+  const handleBulkDownloadInvoice = () => {
+    const items = selectedInvoiceDownloadItems();
+    if (!validateExactBulk(items, 'Download invoice')) return;
+    pendingInvoiceDokuRef.current = null;
+    setInvoiceDialogMode('download');
+    setInvoiceItems(items);
+    setInvoiceDialogOpen(true);
+  };
+
+  const handleBulkSetDone = () => {
+    const items = selectedProcessItems();
+    if (!validateExactBulk(items, 'Pelunasan')) return;
+    setBulkTanggalLunas(new Date().toISOString().slice(0, 10));
+    setBulkLunasOpen(true);
+  };
+
+  const confirmBulkSetDone = () => {
+    const items = selectedProcessItems();
+    if (!validateExactBulk(items, 'Pelunasan')) return;
+    if (!bulkTanggalLunas) {
+      toast.warn('Tanggal lunas wajib diisi.');
+      return;
+    }
+    setBulkLunasOpen(false);
+    runBulkAction(
+      'pelunasan',
+      items,
+      (item) => updateItemStatus({ periode: item.__periode, itemId: item._id, status: 'DONE', tanggalLunas: bulkTanggalLunas }),
+      (count) => `${count} subscription berhasil dilunasi.`
+    );
+  };
+
+  const handleBulkCancelProcess = () => {
+    const items = selectedProcessItems();
+    if (!validateExactBulk(items, 'Batalkan proses')) return;
+    runBulkAction(
+      'batalkan proses',
+      items,
+      (item) => updateItemStatus({ periode: item.__periode, itemId: item._id, status: 'OPEN' }),
+      (count) => `${count} subscription berhasil dikembalikan ke OPEN.`
+    );
+  };
+
+  const handleBulkCancelPaid = () => {
+    const items = selectedDoneItems();
+    if (!validateExactBulk(items, 'Batal pelunasan')) return;
+    runBulkAction(
+      'batal pelunasan',
+      items,
+      (item) => updateItemStatus({ periode: item.__periode, itemId: item._id, status: 'PROCESS' }),
+      (count) => `${count} subscription berhasil dikembalikan ke PROCESS.`
+    );
+  };
+
+  const handleBulkDeactivate = () => {
+    const items = selectedOpenActiveItems();
+    if (!validateExactBulk(items, 'Nonaktifkan')) return;
+    openNonaktifDialog(items);
+  };
+
+  const openNonaktifDialog = (items: VpsInvoiceItem[]) => {
+    setNonaktifItems(items);
+    setTanggalNonAktif(new Date().toISOString().slice(0, 10));
+    setAlasanNonAktif('');
+    setNonaktifDialogOpen(true);
+  };
+
+  const confirmNonaktif = () => {
+    if (!nonaktifItems.length) {
+      toast.warn('Pilih data yang akan dinonaktifkan.');
+      return;
+    }
+    if (!tanggalNonAktif) {
+      toast.warn('Tanggal non aktif wajib diisi.');
+      return;
+    }
+    if (!alasanNonAktif.trim()) {
+      toast.warn('Alasan non aktif wajib diisi.');
+      return;
+    }
+    runBulkAction(
+      'nonaktifkan',
+      nonaktifItems,
+      (item) => updateItemActive({
+        periode: item.__periode,
+        itemId: item._id,
+        is_active: false,
+        tgl_non_aktif: tanggalNonAktif,
+        alasan_non_aktif: alasanNonAktif,
+      }),
+      (count) => `${count} subscription berhasil dinonaktifkan.`
+    );
+    setNonaktifDialogOpen(false);
+    setNonaktifItems([]);
+  };
+
+  const handleBulkReactivate = () => {
+    const items = selectedOpenInactiveItems();
+    if (!validateExactBulk(items, 'Aktifkan kembali')) return;
+    runBulkAction(
+      'aktifkan kembali',
+      items,
+      (item) => updateItemActive({ periode: item.__periode, itemId: item._id, is_active: true }),
+      (count) => `${count} subscription berhasil diaktifkan kembali.`
+    );
+  };
+
+  const handleBulkDelete = () => {
+    const items = selectedOpenItems();
+    if (!validateExactBulk(items, 'Hapus')) return;
+    runBulkAction(
+      'hapus',
+      items,
+      (item) => deleteTTItem({ periode: item.__periode, itemId: item._id }),
+      (count) => `${count} subscription berhasil dihapus.`
+    );
+    setBulkDeleteOpen(false);
   };
 
   const copyDokuPaymentUrl = async () => {
@@ -514,54 +724,43 @@ export default function VPS() {
   }, [combinedItems]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">VPS Subscription</h2>
-        <div className="flex gap-2">
-          <Button
-            onClick={startCreate}
-            className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
-          >
-            Tambah VPS
-          </Button>
-          <ConfirmAction
-            title="Generate Data?"
-            description={nextFiscalLabel ? `Anda yakin ingin generate data VPS untuk periode ${nextFiscalLabel}?` : 'Menentukan tahun...'}
-            actionText="Ya, Generate"
-            onConfirm={handleStartGenerate}
-          >
-            <Button
-              disabled={(genJob?.status === 'running') || !nextFiscalLabel}
-              className="bg-gradient-to-r from-purple-600 to-fuchsia-700 hover:from-purple-700 hover:to-fuchsia-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
-              title={nextFiscalLabel ? `Generate Data ${nextFiscalLabel}` : 'Menentukan tahun...'}
-            >
-              {(genJob?.status === 'running') ? (
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin"></span>
-                  <span>Generate...</span>
-                </span>
-              ) : (
-                nextFiscalLabel ? `Generate Data ${nextFiscalLabel}` : 'Generate Data'
-              )}
-            </Button>
-          </ConfirmAction>
+    <div className="container mx-auto px-6 py-8 space-y-8">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+            Subscription
+          </h1>
+          <p className="text-gray-600 mt-2">Kelola tagihan subscription dan proses pelunasannya</p>
         </div>
+        <Button
+          onClick={startCreate}
+          className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+        >
+          Tambah Subscription
+        </Button>
       </div>
 
       {/* Filters */}
       <div className="bg-white/50 rounded-lg p-4 border-2 border-dashed border-blue-200">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-          <div>
-            <Label>Toko</Label>
-            <Select value={tokoFilter} onValueChange={(v) => {
-              // Jika beralih ke ALL sementara periode kosong, paksa isi periode saat ini
-              if (v === 'ALL' && (!periodFrom || !periodTo)) {
-                toast.warn('Toko = ALL, periode wajib diisi');
-                setPeriodFrom(currentMonth);
-                setPeriodTo(currentMonth);
-              }
-              setTokoFilter(v);
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[220px] flex-1">
+            <Label>Group Toko</Label>
+            <Select value={groupTokoFilter} onValueChange={(v) => {
+              setGroupTokoFilter(v);
+              setTokoFilter('ALL');
             }}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {groupTokoOptions.map((group) => (
+                  <SelectItem key={group.value} value={group.value}>{group.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-[220px] flex-1">
+            <Label>Toko</Label>
+            <Select value={tokoFilter} onValueChange={setTokoFilter}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {tokoOptions.map((name) => (
@@ -570,37 +769,7 @@ export default function VPS() {
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <Label>Periode Dari</Label>
-            <Input
-              type="month"
-              value={periodFrom}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (tokoFilter === 'ALL' && !v) {
-                  toast.warn('Toko = ALL, periode wajib diisi');
-                  return;
-                }
-                setPeriodFrom(v);
-              }}
-            />
-          </div>
-          <div>
-            <Label>Periode Sampai</Label>
-            <Input
-              type="month"
-              value={periodTo}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (tokoFilter === 'ALL' && !v) {
-                  toast.warn('Toko = ALL, periode wajib diisi');
-                  return;
-                }
-                setPeriodTo(v);
-              }}
-            />
-          </div>
-          <div>
+          <div className="w-full sm:w-[130px]">
             <Label>Status</Label>
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
@@ -612,31 +781,56 @@ export default function VPS() {
               </SelectContent>
             </Select>
           </div>
-          <div className="md:col-span-2">
-            <Label>Search Data</Label>
-            <Input
-              placeholder="Cari berdasarkan toko/program/daerah..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-            />
+            <div className="w-full sm:w-[180px]">
+              <Label>Periode Dari</Label>
+              <Input
+                type="month"
+                value={periodFrom}
+                onChange={(e) => setPeriodFrom(e.target.value)}
+              />
+            </div>
+            <div className="w-full sm:w-[180px]">
+              <Label>Periode Sampai</Label>
+              <Input
+                type="month"
+                value={periodTo}
+                onChange={(e) => setPeriodTo(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border-2 border-gray-200 bg-white px-3 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={showInactiveItems}
+                onChange={(e) => setShowInactiveItems(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Include Nonaktif
+            </label>
+            <div className="w-full sm:min-w-[320px] sm:max-w-[380px] lg:max-w-none lg:flex-1">
+              <Label>Search Data</Label>
+              <Input
+                placeholder="Cari berdasarkan toko/program/daerah..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+              />
+            </div>
           </div>
         </div>
+        {isUnsafeWideAllFilter && (
+          <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Filter terlalu luas. Pilih periode, group toko, toko, atau ubah status ke OPEN/PROCESS/DONE.
+          </div>
+        )}
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle>Daftar VPS</CardTitle>
+            <CardTitle>Daftar Subscription</CardTitle>
             <div className="flex items-center gap-3">
-              <Button
-                type="button"
-                onClick={startGenerateBulkInvoice}
-                disabled={selectedCount === 0 || generateInvoiceMut.isPending}
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
-              >
-                Generate Invoice Terpilih ({selectedCount})
-              </Button>
               <div className="text-sm text-gray-700 flex items-center gap-4">
                 <span className="font-semibold">Total: {currency(summary.total)}</span>
                 <span>Subscriber: <span className="font-semibold">{summary.uniqueToko}</span></span>
@@ -645,27 +839,101 @@ export default function VPS() {
           </div>
         </CardHeader>
         <CardContent>
-          {(detailQueries as any).pending ? (
+          {detailQuery.isLoading ? (
             <div>Loading...</div>
+          ) : isUnsafeWideAllFilter ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Data tidak ditampilkan karena kombinasi filter terlalu luas.
+            </div>
           ) : (
             <div className="overflow-x-auto">
+              {selectedCount > 0 && (
+                <div className="mb-3 flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-blue-800">
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-xs text-white">✓</span>
+                    {selectedCount} data dipilih
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleBulkGenerateInvoice}
+                      disabled={generateInvoiceMut.isPending || bulkActionLoading}
+                      className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
+                    >
+                      <FileCheck className="mr-2 h-4 w-4" />
+                      Generate Invoice
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" size="sm" variant="outline" disabled={bulkActionLoading}>
+                          Aksi Lainnya
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-56">
+                        <DropdownMenuItem onClick={handleBulkDoku}>
+                          <CreditCard className="mr-2 h-4 w-4 text-cyan-600" />
+                          Link Pembayaran DOKU
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleBulkDownloadInvoice}>
+                          <FileDown className="mr-2 h-4 w-4 text-sky-600" />
+                          Download Invoice
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleBulkSetDone}>
+                          <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-600" />
+                          Tandai Lunas
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleBulkCancelProcess}>
+                          <RotateCcw className="mr-2 h-4 w-4 text-amber-600" />
+                          Batalkan Proses
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleBulkCancelPaid}>
+                          <RotateCcw className="mr-2 h-4 w-4 text-orange-600" />
+                          Batal Pelunasan
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleBulkDeactivate}>
+                          <Ban className="mr-2 h-4 w-4 text-rose-600" />
+                          Nonaktifkan
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleBulkReactivate}>
+                          <RotateCcw className="mr-2 h-4 w-4 text-emerald-600" />
+                          Aktifkan Kembali
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setBulkDeleteOpen(true)}
+                          className="text-red-600 focus:text-red-700"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Hapus
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button type="button" size="sm" variant="ghost" onClick={clearSelection}>
+                      Batalkan Pilihan
+                    </Button>
+                  </div>
+                </div>
+              )}
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left border-b">
                     <th className="py-2 pr-4 w-10">
                       <input
+                        ref={headerCheckboxRef}
                         type="checkbox"
                         checked={allVisibleSelected}
                         onChange={toggleSelectedAllVisible}
-                        aria-label="Pilih semua item OPEN aktif"
+                        aria-label="Pilih semua item yang sedang tampil"
                         className="h-4 w-4"
                       />
                     </th>
                     <th className="py-2 pr-4"></th>
                     <th className="py-2 pr-4">Toko</th>
-                    <th className="py-2 pr-4">Start Date</th>
+                    <th className="py-2 pr-4">Mulai Langganan</th>
                     <th className="py-2 pr-4">Bulan</th>
-                    <th className="py-2 pr-4">Tempo</th>
+                    <th className="py-2 pr-4">Berakhir Langganan</th>
                     <th className="py-2 pr-4">Harga/Bln</th>
                     <th className="py-2 pr-4">Total</th>
                     <th className="py-2 pr-4">Status</th>
@@ -673,16 +941,18 @@ export default function VPS() {
                   </tr>
                 </thead>
                 <tbody>
-                  {combinedItems?.map((item: VpsInvoiceItem) => (
+                  {combinedItems?.map((item: VpsInvoiceItem) => {
+                    const itemInactive = (item.is_active ?? true) === false;
+                    return (
                     <Fragment key={`${item.__periode}-${item._id}`}>
-                    <tr key={`${item.__periode}-${item._id}`} className="border-b">
+                    <tr key={`${item.__periode}-${item._id}`} className={`border-b ${itemInactive ? 'bg-red-50/70' : ''}`}>
                       <td className="py-2 pr-4">
                         <input
                           type="checkbox"
                           checked={isSelected(item)}
                           disabled={!isSelectableForBulk(item)}
                           onChange={() => toggleSelected(item)}
-                          title={!isSelectableForBulk(item) ? 'Hanya status OPEN dan aktif yang bisa dipilih' : 'Pilih untuk invoice gabungan'}
+                          title="Pilih untuk bulk action"
                           className="h-4 w-4"
                         />
                       </td>
@@ -736,23 +1006,16 @@ export default function VPS() {
                         )}
                         {item.status === 'OPEN' && (
                           (item.is_active ?? true) !== false ? (
-                            <ConfirmAction
-                              title="Nonaktifkan VPS?"
-                              description="Data akan dinonaktifkan untuk periode ini. Tidak bisa diproses invoice/pelunasan hingga diaktifkan kembali."
-                              actionText="Ya, Nonaktifkan"
-                              preview={<VpsItemPreview item={item} />}
-                              onConfirm={() => updateActiveMut.mutate({ periode: item.__periode, itemId: item._id, is_active: false })}
+                            <Button
+                              size="icon"
+                              aria-label="Nonaktifkan"
+                              title="Nonaktifkan data"
+                              className="rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                              disabled={updateActiveMut.isPending}
+                              onClick={() => openNonaktifDialog([item])}
                             >
-                              <Button
-                                size="icon"
-                                aria-label="Nonaktifkan"
-                                title="Nonaktifkan data"
-                                className="rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                                disabled={updateActiveMut.isPending}
-                              >
-                                <span className="font-bold">Ø</span>
-                              </Button>
-                            </ConfirmAction>
+                              <span className="font-bold">Ø</span>
+                            </Button>
                           ) : (
                             <ConfirmAction
                               title="Aktifkan kembali?"
@@ -785,7 +1048,7 @@ export default function VPS() {
                               <FileDown className="h-5 w-5" />
                             </Button>
                             <ConfirmAction
-                              title="Selesaikan VPS?"
+                              title="Selesaikan subscription?"
                               description="Status akan diubah menjadi DONE. Pilih tanggal lunas:"
                               actionText="Ya, Selesaikan"
                               showDate
@@ -860,7 +1123,7 @@ export default function VPS() {
                         </Button>
                         {item.status === 'OPEN' ? (
                           <ConfirmAction
-                            title="Hapus VPS?"
+                            title="Hapus subscription?"
                             description="Data akan dihapus permanen. Lanjutkan?"
                             actionText="Ya, Hapus"
                             onConfirm={() => delMut.mutate({ periode: item.__periode, itemId: item._id })}
@@ -880,7 +1143,7 @@ export default function VPS() {
                       </td>
                     </tr>
                     {expanded[`${item.__periode}-${item._id}`] && (
-                      <tr className="bg-slate-50">
+                      <tr className={itemInactive ? 'bg-red-50/50' : 'bg-slate-50'}>
                         <td colSpan={10} className="py-2 px-4">
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                             <div>
@@ -914,7 +1177,7 @@ export default function VPS() {
                       </tr>
                     )}
                     </Fragment>
-                  ))}
+                  )})}
                   {!combinedItems?.length && (
                     <tr><td className="py-4 text-slate-500" colSpan={10}>Belum ada data</td></tr>
                   )}
@@ -924,6 +1187,108 @@ export default function VPS() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus {selectedCount} Subscriber?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Anda akan menghapus {selectedCount} data subscriber yang dipilih. Data hanya dapat dihapus jika statusnya masih OPEN.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={bulkActionLoading}
+            >
+              Hapus {selectedCount} Subscriber
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={bulkLunasOpen} onOpenChange={setBulkLunasOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Lunasi {selectedCount} Subscription?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <div className="text-sm text-slate-600">Total harga data dipilih</div>
+              <div className="mt-1 text-2xl font-bold text-slate-900">{currency(selectedTotalHarga)}</div>
+              <div className="mt-1 text-sm text-slate-600">{selectedCount} data subscription akan ditandai lunas.</div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bulk-tanggal-lunas">Tanggal Lunas</Label>
+              <Input
+                id="bulk-tanggal-lunas"
+                type="date"
+                value={bulkTanggalLunas}
+                onChange={(e) => setBulkTanggalLunas(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setBulkLunasOpen(false)} disabled={bulkActionLoading}>
+                Batal
+              </Button>
+              <Button type="button" onClick={confirmBulkSetDone} disabled={bulkActionLoading || !bulkTanggalLunas}>
+                Lunasi
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={nonaktifDialogOpen} onOpenChange={setNonaktifDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nonaktifkan {nonaktifItems.length} Subscription?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <div className="text-sm text-slate-600">Total harga data dipilih</div>
+              <div className="mt-1 text-2xl font-bold text-slate-900">{currency(nonaktifTotalHarga)}</div>
+              <div className="mt-1 text-sm text-slate-600">
+                {nonaktifItems.length} data subscription akan dinonaktifkan dan subscriber terkait menjadi Non Aktif.
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tanggal-nonaktif">Tanggal Non Aktif</Label>
+              <Input
+                id="tanggal-nonaktif"
+                type="date"
+                value={tanggalNonAktif}
+                onChange={(e) => setTanggalNonAktif(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="alasan-nonaktif">Alasan Non Aktif</Label>
+              <textarea
+                id="alasan-nonaktif"
+                value={alasanNonAktif}
+                onChange={(e) => setAlasanNonAktif(e.target.value)}
+                className="min-h-[90px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                placeholder="Masukkan alasan non aktif"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setNonaktifDialogOpen(false)} disabled={bulkActionLoading}>
+                Batal
+              </Button>
+              <Button
+                type="button"
+                onClick={confirmNonaktif}
+                disabled={bulkActionLoading || !tanggalNonAktif || !alasanNonAktif.trim()}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Nonaktifkan
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {genJob?.status === 'running' && (
         <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center">
@@ -1076,6 +1441,10 @@ export default function VPS() {
                 payment: resp.doku_payment,
               }
             : null;
+          if (invoiceItems.length > 1) {
+            toast.success(`${invoiceItems.length} subscription berhasil diproses generate invoice.`);
+            clearSelection();
+          }
           return resp.invoice;
         }}
       />
@@ -1137,13 +1506,13 @@ export default function VPS() {
         open={open}
         onOpenChange={setOpen}
         editItem={null}
-          onSuccess={() => { qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); }}
+          onSuccess={invalidateVpsDetails}
       />
       <TTVpsEditDialog
         open={openEdit}
         onOpenChange={setOpenEdit}
         item={editItem}
-        onSuccess={() => { setOpenEdit(false); qc.invalidateQueries({ queryKey: ['tt-vps-details'] }); }}
+        onSuccess={() => { setOpenEdit(false); invalidateVpsDetails(); }}
       />
     </div>
   );
@@ -1165,6 +1534,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
       onSuccess();
       qc.invalidateQueries({ queryKey: ['vps-available-subs'] });
       qc.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      qc.invalidateQueries({ queryKey: ['tt-vps-details-search'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal simpan data'),
   });
@@ -1234,7 +1604,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{editItem ? 'Edit VPS' : 'Tambah VPS'}</DialogTitle>
+          <DialogTitle>{editItem ? 'Edit Subscription' : 'Tambah Subscription'}</DialogTitle>
         </DialogHeader>
 
         {!editItem ? (
@@ -1265,7 +1635,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
             <Input value={currency(pricePerMonth)} readOnly />
           </div>
           <div className="space-y-1">
-            <Label>Start Date</Label>
+            <Label>Mulai Langganan</Label>
             <Input
               type="date"
               value={startDate}
@@ -1289,7 +1659,7 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
             />
           </div>
           <div className="space-y-1">
-            <Label>Tanggal Tempo</Label>
+            <Label>Berakhir Langganan</Label>
             <Input value={dueDate ? format(new Date(dueDate), 'dd MMM yyyy') : ''} readOnly />
           </div>
           <div className="space-y-1">
@@ -1408,7 +1778,7 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Data VPS</DialogTitle>
+          <DialogTitle>Edit Data Subscription</DialogTitle>
         </DialogHeader>
         {item ? (
           <div className="space-y-3">
@@ -1422,7 +1792,7 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Start Date</Label>
+                <Label>Mulai Langganan</Label>
                 <Input
                   type="date"
                   value={startDate}
@@ -1443,7 +1813,7 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
                 <CurrencyInput value={harga} onChange={setHarga} />
               </div>
               <div>
-                <Label>Tempo</Label>
+                <Label>Berakhir Langganan</Label>
                 <Input value={tempo ? format(new Date(tempo), 'dd MMM yyyy') : ''} readOnly />
               </div>
               <div>
@@ -2145,7 +2515,7 @@ function InvoiceGenerateDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[1100px] w-[96vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{mode === 'download' ? 'Download Ulang Invoice VPS' : 'Generate Invoice VPS'}</DialogTitle>
+            <DialogTitle>{mode === 'download' ? 'Download Ulang Invoice Subscription' : 'Generate Invoice Subscription'}</DialogTitle>
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2508,7 +2878,7 @@ function VpsItemPreview({ item }: { item: any }) {
         <div className="text-sm font-medium">{item?.daerah}</div>
       </div>
       <div>
-        <div className="text-xs text-slate-500">Start Date</div>
+        <div className="text-xs text-slate-500">Mulai Langganan</div>
         <div className="text-sm font-medium">{item?.start ? format(new Date(item.start), 'dd MMM yyyy') : '-'}</div>
       </div>
       <div>
@@ -2516,7 +2886,7 @@ function VpsItemPreview({ item }: { item: any }) {
         <div className="text-sm font-medium">{item?.bulan}</div>
       </div>
       <div>
-        <div className="text-xs text-slate-500">Tempo</div>
+        <div className="text-xs text-slate-500">Berakhir Langganan</div>
         <div className="text-sm font-medium">{item?.tempo ? format(new Date(item.tempo), 'dd MMM yyyy') : '-'}</div>
       </div>
       <div>

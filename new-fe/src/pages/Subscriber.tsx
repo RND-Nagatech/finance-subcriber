@@ -2,7 +2,8 @@ import { Fragment, useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
-import { createSchedule, fetchDetailsByToko } from '@/api/ttvps';
+import { fetchGroupOptions, GroupOption } from '@/api/group';
+import { createSubscription } from '@/api/subscription';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 interface Subscriber {
   _id?: string;
   kode: string;
+  group_id?: string | null;
+  kode_group?: string | null;
+  nama_group?: string | null;
   no_ok: string | null;
   sales: string | null;
   nama_owner: string | null;
@@ -50,6 +54,7 @@ interface Subscriber {
   toko: string;
   grup: string | null;
   domain: string | null;
+  server_location?: string | null;
   alamat: string | null;
   daerah: string;
   program: string;
@@ -61,8 +66,16 @@ interface Subscriber {
   prev_biaya: number;
   current_biaya: number;
   tanggal: string;
+  tgl_implementasi?: string;
+  tgl_dijalankan?: string | null;
+  tgl_terbayar?: string | null;
+  tgl_berakhir_langganan?: string | null;
+  tgl_bayar_selanjutnya?: string | null;
   implementator: string | null;
   via: 'VISIT' | 'ONLINE';
+  status_subscriber?: 'OUTSTAND' | 'AKTIF' | 'NON_AKTIF';
+  tgl_non_aktif?: string | null;
+  alasan_non_aktif?: string | null;
   status_aktv?: boolean;
   input_date?: string;
   update_date?: string;
@@ -78,40 +91,63 @@ interface Program {
   nama: string;
   biaya: number;
   internal_kode: string;
+  group_program?: string;
 }
 
-export default function Subscriber() {
+const initialSubscriberForm: Subscriber = {
+  kode: '',
+  group_id: null,
+  kode_group: null,
+  nama_group: null,
+  no_ok: null,
+  sales: null,
+  nama_owner: null,
+  no_hp_owner: null,
+  gender_owner: null,
+  nama_pic: null,
+  no_hp_pic: null,
+  gender_pic: null,
+  toko: '',
+  grup: null,
+  domain: null,
+  server_location: null,
+  alamat: null,
+  daerah: '',
+  internal_kode: '',
+  program: '',
+  vb_online: null,
+  biaya: 0,
+  prev_subscriber: 0,
+  current_subscriber: 0,
+  prev_biaya: 0,
+  current_biaya: 0,
+  tanggal: '',
+  tgl_implementasi: '',
+  tgl_dijalankan: null,
+  tgl_terbayar: null,
+  tgl_berakhir_langganan: null,
+  tgl_bayar_selanjutnya: null,
+  implementator: null,
+  via: 'VISIT',
+  status_subscriber: 'AKTIF',
+  tgl_non_aktif: null,
+  alasan_non_aktif: null,
+  input_by: '',
+};
+
+type SubscriberMode = 'aktif' | 'outstand';
+
+export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }) {
   const queryClient = useQueryClient();
+  const isOutstandMode = mode === 'outstand';
+  const pageTitle = isOutstandMode ? 'Subscriber Outstand' : 'Data Subscriber';
+  const pageDescription = isOutstandMode
+    ? 'Kelola calon subscriber yang belum implementasi atau belum dijalankan'
+    : 'Kelola data subscriber dengan mudah dan efisien';
+  const createLabel = isOutstandMode ? 'Tambah Subscriber Outstand' : 'Tambah Subscriber';
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Subscriber>({
-    kode: '',
-    no_ok: null,
-    sales: null,
-    nama_owner: null,
-    no_hp_owner: null,
-    gender_owner: null,
-    nama_pic: null,
-    no_hp_pic: null,
-    gender_pic: null,
-    toko: '',
-    grup: null,
-    domain: null,
-    alamat: null,
-    daerah: '',
-    internal_kode: '',
-    program: '',
-    vb_online: null,
-    biaya: 0,
-    prev_subscriber: 0,
-    current_subscriber: 0,
-    prev_biaya: 0,
-    current_biaya: 0,
-    tanggal: '',
-    implementator: null,
-    via: 'VISIT',
-    input_by: '',
-  });
+  const [formData, setFormData] = useState<Subscriber>(initialSubscriberForm);
   const { user } = useAppStore();
 
   // Formatted input for biaya
@@ -125,8 +161,10 @@ export default function Subscriber() {
   const [debouncedSearchValue, setDebouncedSearchValue] = useState<string>('');
   const [programSearch, setProgramSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [filterGroupToko, setFilterGroupToko] = useState<string>('ALL');
   const [filterMonth, setFilterMonth] = useState<string>('ALL');
   const [filterYear, setFilterYear] = useState<string>('ALL');
+  const [filterStatusSubscriber, setFilterStatusSubscriber] = useState<'AKTIF' | 'NON_AKTIF' | 'ALL'>('AKTIF');
 
   // Debounce searchValue
   useEffect(() => {
@@ -147,10 +185,10 @@ export default function Subscriber() {
     setPage(1);
   }, [limit]);
 
-  // Reset page to 1 when month/year filter changes
+  // Reset page to 1 when group/month/year/status filter changes
   useEffect(() => {
     setPage(1);
-  }, [filterMonth, filterYear]);
+  }, [filterGroupToko, filterMonth, filterYear, filterStatusSubscriber]);
 
   // Fetch programs for dropdown
   const { data: programs = [] } = useQuery({
@@ -159,6 +197,11 @@ export default function Subscriber() {
       const response = await axiosInstance.get('/master/program');
       return response.data || [];
     },
+  });
+
+  const { data: groupOptions = [] } = useQuery({
+    queryKey: ['group-options'],
+    queryFn: fetchGroupOptions,
   });
 
   // Fetch all available years for filter dropdown
@@ -178,7 +221,7 @@ export default function Subscriber() {
 
   // Fetch subscribers with pagination and search
   const { data: response, isLoading, error } = useQuery({
-    queryKey: ['subscriber', page, limit, searchField, debouncedSearchValue, filterMonth, filterYear],
+    queryKey: ['subscriber', mode, page, limit, searchField, debouncedSearchValue, filterGroupToko, filterMonth, filterYear, filterStatusSubscriber],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: page.toString(),
@@ -194,6 +237,10 @@ export default function Subscriber() {
       if (filterYear !== 'ALL') {
         params.append('year', filterYear);
       }
+      if (filterGroupToko !== 'ALL') {
+        params.append('kode_group', filterGroupToko);
+      }
+      params.append('status_subscriber', isOutstandMode ? 'OUTSTAND' : filterStatusSubscriber);
       const response = await axiosInstance.get(`/subscriber?${params.toString()}`);
       return response.data || { data: [], pagination: { total: 0 } };
     },
@@ -234,6 +281,9 @@ export default function Subscriber() {
         return axiosInstance.put(`/subscriber/${editId}`, {
           no_ok: payload.no_ok,
           sales: payload.sales,
+          group_id: payload.group_id,
+          kode_group: payload.kode_group,
+          nama_group: payload.nama_group,
           nama_owner: payload.nama_owner,
           no_hp_owner: payload.no_hp_owner,
           gender_owner: payload.gender_owner,
@@ -243,21 +293,31 @@ export default function Subscriber() {
           toko: payload.toko,
           grup: payload.grup,
           domain: payload.domain,
+          server_location: payload.server_location,
           alamat: payload.alamat,
           daerah: payload.daerah,
           internal_kode: payload.internal_kode,
           program: payload.program,
           vb_online: payload.vb_online,
           biaya: payload.biaya,
-          tanggal: payload.tanggal,
+          tanggal: payload.tgl_implementasi || payload.tanggal,
+          tgl_implementasi: payload.tgl_implementasi || payload.tanggal,
+          tgl_dijalankan: payload.tgl_dijalankan,
+          tgl_terbayar: payload.tgl_terbayar,
+          tgl_berakhir_langganan: payload.tgl_berakhir_langganan,
+          tgl_bayar_selanjutnya: payload.tgl_bayar_selanjutnya,
           implementator: payload.implementator,
           via: payload.via,
+          status_subscriber: isOutstandMode ? 'OUTSTAND' : (payload.status_subscriber || 'AKTIF'),
           update_by: user?.name || 'Unknown',
         });
       }
       return axiosInstance.post('/subscriber', {
         no_ok: payload.no_ok,
         sales: payload.sales,
+        group_id: payload.group_id,
+        kode_group: payload.kode_group,
+        nama_group: payload.nama_group,
         nama_owner: payload.nama_owner,
         no_hp_owner: payload.no_hp_owner,
         gender_owner: payload.gender_owner,
@@ -267,15 +327,22 @@ export default function Subscriber() {
         toko: payload.toko,
         grup: payload.grup,
         domain: payload.domain,
+        server_location: payload.server_location,
         alamat: payload.alamat,
         daerah: payload.daerah,
         internal_kode: payload.internal_kode,
         program: payload.program,
         vb_online: payload.vb_online,
         biaya: payload.biaya,
-        tanggal: payload.tanggal,
+        tanggal: payload.tgl_implementasi || payload.tanggal,
+        tgl_implementasi: payload.tgl_implementasi || payload.tanggal,
+        tgl_dijalankan: payload.tgl_dijalankan,
+        tgl_terbayar: payload.tgl_terbayar,
+        tgl_berakhir_langganan: payload.tgl_berakhir_langganan,
+        tgl_bayar_selanjutnya: payload.tgl_bayar_selanjutnya,
         implementator: payload.implementator,
         via: payload.via,
+        status_subscriber: isOutstandMode ? 'OUTSTAND' : 'AKTIF',
         input_by: payload.input_by
       });
     },
@@ -312,6 +379,20 @@ export default function Subscriber() {
       } else {
         toast.error('Gagal menghapus subscriber!');
       }
+    },
+  });
+
+  const validateOutstandMutation = useMutation({
+    mutationFn: (item: Subscriber) => axiosInstance.put(`/subscriber/${item.kode}`, {
+      status_subscriber: 'AKTIF',
+      update_by: user?.name || 'Unknown',
+    }),
+    onSuccess: (resp: any) => {
+      queryClient.invalidateQueries({ queryKey: ['subscriber'] });
+      toast.success(resp?.data?.message || 'Subscriber berhasil dipindahkan ke menu Subscriber.');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Gagal memvalidasi subscriber outstand.');
     },
   });
 
@@ -359,7 +440,14 @@ export default function Subscriber() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...formData, input_by: user?.name || 'Unknown' };
+    const tglImplementasi = formData.tgl_implementasi || formData.tanggal;
+    const payload = {
+      ...formData,
+      tanggal: tglImplementasi,
+      tgl_implementasi: tglImplementasi,
+      status_subscriber: isOutstandMode ? 'OUTSTAND' : 'AKTIF',
+      input_by: user?.name || 'Unknown'
+    };
     saveMutation.mutate(payload);
   };
 
@@ -367,7 +455,12 @@ export default function Subscriber() {
     setEditId(item.kode);
     setFormData({
       ...item,
-      tanggal: toDateInputValue(item.tanggal),
+      tanggal: toDateInputValue(item.tgl_implementasi || item.tanggal),
+      tgl_implementasi: toDateInputValue(item.tgl_implementasi || item.tanggal),
+      tgl_dijalankan: toDateInputValue(item.tgl_dijalankan),
+      tgl_terbayar: toDateInputValue(item.tgl_terbayar),
+      tgl_berakhir_langganan: toDateInputValue(item.tgl_berakhir_langganan),
+      tgl_bayar_selanjutnya: toDateInputValue(item.tgl_bayar_selanjutnya),
     });
     setFormattedBiaya(formatNumberInput(item.biaya.toString()));
     setModalOpen(true);
@@ -375,6 +468,8 @@ export default function Subscriber() {
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [validateItem, setValidateItem] = useState<Subscriber | null>(null);
+  const [showValidateDialog, setShowValidateDialog] = useState(false);
   const [vpsDialogOpen, setVpsDialogOpen] = useState(false);
   const [selectedSubscriberForVps, setSelectedSubscriberForVps] = useState<Subscriber | null>(null);
   const [vpsStartDate, setVpsStartDate] = useState('');
@@ -385,6 +480,11 @@ export default function Subscriber() {
   const handleDelete = (id: string) => {
     setDeleteId(id);
     setShowDeleteDialog(true);
+  };
+
+  const handleValidateOutstand = (item: Subscriber) => {
+    setValidateItem(item);
+    setShowValidateDialog(true);
   };
 
   const pricePerMonthVps = selectedSubscriberForVps?.biaya || 0;
@@ -416,22 +516,6 @@ export default function Subscriber() {
   const vpsDiscountRp = Math.floor(vpsGross * vpsDiscountPercent / 100);
   const vpsTotal = Math.max(0, vpsGross - vpsDiscountRp);
 
-  const { data: vpsExistingByToko = [] } = useQuery({
-    queryKey: ['subscriber-vps-existing-by-toko', selectedSubscriberForVps?.toko],
-    queryFn: () => fetchDetailsByToko(selectedSubscriberForVps?.toko || ''),
-    enabled: vpsDialogOpen && !!selectedSubscriberForVps?.toko,
-  });
-
-  const duplicateVpsRecord = useMemo(() => {
-    if (!selectedSubscriberForVps?.toko || !vpsStartDate) return null;
-    const normalizedToko = selectedSubscriberForVps.toko.trim().toLowerCase();
-    return (vpsExistingByToko || []).find((row: any) => {
-      const rowToko = String(row?.toko || '').trim().toLowerCase();
-      const rowStart = String(row?.start || '').slice(0, 10);
-      return rowToko === normalizedToko && rowStart === vpsStartDate;
-    }) || null;
-  }, [selectedSubscriberForVps?.toko, vpsStartDate, vpsExistingByToko]);
-
   const closeVpsDialog = () => {
     setVpsDialogOpen(false);
     setSelectedSubscriberForVps(null);
@@ -444,7 +528,7 @@ export default function Subscriber() {
   const createVpsMutation = useMutation({
     mutationFn: async () => {
       if (!selectedSubscriberForVps?._id) {
-        throw new Error('Subscriber tidak valid untuk didaftarkan ke VPS.');
+        throw new Error('Subscriber tidak valid untuk didaftarkan ke subscription.');
       }
       if (!vpsStartDate) {
         throw new Error('Start date wajib diisi.');
@@ -452,23 +536,22 @@ export default function Subscriber() {
       if (!vpsMonths || vpsMonths <= 0) {
         throw new Error('Jumlah bulan wajib diisi dan harus lebih dari 0.');
       }
-      return createSchedule({
+      return createSubscription({
         subscriber_id: selectedSubscriberForVps._id,
-        start: vpsStartDate,
-        bulan: vpsMonths,
-        diskon: vpsDiscountRp,
-        diskon_percent: vpsDiscountPercent,
-        keterangan: vpsKeterangan || undefined,
+        tgl_mulai_tagihan: vpsStartDate,
+        jumlah_bulan: vpsMonths,
+        biaya_per_bulan: pricePerMonthVps,
       });
     },
     onSuccess: () => {
-      toast.success('Daftar VPS berhasil ditambahkan.');
+      toast.success('Subscription berhasil ditambahkan.');
       closeVpsDialog();
-      queryClient.invalidateQueries({ queryKey: ['tt-vps-details'] });
+      queryClient.invalidateQueries({ queryKey: ['subscription'] });
+      queryClient.invalidateQueries({ queryKey: ['subscriber'] });
     },
     onError: (error: unknown) => {
       const maybeAxios = error as { response?: { data?: { message?: string } }; message?: string };
-      const msg = maybeAxios?.response?.data?.message || maybeAxios?.message || 'Gagal menambahkan daftar VPS.';
+      const msg = maybeAxios?.response?.data?.message || maybeAxios?.message || 'Gagal menambahkan subscription.';
       toast.error(msg);
     },
   });
@@ -484,10 +567,6 @@ export default function Subscriber() {
   };
 
   const handleSubmitVpsFromSubscriber = () => {
-    if (duplicateVpsRecord) {
-      toast.warn('Data VPS dengan toko dan start date yang sama sudah ada.');
-      return;
-    }
     createVpsMutation.mutate();
   };
 
@@ -499,37 +578,18 @@ export default function Subscriber() {
     }
   };
 
+  const confirmValidateOutstand = () => {
+    if (validateItem) {
+      validateOutstandMutation.mutate(validateItem);
+      setShowValidateDialog(false);
+      setValidateItem(null);
+    }
+  };
+
   const handleCloseModal = () => {
     setModalOpen(false);
     setEditId(null);
-    setFormData({
-      kode: '',
-      no_ok: null,
-      sales: null,
-      nama_owner: null,
-      no_hp_owner: null,
-      gender_owner: null,
-      nama_pic: null,
-      no_hp_pic: null,
-      gender_pic: null,
-      toko: '',
-      grup: null,
-      domain: null,
-      alamat: null,
-      daerah: '',
-      internal_kode: '',
-      program: '',
-      vb_online: null,
-      biaya: 0,
-      prev_subscriber: 0,
-      current_subscriber: 0,
-      prev_biaya: 0,
-      current_biaya: 0,
-      tanggal: '',
-      implementator: null,
-      via: 'VISIT',
-      input_by: ''
-    });
+    setFormData({ ...initialSubscriberForm, status_subscriber: isOutstandMode ? 'OUTSTAND' : 'AKTIF' });
     setFormattedBiaya('');
     setProgramSearch('');
   };
@@ -538,10 +598,27 @@ export default function Subscriber() {
     setFormData({
       ...formData,
       program: program.nama,
+      grup: program.group_program || null,
       biaya: program.biaya, 
       internal_kode: program.internal_kode
     });
     setFormattedBiaya(formatNumberInput(program.biaya.toString()));
+  };
+
+  const handleGroupSelect = (group: GroupOption) => {
+    setFormData({
+      ...formData,
+      group_id: group._id || group.value,
+      kode_group: group.kode_group,
+      nama_group: group.nama_group,
+      nama_owner: group.nama_owner || group.owner,
+      no_hp_owner: group.no_hp_owner || group.no_hp,
+      gender_owner: group.gender_owner || null,
+      nama_pic: group.nama_pic || null,
+      no_hp_pic: group.no_hp_pic || null,
+      gender_pic: group.gender_pic || null,
+      alamat: group.alamat,
+    });
   };
 
   const toggleRowExpansion = (id: string) => {
@@ -593,47 +670,20 @@ export default function Subscriber() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-              Master Subscriber
+              {pageTitle}
             </h1>
-            <p className="text-gray-600 mt-2">Kelola data subscriber dengan mudah dan efisien</p>
+            <p className="text-gray-600 mt-2">{pageDescription}</p>
           </div>
           <Button
             onClick={() => {
-              setFormData({
-                kode: '',
-                no_ok: null,
-                sales: null,
-                nama_owner: null,
-                no_hp_owner: null,
-                gender_owner: null,
-                nama_pic: null,
-                no_hp_pic: null,
-                gender_pic: null,
-                toko: '',
-                grup: null,
-                domain: null,
-                alamat: null,
-                daerah: '',
-                internal_kode: '',
-                program: '',
-                vb_online: null,
-                biaya: 0,
-                prev_subscriber: 0,
-                current_subscriber: 0,
-                prev_biaya: 0,
-                current_biaya: 0,
-                tanggal: '',
-                implementator: null,
-                via: 'VISIT',
-                input_by: ''
-              });
+              setFormData({ ...initialSubscriberForm, status_subscriber: isOutstandMode ? 'OUTSTAND' : 'AKTIF' });
               setFormattedBiaya('');
               setModalOpen(true);
             }}
             className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
           >
             <Plus className="w-5 h-5 mr-2" />
-            Tambah Subscriber
+            {createLabel}
           </Button>
         </div>
 
@@ -641,6 +691,22 @@ export default function Subscriber() {
         <div className="bg-white/50 rounded-lg p-6 border-2 border-dashed border-blue-200">
           <div className="flex items-end justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <Label className="mb-1 text-sm text-gray-700">Group Toko</Label>
+                <Select value={filterGroupToko} onValueChange={setFilterGroupToko}>
+                  <SelectTrigger className="w-56 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                    <SelectValue placeholder="Group Toko" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All</SelectItem>
+                    {groupOptions.map((group: GroupOption) => (
+                      <SelectItem key={group.kode_group} value={group.kode_group}>
+                        {group.kode_group} - {group.nama_group}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex flex-col">
                 <Label className="mb-1 text-sm text-gray-700">Bulan</Label>
                 <Select value={filterMonth} onValueChange={setFilterMonth}>
@@ -668,6 +734,21 @@ export default function Subscriber() {
                   </SelectContent>
                 </Select>
               </div>
+              {!isOutstandMode && (
+                <div className="flex flex-col">
+                  <Label className="mb-1 text-sm text-gray-700">Status</Label>
+                  <Select value={filterStatusSubscriber} onValueChange={(value) => setFilterStatusSubscriber(value as 'AKTIF' | 'NON_AKTIF' | 'ALL')}>
+                    <SelectTrigger className="w-40 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AKTIF">Aktif</SelectItem>
+                      <SelectItem value="NON_AKTIF">Non Aktif</SelectItem>
+                      <SelectItem value="ALL">All</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="flex flex-col">
                 <Label className="mb-1 text-sm text-gray-700">Tampilkan</Label>
                 <Select value={limit.toString()} onValueChange={(value) => setLimit(Number(value))}>
@@ -700,7 +781,9 @@ export default function Subscriber() {
                     <SelectItem value="no_hp_owner">No HP Owner</SelectItem>
                     <SelectItem value="nama_pic">Nama PIC</SelectItem>
                     <SelectItem value="no_hp_pic">No HP PIC</SelectItem>
-                    <SelectItem value="grup">Grup</SelectItem>
+                    <SelectItem value="nama_group">Group Toko</SelectItem>
+                    <SelectItem value="grup">Group Program</SelectItem>
+                    <SelectItem value="server_location">Server Location</SelectItem>
                     <SelectItem value="domain">Domain</SelectItem>
                   </SelectContent>
                 </Select>
@@ -730,7 +813,7 @@ export default function Subscriber() {
                 Total Biaya: {formatCurrency(pagination.totalBiaya || 0)}
               </div>
               <div className="text-sm text-gray-600">
-                {pagination.total || 0} subscriber (halaman {page} dari {pagination.totalPages || 1})
+                {pagination.total || 0} {isOutstandMode ? 'subscriber outstand' : 'subscriber'} (halaman {page} dari {pagination.totalPages || 1})
               </div>
             </div>
           </div>
@@ -763,7 +846,7 @@ export default function Subscriber() {
                 <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">Program</TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Internal Kode</TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Biaya</TableHead>
-                <TableHead className="w-28 px-6 py-4 font-semibold text-gray-900">Tanggal</TableHead>
+                <TableHead className="w-36 px-6 py-4 font-semibold text-gray-900">Tanggal Implementasi</TableHead>
                 <TableHead className="w-44 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
               </TableRow>
             </TableHeader>
@@ -787,7 +870,7 @@ export default function Subscriber() {
                         </svg>
                       </div>
                       <p className="text-gray-600 font-medium">
-                        {searchValue ? 'Tidak ada subscriber yang cocok dengan pencarian' : 'Belum ada data subscriber'}
+                        {searchValue ? 'Tidak ada subscriber yang cocok dengan pencarian' : `Belum ada data ${isOutstandMode ? 'subscriber outstand' : 'subscriber'}`}
                       </p>
                       {searchValue && (
                         <p className="text-sm text-gray-500">Coba ubah kata kunci pencarian</p>
@@ -798,9 +881,10 @@ export default function Subscriber() {
               ) : (
                 data.map((item, idx) => {
                   const rowId = item._id || item.kode || String(idx);
+                  const isNonAktifSubscriber = item.status_subscriber === 'NON_AKTIF';
                   return (
                   <Fragment key={rowId}>
-                    <TableRow className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
+                    <TableRow className={`${isNonAktifSubscriber ? 'bg-red-50/70 hover:bg-red-100/70' : 'hover:bg-blue-50/50'} transition-colors duration-200 border-b border-gray-100/50`}>
                       <TableCell className="w-12 px-4 py-4">
                         <Button
                           variant="ghost"
@@ -815,22 +899,43 @@ export default function Subscriber() {
                           )}
                         </Button>
                       </TableCell>
-                      <TableCell className="w-32 px-6 py-4 text-gray-700 font-medium">{item.toko}</TableCell>
+                      <TableCell className="w-32 px-6 py-4 text-gray-700 font-medium">
+                        <div className="flex flex-col gap-1">
+                          <span>{item.toko}</span>
+                          {isNonAktifSubscriber && (
+                            <span className="inline-flex w-fit rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                              Non Aktif
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="w-40 px-6 py-4 text-gray-700">{item.program}</TableCell>
                       <TableCell className="w-32 px-6 py-4 text-gray-700">{item.internal_kode || '-'}</TableCell>
                       <TableCell className="w-32 px-6 py-4 text-gray-700 font-semibold">{formatCurrency(item.biaya)}</TableCell>
-                      <TableCell className="w-28 px-6 py-4 text-gray-700">{formatDateDisplay(item.tanggal)}</TableCell>
+                      <TableCell className="w-36 px-6 py-4 text-gray-700">{formatDateDisplay(item.tgl_implementasi || item.tanggal)}</TableCell>
                       <TableCell className="w-44 px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleOpenVpsDialog(item)}
-                            className="border-emerald-300 hover:bg-emerald-50 hover:border-emerald-400 text-emerald-700 hover:text-emerald-800 transition-all duration-200"
-                            title="Daftar VPS"
-                          >
-                            <Server className="w-4 h-4" />
-                          </Button>
+                          {isOutstandMode ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleValidateOutstand(item)}
+                              className="border-emerald-300 hover:bg-emerald-50 hover:border-emerald-400 text-emerald-700 hover:text-emerald-800 transition-all duration-200"
+                              title="Validasi ke Subscriber"
+                            >
+                              <Check className="w-4 h-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleOpenVpsDialog(item)}
+                              className="border-emerald-300 hover:bg-emerald-50 hover:border-emerald-400 text-emerald-700 hover:text-emerald-800 transition-all duration-200"
+                              title="Tambah Subscription"
+                            >
+                              <Server className="w-4 h-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
@@ -851,7 +956,7 @@ export default function Subscriber() {
                       </TableCell>
                     </TableRow>
                     {expandedRows.has(rowId) && (
-                      <TableRow className="bg-blue-50/30 border-b border-gray-100/50">
+                      <TableRow className={`${isNonAktifSubscriber ? 'bg-red-50/50' : 'bg-blue-50/30'} border-b border-gray-100/50`}>
                         <TableCell colSpan={7} className="px-6 py-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                             <div className="space-y-2">
@@ -884,12 +989,40 @@ export default function Subscriber() {
                                 <span className="text-gray-900">{item.daerah}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="font-medium text-gray-600">Grup:</span>
+                                <span className="font-medium text-gray-600">Group Toko:</span>
+                                <span className="text-gray-900">{item.kode_group && item.nama_group ? `${item.kode_group} - ${item.nama_group}` : '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Group Program:</span>
                                 <span className="text-gray-900">{item.grup || '-'}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="font-medium text-gray-600">Domain:</span>
                                 <span className="text-gray-900">{item.domain || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Server Location:</span>
+                                <span className="text-gray-900">{item.server_location || '-'}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Tgl Implementasi:</span>
+                                <span className="text-gray-900">{formatDateDisplay(item.tgl_implementasi || item.tanggal)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Tgl Dijalankan:</span>
+                                <span className="text-gray-900">{formatDateDisplay(item.tgl_dijalankan)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Tgl Terbayar:</span>
+                                <span className="text-gray-900">{formatDateDisplay(item.tgl_terbayar)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Tgl Berakhir Langganan:</span>
+                                <span className="text-gray-900">{formatDateDisplay(item.tgl_berakhir_langganan)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Tgl Bayar Selanjutnya:</span>
+                                <span className="text-gray-900">{formatDateDisplay(item.tgl_bayar_selanjutnya)}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="font-medium text-gray-600">Prev Subscriber:</span>
@@ -944,13 +1077,37 @@ export default function Subscriber() {
                                 <span className="text-gray-900">{item.input_by}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="font-medium text-gray-600">Status:</span>
+                                <span className="font-medium text-gray-600">Status Data:</span>
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                   item.status_aktv ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                                 }`}>
                                   {item.status_aktv ? 'Aktif' : 'Tidak Aktif'}
                                 </span>
                               </div>
+                              <div className="flex justify-between">
+                                <span className="font-medium text-gray-600">Status Subscriber:</span>
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  item.status_subscriber === 'NON_AKTIF'
+                                    ? 'bg-red-100 text-red-800'
+                                    : item.status_subscriber === 'OUTSTAND'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-green-100 text-green-800'
+                                }`}>
+                                  {item.status_subscriber === 'NON_AKTIF' ? 'Non Aktif' : item.status_subscriber === 'OUTSTAND' ? 'Outstand' : 'Aktif'}
+                                </span>
+                              </div>
+                              {item.status_subscriber === 'NON_AKTIF' && (
+                                <>
+                                  <div className="flex justify-between">
+                                    <span className="font-medium text-gray-600">Tgl Non Aktif:</span>
+                                    <span className="text-gray-900">{formatDateDisplay(item.tgl_non_aktif)}</span>
+                                  </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span className="font-medium text-gray-600">Alasan Non Aktif:</span>
+                                    <span className="text-right text-gray-900">{item.alasan_non_aktif || '-'}</span>
+                                  </div>
+                                </>
+                              )}
                               {item.input_date && (
                                 <div className="flex justify-between">
                                   <span className="font-medium text-gray-600">Input Date:</span>
@@ -1001,7 +1158,7 @@ export default function Subscriber() {
           </Button>
         </div>
 
-        <ModalForm open={modalOpen} onOpenChange={handleCloseModal} title={editId ? 'Edit Subscriber' : 'Tambah Subscriber'}>
+        <ModalForm open={modalOpen} onOpenChange={handleCloseModal} title={editId ? `Edit ${isOutstandMode ? 'Subscriber Outstand' : 'Subscriber'}` : createLabel}>
           <form onSubmit={handleSubmit} className="space-y-6 py-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="grid gap-2">
@@ -1039,39 +1196,6 @@ export default function Subscriber() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="alamat" className="text-sm font-semibold text-gray-700">Alamat</Label>
-                <Input
-                  id="alamat"
-                  value={formData.alamat || ''}
-                  onChange={(e) => setFormData({ ...formData, alamat: e.target.value || null })}
-                  placeholder="Masukkan alamat"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="grup" className="text-sm font-semibold text-gray-700">Grup</Label>
-                <Input
-                  id="grup"
-                  value={formData.grup || ''}
-                  onChange={(e) => setFormData({ ...formData, grup: e.target.value || null })}
-                  placeholder="Masukkan grup"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="domain" className="text-sm font-semibold text-gray-700">Domain</Label>
-                <Input
-                  id="domain"
-                  value={formData.domain || ''}
-                  onChange={(e) => setFormData({ ...formData, domain: e.target.value || null })}
-                  placeholder="Masukkan domain"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                />
-              </div>
-
-              <div className="grid gap-2">
                 <Label htmlFor="daerah" className="text-sm font-semibold text-gray-700">Daerah</Label>
                 <Input
                   id="daerah"
@@ -1084,14 +1208,40 @@ export default function Subscriber() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="internal_kode" className="text-sm font-semibold text-gray-700">Internal Kode</Label>
+                <Label htmlFor="group_id" className="text-sm font-semibold text-gray-700">Group Toko</Label>
+                <Select
+                  value={formData.group_id || 'none'}
+                  onValueChange={(value) => {
+                    if (value === 'none') {
+                      setFormData({ ...formData, group_id: null, kode_group: null, nama_group: null, alamat: null });
+                      return;
+                    }
+                    const selectedGroup = groupOptions.find((item) => (item._id || item.value) === value);
+                    if (selectedGroup) handleGroupSelect(selectedGroup);
+                  }}
+                >
+                  <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
+                    <SelectValue placeholder="Pilih group toko..." />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px] bg-white/95">
+                    <SelectItem value="none">Kosongkan</SelectItem>
+                    {groupOptions.map((group) => (
+                      <SelectItem key={group._id || group.value} value={group._id || group.value}>
+                        {group.kode_group} - {group.nama_group}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="alamat" className="text-sm font-semibold text-gray-700">Alamat</Label>
                 <Input
-                  id="internal_kode"
-                  value={formData.internal_kode || ''}
-                  onChange={(e) => setFormData({ ...formData, internal_kode: e.target.value })}
-                  placeholder="Masukkan internal kode"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                  required
+                  id="alamat"
+                  value={formData.alamat || ''}
+                  placeholder="Terisi otomatis dari master group"
+                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  readOnly
                 />
               </div>
 
@@ -1145,13 +1295,25 @@ export default function Subscriber() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="vb_online" className="text-sm font-semibold text-gray-700">VB Online</Label>
+                <Label htmlFor="grup" className="text-sm font-semibold text-gray-700">Group Program</Label>
                 <Input
-                  id="vb_online"
-                  value={formData.vb_online || ''}
-                  onChange={(e) => setFormData({ ...formData, vb_online: e.target.value || null })}
-                  placeholder="Masukkan VB Online"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  id="grup"
+                  value={formData.grup || ''}
+                  placeholder="Terisi otomatis dari program"
+                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  readOnly
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="internal_kode" className="text-sm font-semibold text-gray-700">Internal Kode</Label>
+                <Input
+                  id="internal_kode"
+                  value={formData.internal_kode || ''}
+                  placeholder="Terisi otomatis dari program"
+                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  readOnly
+                  required
                 />
               </div>
 
@@ -1161,37 +1323,42 @@ export default function Subscriber() {
                   id="biaya"
                   type="text"
                   value={formattedBiaya}
-                  onChange={(e) => {
-                    const formatted = formatNumberInput(e.target.value);
-                    const numericValue = parseFormattedInput(formatted);
-                    setFormattedBiaya(formatted);
-                    setFormData({ ...formData, biaya: numericValue });
-                  }}
-                  placeholder="0"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  placeholder="Terisi otomatis dari program"
+                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  readOnly
                   required
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="tanggal" className="text-sm font-semibold text-gray-700">Tanggal</Label>
+                <Label htmlFor="domain" className="text-sm font-semibold text-gray-700">Domain</Label>
                 <Input
-                  id="tanggal"
-                  type="date"
-                  value={formData.tanggal}
-                  onChange={(e) => setFormData({ ...formData, tanggal: e.target.value })}
+                  id="domain"
+                  value={formData.domain || ''}
+                  onChange={(e) => setFormData({ ...formData, domain: e.target.value || null })}
+                  placeholder="Masukkan domain"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                  required
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="implementator" className="text-sm font-semibold text-gray-700">Implementator</Label>
+                <Label htmlFor="server_location" className="text-sm font-semibold text-gray-700">Server Location</Label>
                 <Input
-                  id="implementator"
-                  value={formData.implementator || ''}
-                  onChange={(e) => setFormData({ ...formData, implementator: e.target.value || null })}
-                  placeholder="Masukkan nama implementator"
+                  id="server_location"
+                  value={formData.server_location || ''}
+                  onChange={(e) => setFormData({ ...formData, server_location: e.target.value || null })}
+                  placeholder="192.168.23.101"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="vb_online" className="text-sm font-semibold text-gray-700">VB Online</Label>
+                <Input
+                  id="vb_online"
+                  value={formData.vb_online || ''}
+                  onChange={(e) => setFormData({ ...formData, vb_online: e.target.value || null })}
+                  placeholder="Masukkan VB Online"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
               </div>
@@ -1212,6 +1379,76 @@ export default function Subscriber() {
                     <SelectItem value="ONLINE" className="hover:bg-blue-50 focus:bg-blue-50">ONLINE</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="implementator" className="text-sm font-semibold text-gray-700">Implementator</Label>
+                <Input
+                  id="implementator"
+                  value={formData.implementator || ''}
+                  onChange={(e) => setFormData({ ...formData, implementator: e.target.value || null })}
+                  placeholder="Masukkan nama implementator"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="tgl_implementasi" className="text-sm font-semibold text-gray-700">Tgl Implementasi</Label>
+                <Input
+                  id="tgl_implementasi"
+                  type="date"
+                  value={formData.tgl_implementasi || formData.tanggal}
+                  onChange={(e) => setFormData({ ...formData, tanggal: e.target.value, tgl_implementasi: e.target.value })}
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  required={!isOutstandMode}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="tgl_dijalankan" className="text-sm font-semibold text-gray-700">Tgl Dijalankan</Label>
+                <Input
+                  id="tgl_dijalankan"
+                  type="date"
+                  value={formData.tgl_dijalankan || ''}
+                  onChange={(e) => setFormData({ ...formData, tgl_dijalankan: e.target.value || null })}
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="tgl_terbayar" className="text-sm font-semibold text-gray-700">Tgl Terbayar</Label>
+                <Input
+                  id="tgl_terbayar"
+                  type="date"
+                  value={formData.tgl_terbayar || ''}
+                  onChange={(e) => setFormData({ ...formData, tgl_terbayar: e.target.value || null })}
+                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  title="Nanti otomatis dari pelunasan subscription"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="tgl_berakhir_langganan" className="text-sm font-semibold text-gray-700">Tgl Berakhir Langganan</Label>
+                <Input
+                  id="tgl_berakhir_langganan"
+                  type="date"
+                  value={formData.tgl_berakhir_langganan || ''}
+                  onChange={(e) => setFormData({ ...formData, tgl_berakhir_langganan: e.target.value || null })}
+                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  title="Nanti otomatis dari periode subscription"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="tgl_bayar_selanjutnya" className="text-sm font-semibold text-gray-700">Tgl Bayar Selanjutnya</Label>
+                <Input
+                  id="tgl_bayar_selanjutnya"
+                  type="date"
+                  value={formData.tgl_bayar_selanjutnya || ''}
+                  onChange={(e) => setFormData({ ...formData, tgl_bayar_selanjutnya: e.target.value || null })}
+                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  title="Nanti otomatis dari periode subscription berikutnya"
+                />
               </div>
             </div>
 
@@ -1317,7 +1554,7 @@ export default function Subscriber() {
                 type="submit"
                 className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
               >
-                {editId ? 'Simpan Perubahan' : 'Tambah Subscriber'}
+                {editId ? 'Simpan Perubahan' : createLabel}
               </Button>
             </div>
           </form>
@@ -1326,7 +1563,7 @@ export default function Subscriber() {
         <Dialog open={vpsDialogOpen} onOpenChange={(open) => { if (!open) closeVpsDialog(); }}>
           <DialogContent className="sm:max-w-[560px]">
             <DialogHeader>
-              <DialogTitle>Tambah VPS</DialogTitle>
+              <DialogTitle>Tambah Subscription</DialogTitle>
             </DialogHeader>
 
             <div className="grid gap-4">
@@ -1347,7 +1584,7 @@ export default function Subscriber() {
                   <Input id="vps-harga" value={formatCurrency(pricePerMonthVps)} readOnly className="border-2 border-gray-200 bg-gray-50" />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="vps-start-date">Start Date</Label>
+                  <Label htmlFor="vps-start-date">Mulai Langganan</Label>
                   <Input
                     id="vps-start-date"
                     type="date"
@@ -1372,7 +1609,7 @@ export default function Subscriber() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="vps-tanggal-tempo">Tanggal Tempo</Label>
+                  <Label htmlFor="vps-tanggal-tempo">Berakhir Langganan</Label>
                   <Input
                     id="vps-tanggal-tempo"
                     value={formatDateDisplay(vpsDueDate)}
@@ -1382,14 +1619,6 @@ export default function Subscriber() {
                   />
                 </div>
               </div>
-
-              {duplicateVpsRecord && (
-                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Data VPS sudah ada untuk kombinasi yang sama:
-                  {' '}<span className="font-semibold">{selectedSubscriberForVps?.toko}</span>,
-                  {' '}start <span className="font-semibold">{formatDateDisplay(vpsStartDate)}</span>.
-                </div>
-              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
@@ -1422,7 +1651,7 @@ export default function Subscriber() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="vps-keterangan">Keterangan</Label>
+                  <Label htmlFor="vps-keterangan">Keterangan</Label>
                 <Input
                   id="vps-keterangan"
                   value={vpsKeterangan}
@@ -1440,7 +1669,7 @@ export default function Subscriber() {
               <Button
                 type="button"
                 onClick={handleSubmitVpsFromSubscriber}
-                disabled={createVpsMutation.isPending || !selectedSubscriberForVps?._id || !vpsStartDate || vpsMonths <= 0 || !!duplicateVpsRecord}
+                disabled={createVpsMutation.isPending || !selectedSubscriberForVps?._id || !vpsStartDate || vpsMonths <= 0}
                 className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white"
               >
                 {createVpsMutation.isPending ? 'Menyimpan...' : 'Tambah'}
@@ -1468,6 +1697,30 @@ export default function Subscriber() {
                 className="bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
               >
                 Hapus Subscriber
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showValidateDialog} onOpenChange={setShowValidateDialog}>
+          <AlertDialogContent className="bg-white/95 backdrop-blur-sm shadow-2xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                Validasi Subscriber Outstand
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-gray-600 text-base">
+                Data {validateItem?.toko || 'subscriber'} akan dipindahkan ke menu Subscriber dan statusnya menjadi aktif.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="gap-3">
+              <AlertDialogCancel className="border-gray-300 hover:bg-gray-50 transition-all duration-200">
+                Batal
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmValidateOutstand}
+                className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+              >
+                Validasi
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

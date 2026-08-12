@@ -25,6 +25,38 @@ function fiscalBounds(tahun: number) {
   };
 }
 
+const activeSubscriberMatch = {
+  status_aktv: true,
+  $or: [
+    { status_subscriber: 'AKTIF' },
+    { status_subscriber: { $exists: false } },
+    { status_subscriber: null },
+  ],
+};
+
+const addSubscriberTanggalDateStage = {
+  $addFields: {
+    tanggalDashboardSource: { $ifNull: ['$tanggal', '$tgl_implementasi'] },
+  },
+};
+
+const normalizeSubscriberTanggalDateStage = {
+  $addFields: {
+    tanggalDate: {
+      $cond: [
+        { $eq: [{ $type: '$tanggalDashboardSource' }, 'string'] },
+        {
+          $dateFromString: {
+            dateString: '$tanggalDashboardSource',
+            onError: null,
+          },
+        },
+        '$tanggalDashboardSource',
+      ],
+    },
+  },
+};
+
 export const subscriberGrowth = async (req: Request, res: Response) => {
   try {
     const tahunNum = Number(req.params.tahun || req.query.tahun || new Date().getFullYear());
@@ -32,8 +64,11 @@ export const subscriberGrowth = async (req: Request, res: Response) => {
 
     const { start, endExclusive } = fiscalBounds(tahunNum);
     const rows = await Subscriber.aggregate([
-      { $match: { status_aktv: true, tanggal: { $gte: start, $lt: endExclusive } } },
-      { $group: { _id: { $dateToString: { format: '%m', date: '$tanggal', timezone: 'Asia/Jakarta' } }, count: { $sum: 1 } } },
+      { $match: activeSubscriberMatch },
+      addSubscriberTanggalDateStage,
+      normalizeSubscriberTanggalDateStage,
+      { $match: { tanggalDate: { $type: 'date', $gte: start, $lt: endExclusive } } },
+      { $group: { _id: { $dateToString: { format: '%m', date: '$tanggalDate', timezone: 'Asia/Jakarta' } }, count: { $sum: 1 } } },
     ]);
 
     const counts = rows.reduce((acc: Record<string, number>, row: any) => {
@@ -48,7 +83,14 @@ export const subscriberGrowth = async (req: Request, res: Response) => {
       year: index === 0 ? tahunNum - 1 : tahunNum,
     }));
 
-    const totalSubscriber = await Subscriber.countDocuments({ status_aktv: true, tanggal: { $lt: endExclusive } });
+    const [totalSubscriberRow] = await Subscriber.aggregate([
+      { $match: activeSubscriberMatch },
+      addSubscriberTanggalDateStage,
+      normalizeSubscriberTanggalDateStage,
+      { $match: { tanggalDate: { $type: 'date', $lt: endExclusive } } },
+      { $count: 'totalSubscriber' },
+    ]);
+    const totalSubscriber = Number(totalSubscriberRow?.totalSubscriber || 0);
     res.json({ success: true, tahun: String(tahunNum), totalSubscriber, data });
   } catch (error) {
     console.error('Error in subscriberGrowth:', error);
@@ -62,10 +104,20 @@ export const subscriberCumulative = async (req: Request, res: Response) => {
     if (!Number.isFinite(tahunNum)) return res.status(400).json({ message: 'Tahun tidak valid' });
 
     const { start, endExclusive } = fiscalBounds(tahunNum);
-    const openingBalance = await Subscriber.countDocuments({ status_aktv: true, tanggal: { $lt: start } });
+    const [openingBalanceRow] = await Subscriber.aggregate([
+      { $match: activeSubscriberMatch },
+      addSubscriberTanggalDateStage,
+      normalizeSubscriberTanggalDateStage,
+      { $match: { tanggalDate: { $type: 'date', $lt: start } } },
+      { $count: 'openingBalance' },
+    ]);
+    const openingBalance = Number(openingBalanceRow?.openingBalance || 0);
     const rows = await Subscriber.aggregate([
-      { $match: { status_aktv: true, tanggal: { $gte: start, $lt: endExclusive } } },
-      { $group: { _id: { $dateToString: { format: '%m', date: '$tanggal', timezone: 'Asia/Jakarta' } }, count: { $sum: 1 } } },
+      { $match: activeSubscriberMatch },
+      addSubscriberTanggalDateStage,
+      normalizeSubscriberTanggalDateStage,
+      { $match: { tanggalDate: { $type: 'date', $gte: start, $lt: endExclusive } } },
+      { $group: { _id: { $dateToString: { format: '%m', date: '$tanggalDate', timezone: 'Asia/Jakarta' } }, count: { $sum: 1 } } },
     ]);
 
     const counts = rows.reduce((acc: Record<string, number>, row: any) => {
@@ -111,7 +163,10 @@ export const subscriberByProgram = async (req: Request, res: Response) => {
     const endDate = new Date(Date.UTC(endYear, monthIndex[bulan] + 1, 0, 23, 59, 59, 999));
 
     const rows = await Subscriber.aggregate([
-      { $match: { status_aktv: true, tanggal: { $lte: endDate } } },
+      { $match: activeSubscriberMatch },
+      addSubscriberTanggalDateStage,
+      normalizeSubscriberTanggalDateStage,
+      { $match: { tanggalDate: { $type: 'date', $lte: endDate } } },
       { $lookup: { from: Program.collection.name, localField: 'program', foreignField: 'nama', as: 'program_info' } },
       { $unwind: { path: '$program_info', preserveNullAndEmptyArrays: true } },
       { $project: { program: 1, biaya: 1, group_program: { $ifNull: ['$program_info.group_program', '$program'] } } },

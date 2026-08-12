@@ -15,10 +15,14 @@ import { useAppStore } from "@/store/useAppStore";
 import Login from "@/pages/Auth/Login";
 import Register from "@/pages/Auth/Register";
 import Dashboard from "@/pages/SubscriberVpsDashboard";
+import Bank from "@/pages/MasterData/Bank";
+import Group from "@/pages/MasterData/Group";
+import GroupProgram from "@/pages/MasterData/GroupProgram";
+import Perusahaan from "@/pages/MasterData/Perusahaan";
 import Program from "@/pages/MasterData/Program";
 import Rekening from "@/pages/MasterData/Rekening";
 import Subscriber from "@/pages/Subscriber";
-import VPS from "@/pages/VPS";
+import Subscription from "@/pages/VPS";
 import Users from "@/pages/Users";
 import NotFound from "@/pages/NotFound";
 
@@ -47,7 +51,12 @@ const App = () => (
 
           <Route path="/dashboard" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
           <Route path="/subscriber" element={<ProtectedPage><Subscriber /></ProtectedPage>} />
-          <Route path="/vps" element={<ProtectedPage><VPS /></ProtectedPage>} />
+          <Route path="/subscriber-outstand" element={<ProtectedPage><Subscriber mode="outstand" /></ProtectedPage>} />
+          <Route path="/subscription" element={<ProtectedPage><Subscription /></ProtectedPage>} />
+          <Route path="/master/group" element={<ProtectedPage><Group /></ProtectedPage>} />
+          <Route path="/master/group-program" element={<ProtectedPage><GroupProgram /></ProtectedPage>} />
+          <Route path="/master/bank" element={<ProtectedPage><Bank /></ProtectedPage>} />
+          <Route path="/master/perusahaan" element={<ProtectedPage><Perusahaan /></ProtectedPage>} />
           <Route path="/master/program" element={<ProtectedPage><Program /></ProtectedPage>} />
           <Route path="/master/rekening" element={<ProtectedPage><Rekening /></ProtectedPage>} />
           <Route path="/users" element={<ProtectedPage><Users /></ProtectedPage>} />

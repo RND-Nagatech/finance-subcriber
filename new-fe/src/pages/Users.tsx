@@ -172,45 +172,48 @@ export default function Users() {
   };
 
   if (isLoading) {
-    return <div className="p-6">Loading...</div>;
+    return <div className="container mx-auto px-6 py-8">Memuat data user...</div>;
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="container mx-auto px-6 py-8 space-y-8">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
-          <p className="text-muted-foreground">
-            Manage registered users in the system
-          </p>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+            Data User
+          </h1>
+          <p className="text-gray-600 mt-2">Kelola user yang dapat mengakses aplikasi</p>
         </div>
-        <Button onClick={handleAdd} className="gap-2">
+        <Button
+          onClick={handleAdd}
+          className="gap-2 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+        >
           <Plus className="h-4 w-4" />
           Tambah User
         </Button>
       </div>
 
-      <Card>
+      <Card className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
         <CardHeader>
-          <CardTitle>Users</CardTitle>
+          <CardTitle>Daftar User</CardTitle>
           <CardDescription>
-            A list of all registered users in the system.
+            Daftar semua user yang terdaftar di sistem.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-50 hover:to-indigo-50 border-b border-blue-200/50">
                 <TableHead>Username</TableHead>
-                <TableHead>Name</TableHead>
+                <TableHead>Nama</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Created At</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Dibuat Pada</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.map((user) => (
-                <TableRow key={user._id}>
+                <TableRow key={user._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                   <TableCell className="font-medium">{user.username}</TableCell>
                   <TableCell>{user.name || '-'}</TableCell>
                   <TableCell>{user.role}</TableCell>
@@ -221,29 +224,34 @@ export default function Users() {
                         variant="outline"
                         size="sm"
                         onClick={() => handleEdit(user)}
+                        className="border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="sm">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-red-300 hover:bg-red-50 hover:border-red-400 text-red-600 hover:text-red-700 transition-all duration-200"
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                            <AlertDialogTitle>Hapus User</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete this user? This action cannot be undone.
+                              Yakin ingin menghapus user ini? Tindakan ini tidak dapat dibatalkan.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogCancel>Batal</AlertDialogCancel>
                             <AlertDialogAction
                               onClick={() => handleDelete(user._id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              className="bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white"
                             >
-                              Delete
+                              Hapus
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -264,7 +272,7 @@ export default function Users() {
             <DialogTitle>{editId ? 'Edit User' : 'Tambah User'}</DialogTitle>
             <DialogDescription>
               {editId
-                ? 'Update user information. Leave password blank to keep current password.'
+                ? 'Ubah informasi user. Kosongkan password jika tidak ingin mengubah password.'
                 : 'Tambahkan user baru yang dapat mengakses aplikasi.'}
             </DialogDescription>
           </DialogHeader>
@@ -284,7 +292,7 @@ export default function Users() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="name" className="text-right">
-                  Name
+                  Nama
                 </Label>
                 <Input
                   id="name"
@@ -320,20 +328,24 @@ export default function Users() {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="col-span-3"
-                  placeholder={editId ? 'Leave blank to keep current password' : 'Minimal 6 karakter'}
+                  placeholder={editId ? 'Kosongkan jika tidak diubah' : 'Minimal 6 karakter'}
                   required={!editId}
                   minLength={editId ? undefined : 6}
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={handleCloseModal}>
-                Cancel
+              <Button type="button" variant="outline" onClick={handleCloseModal} className="border-gray-300 hover:bg-gray-50 transition-all duration-200">
+                Batal
               </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+              <Button
+                type="submit"
+                disabled={createMutation.isPending || updateMutation.isPending}
+                className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
+              >
                 {createMutation.isPending || updateMutation.isPending
-                  ? 'Saving...'
-                  : editId ? 'Save Changes' : 'Tambah User'}
+                  ? 'Menyimpan...'
+                  : editId ? 'Simpan Perubahan' : 'Tambah User'}
               </Button>
             </DialogFooter>
           </form>

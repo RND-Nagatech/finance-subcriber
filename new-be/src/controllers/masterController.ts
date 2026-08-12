@@ -6,7 +6,9 @@ import SubKategori, { ISubKategori } from '../models/SubKategori';
 import Akun, { IAkun } from '../models/Akun';
 import Budget from '../models/Budget';
 import Program, { IProgram } from '../models/Program';
+import GroupProgram from '../models/GroupProgram';
 import Subscriber, { ISubscriber } from '../models/Subscriber';
+import Group from '../models/Group';
 import CustomDashboard, { ICustomDashboard } from '../models/CustomDashboard';
 import Transaksi from '../models/Transaksi';
 
@@ -76,11 +78,25 @@ const parseDateOnlyToNoonUtc = (value: unknown): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const formatDateOnly = (date: Date): string => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const normalizeDateOnlyString = (value: unknown): string | null => {
+  const parsed = parseDateOnlyToNoonUtc(value);
+  return parsed ? formatDateOnly(parsed) : null;
+};
+
 const normalizeOptionalString = (value: unknown): string | null => {
   if (value === undefined || value === null) return null;
   const trimmed = String(value).trim();
   return trimmed ? trimmed : null;
 };
+
+const normalizeOptionalDate = (value: unknown): string | null => normalizeDateOnlyString(value);
 
 const normalizeGender = (value: unknown): 'LAKI-LAKI' | 'PEREMPUAN' | null => {
   const normalized = normalizeOptionalString(value)?.toUpperCase();
@@ -650,6 +666,11 @@ export const createProgram = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'biaya tidak boleh negatif' });
     }
 
+    const groupProgram = await GroupProgram.findOne({ group_program, status_aktv: true });
+    if (!groupProgram) {
+      return res.status(400).json({ message: 'Group program tidak ditemukan atau tidak aktif' });
+    }
+
     const userId = resolveUserId(req);
     const finalKode = await generateNextKode(Program);
 
@@ -658,7 +679,7 @@ export const createProgram = async (req: Request, res: Response) => {
       kode: finalKode,
       internal_kode,
       biaya,
-      group_program,
+      group_program: groupProgram.group_program,
       input_date: new Date(),
       update_date: new Date(),
       delete_date: null,
@@ -692,9 +713,18 @@ export const updateProgram = async (req: Request, res: Response) => {
       }
     }
 
+    let finalGroupProgram = old.group_program;
+    if (group_program !== undefined) {
+      const groupProgram = await GroupProgram.findOne({ group_program, status_aktv: true });
+      if (!groupProgram) {
+        return res.status(400).json({ message: 'Group program tidak ditemukan atau tidak aktif' });
+      }
+      finalGroupProgram = groupProgram.group_program;
+    }
+
     old.nama = nama ?? old.nama;
     old.biaya = biaya ?? old.biaya;
-    old.group_program = group_program ?? old.group_program;
+    old.group_program = finalGroupProgram;
     old.internal_kode = internal_kode ?? old.internal_kode;
     old.update_date = new Date();
     old.update_by = userId;
@@ -740,7 +770,9 @@ export const listSubscriber = async (req: Request, res: Response) => {
       searchValue,
       month,
       year,
-      all
+      all,
+      kode_group,
+      status_subscriber
     } = req.query;
 
     const pageNum = Number(page) || 1;
@@ -752,6 +784,29 @@ export const listSubscriber = async (req: Request, res: Response) => {
     // ===============================
     const baseMatch: any = {};
     if (!all) baseMatch.status_aktv = true;
+    if (kode_group && String(kode_group) !== 'ALL') {
+      baseMatch.kode_group = String(kode_group);
+    }
+
+    const statusSubscriber = String(status_subscriber || 'AKTIF').toUpperCase();
+    if (statusSubscriber === 'OUTSTAND') {
+      baseMatch.status_subscriber = 'OUTSTAND';
+    } else if (statusSubscriber === 'NON_AKTIF') {
+      baseMatch.status_subscriber = 'NON_AKTIF';
+    } else if (statusSubscriber === 'ALL') {
+      baseMatch.$or = [
+        { status_subscriber: 'AKTIF' },
+        { status_subscriber: 'NON_AKTIF' },
+        { status_subscriber: { $exists: false } },
+        { status_subscriber: null },
+      ];
+    } else {
+      baseMatch.$or = [
+        { status_subscriber: 'AKTIF' },
+        { status_subscriber: { $exists: false } },
+        { status_subscriber: null },
+      ];
+    }
 
     if (searchField && searchValue && typeof searchValue === "string") {
       baseMatch[searchField as string] = new RegExp(searchValue, "i");
@@ -930,6 +985,7 @@ const buildTanggalPipeline = (month?: string, year?: string) => {
 export const createSubscriber = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const {
+      group_id,
       no_ok,
       nomor_telepon,
       sales,
@@ -942,21 +998,34 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       toko,
       grup,
       domain,
+      server_location,
       alamat,
       daerah,
       program: programName,
       vb_online,
       biaya: customBiaya,
       tanggal,
+      tgl_implementasi,
+      tgl_dijalankan,
+      tgl_terbayar,
+      tgl_berakhir_langganan,
+      tgl_bayar_selanjutnya,
       implementator,
       via,
-      internal_kode
+      internal_kode,
+      status_subscriber
     } = req.body;
 
-    // Validate and parse tanggal
-    const parsedTanggal = parseDateOnlyToNoonUtc(tanggal);
-    if (!parsedTanggal) {
-      return res.status(400).json({ message: 'Format tanggal tidak valid' });
+    const isOutstandSubscriber = status_subscriber === 'OUTSTAND';
+    const group = group_id ? await Group.findOne({ _id: group_id, status_aktv: true }) : null;
+    if (group_id && !group) {
+      return res.status(400).json({ message: 'Group tidak ditemukan atau tidak aktif' });
+    }
+
+    // Validate and parse tanggal. Field lama `tanggal` tetap diisi dari tgl_implementasi.
+    const parsedTanggal = normalizeDateOnlyString(tgl_implementasi || tanggal);
+    if (!isOutstandSubscriber && !parsedTanggal) {
+      return res.status(400).json({ message: 'Format tgl implementasi tidak valid' });
     }
 
     // Get program details
@@ -991,24 +1060,33 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
 
     const subscriber = new Subscriber({
       kode: finalKode,
+      group_id: group?._id || null,
+      kode_group: group?.kode_group || normalizeOptionalString(req.body.kode_group),
+      nama_group: group?.nama_group || normalizeOptionalString(req.body.nama_group),
       no_ok,
       nomor_telepon,
       sales,
-      nama_owner: normalizeOptionalString(nama_owner),
-      no_hp_owner: normalizeOptionalString(no_hp_owner),
-      gender_owner: normalizeGender(gender_owner),
-      nama_pic: normalizeOptionalString(nama_pic),
-      no_hp_pic: normalizeOptionalString(no_hp_pic),
-      gender_pic: normalizeGender(gender_pic),
+      nama_owner: normalizeOptionalString(nama_owner) || group?.nama_owner || group?.owner || null,
+      no_hp_owner: normalizeOptionalString(no_hp_owner) || group?.no_hp_owner || group?.no_hp || null,
+      gender_owner: normalizeGender(gender_owner) || group?.gender_owner || null,
+      nama_pic: normalizeOptionalString(nama_pic) || group?.nama_pic || null,
+      no_hp_pic: normalizeOptionalString(no_hp_pic) || group?.no_hp_pic || null,
+      gender_pic: normalizeGender(gender_pic) || group?.gender_pic || null,
       toko,
-      grup: grup || null,
+      grup: normalizeOptionalString(grup) || program.group_program || null,
       domain: domain || null,
-      alamat,
+      server_location: normalizeOptionalString(server_location),
+      alamat: normalizeOptionalString(alamat) || group?.alamat || null,
       daerah,
       program: program.nama,
       vb_online,
       biaya: subscriberBiaya,
       tanggal: parsedTanggal,
+      tgl_implementasi: parsedTanggal,
+      tgl_dijalankan: normalizeOptionalDate(tgl_dijalankan),
+      tgl_terbayar: normalizeOptionalDate(tgl_terbayar),
+      tgl_berakhir_langganan: normalizeOptionalDate(tgl_berakhir_langganan),
+      tgl_bayar_selanjutnya: normalizeOptionalDate(tgl_bayar_selanjutnya),
       implementator,
       via,
       internal_kode: finalInternalKode,
@@ -1016,6 +1094,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       current_subscriber: currentSubscriber,
       prev_biaya: prevBiaya,
       current_biaya: currentBiaya,
+      status_subscriber: isOutstandSubscriber ? 'OUTSTAND' : 'AKTIF',
       input_date: new Date(),
       update_date: new Date(),
       delete_date: null,
@@ -1036,6 +1115,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const {
+      group_id,
       no_ok,
       nomor_telepon,
       sales,
@@ -1048,15 +1128,22 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       toko,
       grup,
       domain,
+      server_location,
       alamat,
       daerah,
       program: programName,
       vb_online,
       biaya: customBiaya,
       tanggal,
+      tgl_implementasi,
+      tgl_dijalankan,
+      tgl_terbayar,
+      tgl_berakhir_langganan,
+      tgl_bayar_selanjutnya,
       implementator,
       via,
-      internal_kode
+      internal_kode,
+      status_subscriber
     } = req.body;
 
     const userId = resolveUserId(req);
@@ -1075,8 +1162,8 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     if (programName !== undefined && !programName) {
       return res.status(400).json({ message: 'Program wajib diisi' });
     }
-    if (tanggal !== undefined && !tanggal) {
-      return res.status(400).json({ message: 'Tanggal wajib diisi' });
+    if ((tanggal !== undefined || tgl_implementasi !== undefined) && !(tgl_implementasi || tanggal)) {
+      return res.status(400).json({ message: 'Tgl implementasi wajib diisi' });
     }
     if (via !== undefined && !via) {
       return res.status(400).json({ message: 'Via wajib diisi' });
@@ -1087,6 +1174,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
 
     // Get program details if program changed
     let programObj = null;
+    let selectedProgramGroupProgram: string | null = null;
     let programBiaya = old.biaya;
     let prevSubscriber = old.prev_subscriber;
     let currentSubscriber = old.current_subscriber;
@@ -1099,6 +1187,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
         return res.status(400).json({ message: 'Program tidak ditemukan atau tidak aktif' });
       }
       programObj = program;
+      selectedProgramGroupProgram = program.group_program || null;
       programBiaya = program.biaya;
 
       // Recalculate prev_subscriber, current_subscriber, prev_biaya, and current_biaya for new program
@@ -1117,29 +1206,50 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     // Use custom biaya if provided, otherwise keep existing or use program biaya
     const finalBiaya = customBiaya !== undefined ? customBiaya : programBiaya;
 
-    const parsedTanggal = tanggal !== undefined ? parseDateOnlyToNoonUtc(tanggal) : null;
-    if (tanggal !== undefined && !parsedTanggal) {
-      return res.status(400).json({ message: 'Format tanggal tidak valid' });
+    const group = group_id ? await Group.findOne({ _id: group_id, status_aktv: true }) : null;
+    if (group_id && !group) {
+      return res.status(400).json({ message: 'Group tidak ditemukan atau tidak aktif' });
     }
 
+    const parsedTanggal = (tanggal !== undefined || tgl_implementasi !== undefined)
+      ? normalizeDateOnlyString(tgl_implementasi || tanggal)
+      : null;
+    if ((tanggal !== undefined || tgl_implementasi !== undefined) && !parsedTanggal) {
+      return res.status(400).json({ message: 'Format tgl implementasi tidak valid' });
+    }
+    if ((status_subscriber === 'AKTIF' || status_subscriber === 'NON_AKTIF') && !(parsedTanggal || old.tgl_implementasi || old.tanggal)) {
+      return res.status(400).json({ message: 'Tgl implementasi wajib diisi sebelum subscriber divalidasi aktif' });
+    }
+
+    old.group_id = group_id !== undefined ? (group?._id || null) : old.group_id;
+    old.kode_group = group_id !== undefined ? (group?.kode_group || null) : old.kode_group;
+    old.nama_group = group_id !== undefined ? (group?.nama_group || null) : old.nama_group;
     old.no_ok = no_ok ?? old.no_ok;
     old.nomor_telepon = nomor_telepon ?? old.nomor_telepon;
     old.sales = sales ?? old.sales;
-    old.nama_owner = nama_owner !== undefined ? normalizeOptionalString(nama_owner) : old.nama_owner;
-    old.no_hp_owner = no_hp_owner !== undefined ? normalizeOptionalString(no_hp_owner) : old.no_hp_owner;
-    old.gender_owner = gender_owner !== undefined ? normalizeGender(gender_owner) : old.gender_owner;
-    old.nama_pic = nama_pic !== undefined ? normalizeOptionalString(nama_pic) : old.nama_pic;
-    old.no_hp_pic = no_hp_pic !== undefined ? normalizeOptionalString(no_hp_pic) : old.no_hp_pic;
-    old.gender_pic = gender_pic !== undefined ? normalizeGender(gender_pic) : old.gender_pic;
+    old.nama_owner = nama_owner !== undefined ? normalizeOptionalString(nama_owner) : (group?.nama_owner || group?.owner || old.nama_owner);
+    old.no_hp_owner = no_hp_owner !== undefined ? normalizeOptionalString(no_hp_owner) : (group?.no_hp_owner || group?.no_hp || old.no_hp_owner);
+    old.gender_owner = gender_owner !== undefined ? normalizeGender(gender_owner) : (group?.gender_owner || old.gender_owner);
+    old.nama_pic = nama_pic !== undefined ? normalizeOptionalString(nama_pic) : (group?.nama_pic || old.nama_pic);
+    old.no_hp_pic = no_hp_pic !== undefined ? normalizeOptionalString(no_hp_pic) : (group?.no_hp_pic || old.no_hp_pic);
+    old.gender_pic = gender_pic !== undefined ? normalizeGender(gender_pic) : (group?.gender_pic || old.gender_pic);
     old.toko = toko ?? old.toko;
-    old.grup = grup ?? old.grup;
+    old.grup = grup !== undefined
+      ? normalizeOptionalString(grup)
+      : (selectedProgramGroupProgram || old.grup);
     old.domain = domain ?? old.domain;
-    old.alamat = alamat ?? old.alamat;
+    old.server_location = server_location !== undefined ? normalizeOptionalString(server_location) : old.server_location;
+    old.alamat = alamat !== undefined ? normalizeOptionalString(alamat) : (group?.alamat || old.alamat);
     old.daerah = daerah ?? old.daerah;
     old.program = programName ?? old.program;
     old.vb_online = vb_online ?? old.vb_online;
     old.biaya = finalBiaya;
     old.tanggal = parsedTanggal || old.tanggal;
+    old.tgl_implementasi = parsedTanggal || old.tgl_implementasi || old.tanggal;
+    old.tgl_dijalankan = tgl_dijalankan !== undefined ? normalizeOptionalDate(tgl_dijalankan) : old.tgl_dijalankan;
+    old.tgl_terbayar = tgl_terbayar !== undefined ? normalizeOptionalDate(tgl_terbayar) : old.tgl_terbayar;
+    old.tgl_berakhir_langganan = tgl_berakhir_langganan !== undefined ? normalizeOptionalDate(tgl_berakhir_langganan) : old.tgl_berakhir_langganan;
+    old.tgl_bayar_selanjutnya = tgl_bayar_selanjutnya !== undefined ? normalizeOptionalDate(tgl_bayar_selanjutnya) : old.tgl_bayar_selanjutnya;
     old.implementator = implementator ?? old.implementator;
     old.via = via ?? old.via;
     old.internal_kode = internal_kode ?? old.internal_kode;
@@ -1147,6 +1257,13 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     old.current_subscriber = currentSubscriber;
     old.prev_biaya = prevBiaya;
     old.current_biaya = currentBiaya;
+    old.status_subscriber = status_subscriber === 'OUTSTAND' || status_subscriber === 'AKTIF' || status_subscriber === 'NON_AKTIF'
+      ? status_subscriber
+      : (old.status_subscriber || 'AKTIF');
+    if (old.status_subscriber === 'AKTIF') {
+      old.tgl_non_aktif = null;
+      old.alasan_non_aktif = null;
+    }
     old.update_date = new Date();
     old.update_by = userId;
     old.status_aktv = req.body.status_aktv ?? old.status_aktv;
@@ -1154,6 +1271,9 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     const updated = await Subscriber.findOneAndUpdate(
       { kode: id },
       {
+        group_id: old.group_id,
+        kode_group: old.kode_group,
+        nama_group: old.nama_group,
         no_ok: old.no_ok,
         nomor_telepon: old.nomor_telepon,
         sales: old.sales,
@@ -1166,12 +1286,18 @@ export const updateSubscriber = async (req: Request, res: Response) => {
         toko: old.toko,
         grup: old.grup,
         domain: old.domain,
+        server_location: old.server_location,
         alamat: old.alamat,
         daerah: old.daerah,
         program: old.program,
         vb_online: old.vb_online,
         biaya: old.biaya,
         tanggal: old.tanggal,
+        tgl_implementasi: old.tgl_implementasi,
+        tgl_dijalankan: old.tgl_dijalankan,
+        tgl_terbayar: old.tgl_terbayar,
+        tgl_berakhir_langganan: old.tgl_berakhir_langganan,
+        tgl_bayar_selanjutnya: old.tgl_bayar_selanjutnya,
         implementator: old.implementator,
         via: old.via,
         internal_kode: old.internal_kode,
@@ -1179,6 +1305,9 @@ export const updateSubscriber = async (req: Request, res: Response) => {
         current_subscriber: old.current_subscriber,
         prev_biaya: old.prev_biaya,
         current_biaya: old.current_biaya,
+        status_subscriber: old.status_subscriber,
+        tgl_non_aktif: old.tgl_non_aktif,
+        alasan_non_aktif: old.alasan_non_aktif,
         update_date: old.update_date,
         update_by: old.update_by,
         status_aktv: old.status_aktv,

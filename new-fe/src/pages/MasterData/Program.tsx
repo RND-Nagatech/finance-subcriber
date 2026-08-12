@@ -71,6 +71,14 @@ export default function Program() {
     },
   });
 
+  const { data: groupProgramOptions = [] } = useQuery<Array<{ _id?: string; group_program: string; label: string; value: string }>>({
+    queryKey: ['group-program-options'],
+    queryFn: async () => {
+      const res = await axiosInstance.get('/master/group-program/options');
+      return res.data || [];
+    },
+  });
+
   // Filter hanya yang aktif untuk ditampilkan di tabel
   const programList = allProgramList.filter((p) => p.status_aktv !== false);
 
@@ -245,7 +253,12 @@ export default function Program() {
             <p className="text-gray-600 mt-2">Kelola program subscriber dengan mudah dan efisien</p>
           </div>
           <Button
-            onClick={() => setModalOpen(true)}
+            onClick={() => {
+              setEditId(null);
+              setFormData({ nama: '', kode: '', internal_kode: '', biaya: 0, group_program: '', input_by: '' });
+              setFormattedBiaya('');
+              setModalOpen(true);
+            }}
             className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-semibold px-6 py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02]"
           >
             <Plus className="w-5 h-5 mr-2" />
@@ -279,8 +292,8 @@ export default function Program() {
               className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-56"
             >
               <option value="ALL">Semua</option>
-              {Array.from(new Set(programList.map((p) => p.group_program).filter(Boolean))).map((grp) => (
-                <option key={grp} value={grp}>{grp}</option>
+              {groupProgramOptions.map((grp) => (
+                <option key={grp.value} value={grp.value}>{grp.label}</option>
               ))}
             </select>
           </div>
@@ -423,14 +436,18 @@ export default function Program() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="group_program" className="text-sm font-semibold text-gray-700">Group Program</Label>
-              <Input
+              <select
                 id="group_program"
                 value={formData.group_program}
                 onChange={e => setFormData({...formData, group_program: e.target.value})}
-                placeholder="Masukkan group program"
-                className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 required
-              />
+              >
+                <option value="">Pilih group program</option>
+                {groupProgramOptions.map((grp) => (
+                  <option key={grp.value} value={grp.value}>{grp.label}</option>
+                ))}
+              </select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="biaya" className="text-sm font-semibold text-gray-700">Biaya Program (Rp)</Label>

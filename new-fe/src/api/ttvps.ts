@@ -6,6 +6,8 @@ export interface TTVpsDetailItemDTO {
   _id: string;
   ref_id?: string;
   toko: string;
+  kode_group?: string | null;
+  nama_group?: string | null;
   program: string;
   daerah: string;
   start: string; // YYYY-MM-DD
@@ -96,10 +98,26 @@ export async function fetchDetailsByToko(toko: string): Promise<TTVpsDetailItemD
   return Array.isArray(data) ? data : [];
 }
 
+export async function fetchDetailsSearch(params: {
+  periode_from?: string;
+  periode_to?: string;
+  kode_group?: string;
+  toko?: string;
+  status?: TTVpsStatus | 'ALL';
+  search?: string;
+  include_inactive?: boolean;
+  limit?: number;
+}): Promise<TTVpsDetailItemDTO[]> {
+  const { data } = await axiosInstance.get('/tt-vps/details-search', { params });
+  return Array.isArray(data) ? data : [];
+}
+
 export interface SubscriberDTO {
   kode?: string;
   _id: string;
   toko: string;
+  kode_group?: string | null;
+  nama_group?: string | null;
   program: string;
   daerah: string;
   biaya: number;
@@ -161,9 +179,9 @@ export async function updateItem(params: { periode: string; itemId: string; star
   return data;
 }
 
-export async function updateItemActive(params: { periode: string; itemId: string; is_active: boolean }) {
-  const { periode, itemId, is_active } = params;
-  const { data } = await axiosInstance.patch(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/active`, { is_active });
+export async function updateItemActive(params: { periode: string; itemId: string; is_active: boolean; tgl_non_aktif?: string; alasan_non_aktif?: string }) {
+  const { periode, itemId, ...body } = params;
+  const { data } = await axiosInstance.patch(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/active`, body);
   return data;
 }
 

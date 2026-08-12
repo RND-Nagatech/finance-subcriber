@@ -7,6 +7,10 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "seed-subscriber": "ts-node src/scripts/migrate_subscriber.ts",
     "sync-indexes": "ts-node src/scripts/sync_indexes.ts",
+    "sync-subscriber-payment-dates": "ts-node src/scripts/sync_subscriber_payment_dates.ts",
+    "normalize-business-dates": "ts-node src/scripts/normalize_business_dates_to_string.ts",
+    "cleanup-subscriber-active-field": "ts-node src/scripts/cleanup_subscriber_active_field.ts",
+    "sync-group-program-from-program": "ts-node src/scripts/sync_group_program_from_program.ts",
     "dedupe-ttvps": "ts-node src/scripts/dedupe_tt_vps_details.ts",
     "build": "tsc -p .",
     "start": "node dist/server.js"

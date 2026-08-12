@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, Cell, LabelList } from 'recharts';
 
 interface SubscriberCombinedData {
@@ -19,9 +20,33 @@ const COLORS = [
   'hsl(var(--chart-5))',
 ];
 
+function niceStep(rawStep: number) {
+  if (rawStep <= 1) return 1;
+  const exponent = Math.floor(Math.log10(rawStep));
+  const base = Math.pow(10, exponent);
+  const fraction = rawStep / base;
+  if (fraction <= 1) return base;
+  if (fraction <= 2) return 2 * base;
+  if (fraction <= 5) return 5 * base;
+  return 10 * base;
+}
+
+function buildIntegerTicks(maxValue: number) {
+  const safeMax = Math.max(1, Math.ceil(maxValue || 0));
+  const step = niceStep(safeMax / 4);
+  let maxTick = Math.ceil(safeMax / step) * step;
+  if (maxTick <= safeMax) maxTick += step;
+
+  const ticks: number[] = [];
+  for (let value = 0; value <= maxTick; value += step) {
+    ticks.push(value);
+  }
+  return { ticks, maxTick };
+}
+
 export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) {
   // Guard: keep cumulative total carried forward if any month is missing total.
-  const normalizedData = (() => {
+  const normalizedData = useMemo(() => {
     let runningTotal = 0;
     return (data || []).map((row) => {
       const nextCount = Number(row?.count || 0);
@@ -35,7 +60,16 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
         total: runningTotal,
       };
     });
-  })();
+  }, [data]);
+
+  const leftAxis = useMemo(
+    () => buildIntegerTicks(Math.max(0, ...normalizedData.map((row) => Number(row.count || 0)))),
+    [normalizedData]
+  );
+  const rightAxis = useMemo(
+    () => buildIntegerTicks(Math.max(0, ...normalizedData.map((row) => Number(row.total || 0)))),
+    [normalizedData]
+  );
 
   function CustomTooltip({ active, payload, label }: {
     active?: boolean;
@@ -70,7 +104,7 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
       <ResponsiveContainer width="100%" height={450}>
         <ComposedChart
           data={normalizedData}
-          margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+          margin={{ top: 42, right: 34, left: 24, bottom: 20 }}
         >
           <XAxis
             dataKey="bulan"
@@ -103,6 +137,9 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
           <YAxis
             yAxisId="left"
             orientation="left"
+            domain={[0, leftAxis.maxTick]}
+            ticks={leftAxis.ticks}
+            allowDecimals={false}
             tickFormatter={(value) => value.toLocaleString('id-ID')}
             fontSize={12}
             label={{ value: 'New Subscribers', angle: -90, position: 'insideLeft' }}
@@ -110,6 +147,9 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
           <YAxis
             yAxisId="right"
             orientation="right"
+            domain={[0, rightAxis.maxTick]}
+            ticks={rightAxis.ticks}
+            allowDecimals={false}
             tickFormatter={(value) => value.toLocaleString('id-ID')}
             fontSize={12}
             label={{ value: 'Total Subscribers', angle: 90, position: 'insideRight' }}
@@ -131,7 +171,7 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
               dataKey="count"
               position="top"
               offset={8}
-              formatter={(value: number) => value.toLocaleString('id-ID')}
+              formatter={(value: number) => (Number(value || 0) > 0 ? value.toLocaleString('id-ID') : '')}
               style={{
                 fontSize: 10,
                 fill: '#065f46',
@@ -153,7 +193,7 @@ export function SubscriberCombinedChart({ data }: SubscriberCombinedChartProps) 
             <LabelList
               dataKey="total"
               position="top"
-              offset={14}
+              offset={10}
               formatter={(value: number) => value.toLocaleString('id-ID')}
               style={{
                 fontSize: 10,

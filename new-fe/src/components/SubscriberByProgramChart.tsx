@@ -1,4 +1,5 @@
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Legend, Cell, LabelList } from 'recharts';
+import { useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell, LabelList } from 'recharts';
 
 interface SubscriberByProgramData {
   program: string;
@@ -20,7 +21,40 @@ const COLORS = [
   'hsl(var(--chart-5))',
 ];
 
+function niceStep(rawStep: number) {
+  if (rawStep <= 1) return 1;
+  const exponent = Math.floor(Math.log10(rawStep));
+  const base = Math.pow(10, exponent);
+  const fraction = rawStep / base;
+  if (fraction <= 1) return base;
+  if (fraction <= 2) return 2 * base;
+  if (fraction <= 5) return 5 * base;
+  return 10 * base;
+}
+
+function buildIntegerTicks(maxValue: number) {
+  const safeMax = Math.max(1, Math.ceil(maxValue || 0));
+  const step = niceStep(safeMax / 4);
+  let maxTick = Math.ceil(safeMax / step) * step;
+  if (maxTick <= safeMax) maxTick += step;
+
+  const ticks: number[] = [];
+  for (let value = 0; value <= maxTick; value += step) {
+    ticks.push(value);
+  }
+  return { ticks, maxTick };
+}
+
 export function SubscriberByProgramChart({ data }: SubscriberByProgramChartProps) {
+  const chartData = useMemo(
+    () => (data || []).filter((item) => Number(item.total_subscriber || 0) > 0),
+    [data]
+  );
+  const yAxis = useMemo(
+    () => buildIntegerTicks(Math.max(0, ...chartData.map((item) => Number(item.total_subscriber || 0)))),
+    [chartData]
+  );
+
   function CustomTooltip({ active, payload, label }: {
     active?: boolean;
     payload?: Array<{
@@ -58,8 +92,8 @@ export function SubscriberByProgramChart({ data }: SubscriberByProgramChartProps
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <ResponsiveContainer width="100%" height={400}>
         <BarChart
-          data={data}
-          margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+          data={chartData}
+          margin={{ top: 42, right: 30, left: 20, bottom: 20 }}
         >
           <XAxis
             dataKey="program"
@@ -116,6 +150,9 @@ export function SubscriberByProgramChart({ data }: SubscriberByProgramChartProps
             }}
           />
           <YAxis
+            domain={[0, yAxis.maxTick]}
+            ticks={yAxis.ticks}
+            allowDecimals={false}
             tickFormatter={(value) => value.toLocaleString('id-ID')}
             fontSize={12}
           />
@@ -125,7 +162,7 @@ export function SubscriberByProgramChart({ data }: SubscriberByProgramChartProps
             radius={[4, 4, 0, 0]}
             barSize={60}
           >
-            {data.map((entry, index) => (
+            {chartData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
             <LabelList

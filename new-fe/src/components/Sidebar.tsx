@@ -35,7 +35,7 @@ import axiosInstance from "@/api/axiosInstance";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
 import { useAppStore } from "@/store/useAppStore";
-import { ChevronDown, CreditCard, Database, KeyRound, LayoutDashboard, LogOut, Server, Users, Wallet } from "lucide-react";
+import { ChevronDown, CreditCard, Database, KeyRound, LayoutDashboard, LogOut, Server, UserRoundCheck, Users, Wallet } from "lucide-react";
 import { toast } from "react-toastify";
 
 export default function AppSidebar() {
@@ -106,7 +106,7 @@ export default function AppSidebar() {
               </div>
               <div>
                 <h1 className="text-xl font-bold bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
-                  Subscriber VPS
+                  Subscriber Subscription
                 </h1>
                 <p className="text-xs text-slate-400 font-medium tracking-wide">
                   Management v{import.meta.env.VITE_APP_VERSION || "1.0.0"}
@@ -151,24 +151,6 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
 
                 <SidebarMenuItem>
-                  <NavLink to="/subscriber">
-                    <SidebarMenuButton isActive={location.pathname === "/subscriber"} className={menuButtonClass()}>
-                      <Users className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
-                      <span className="font-medium">Subscriber</span>
-                    </SidebarMenuButton>
-                  </NavLink>
-                </SidebarMenuItem>
-
-                <SidebarMenuItem>
-                  <NavLink to="/vps">
-                    <SidebarMenuButton isActive={location.pathname === "/vps"} className={menuButtonClass("emerald")}>
-                      <Server className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
-                      <span className="font-medium">VPS</span>
-                    </SidebarMenuButton>
-                  </NavLink>
-                </SidebarMenuItem>
-
-                <SidebarMenuItem>
                   <SidebarMenuButton
                     onClick={() => setIsMasterOpen(!isMasterOpen)}
                     className={cn(menuButtonClass(), isMasterOpen && "bg-gradient-to-r from-slate-700/60 to-slate-600/60 text-white")}
@@ -181,8 +163,12 @@ export default function AppSidebar() {
                   {isMasterOpen && (
                     <SidebarMenuSub className="ml-8 mt-3 space-y-2 animate-in slide-in-from-top-2 duration-300">
                       {[
+                        { path: "/master/group", label: "Group Toko", icon: UserRoundCheck },
+                        { path: "/master/group-program", label: "Group Program", icon: Database },
                         { path: "/master/program", label: "Program", icon: Database },
-                        { path: "/master/rekening", label: "Rekening Invoice", icon: CreditCard },
+                        { path: "/master/perusahaan", label: "Perusahaan", icon: Database },
+                        { path: "/master/bank", label: "Bank", icon: CreditCard },
+                        { path: "/master/rekening", label: "Rekening", icon: CreditCard },
                       ].map((item) => (
                         <SidebarMenuSubItem key={item.path}>
                           <NavLink to={item.path}>
@@ -201,6 +187,33 @@ export default function AppSidebar() {
                       ))}
                     </SidebarMenuSub>
                   )}
+                </SidebarMenuItem>
+
+                <SidebarMenuItem>
+                  <NavLink to="/subscriber-outstand">
+                    <SidebarMenuButton isActive={location.pathname === "/subscriber-outstand"} className={menuButtonClass()}>
+                      <UserRoundCheck className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                      <span className="font-medium">Subscriber Outstand</span>
+                    </SidebarMenuButton>
+                  </NavLink>
+                </SidebarMenuItem>
+
+                <SidebarMenuItem>
+                  <NavLink to="/subscriber">
+                    <SidebarMenuButton isActive={location.pathname === "/subscriber"} className={menuButtonClass()}>
+                      <Users className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                      <span className="font-medium">Subscriber</span>
+                    </SidebarMenuButton>
+                  </NavLink>
+                </SidebarMenuItem>
+
+                <SidebarMenuItem>
+                  <NavLink to="/subscription">
+                    <SidebarMenuButton isActive={location.pathname === "/subscription"} className={menuButtonClass("emerald")}>
+                      <Server className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                      <span className="font-medium">Subscription</span>
+                    </SidebarMenuButton>
+                  </NavLink>
                 </SidebarMenuItem>
 
                 {user?.role === "superuser" && (

@@ -5,12 +5,13 @@ import {
   updatePerusahaan,
   deletePerusahaan,
 } from '../controllers/perusahaanController';
+import { authenticate } from '../middleware/authMiddleware';
 
 const router = Router();
 
 router.get('/', getAllPerusahaan);
-router.post('/', createPerusahaan);
-router.put('/:id', updatePerusahaan);
-router.delete('/:id', deletePerusahaan);
+router.post('/', authenticate, createPerusahaan);
+router.put('/:id', authenticate, updatePerusahaan);
+router.delete('/:id', authenticate, deletePerusahaan);
 
 export default router;

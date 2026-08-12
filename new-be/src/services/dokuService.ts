@@ -85,7 +85,7 @@ function getDokuCallbackUrl(token: string): string {
   if (!configuredUrl) {
     throw new Error('Konfigurasi CALLBACK_DOKU belum tersedia.');
   }
-  return `${configuredUrl}/tt-vps/doku/result?token=${encodeURIComponent(token)}`;
+  return `${configuredUrl}/subscription/doku/result?token=${encodeURIComponent(token)}`;
 }
 
 export function generateDokuDigest(requestBody: string): string {
