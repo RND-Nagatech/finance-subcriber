@@ -18,13 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Table,
   TableBody,
@@ -209,16 +203,18 @@ export default function Group() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="limit-group" className="text-sm font-semibold text-gray-700">Per Halaman</Label>
-              <select
-                id="limit-group"
+              <SearchableSelect
                 value={String(limit)}
-                onChange={(event) => setLimit(Number(event.target.value))}
-                className="h-10 rounded-md border-2 border-gray-200 bg-white px-3 text-sm"
-              >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-              </select>
+                onValueChange={(value) => setLimit(Number(value))}
+                options={[
+                  { value: '10', label: '10' },
+                  { value: '25', label: '25' },
+                  { value: '50', label: '50' },
+                ]}
+                placeholder="Per halaman"
+                searchPlaceholder="Cari jumlah..."
+                className="w-32"
+              />
             </div>
           </div>
         </div>
@@ -369,22 +365,20 @@ export default function Group() {
               </div>
               <div className="grid gap-2">
                 <Label className="text-sm font-semibold text-gray-700">Gender Owner</Label>
-                <Select
+                <SearchableSelect
                   value={formData.gender_owner || 'none'}
                   onValueChange={(value) => setFormData((prev) => ({
                     ...prev,
                     gender_owner: value === 'none' ? null : value as 'LAKI-LAKI' | 'PEREMPUAN',
                   }))}
-                >
-                  <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <SelectValue placeholder="Pilih gender owner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Kosongkan</SelectItem>
-                    <SelectItem value="LAKI-LAKI">LAKI-LAKI</SelectItem>
-                    <SelectItem value="PEREMPUAN">PEREMPUAN</SelectItem>
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: 'none', label: 'Kosongkan' },
+                    { value: 'LAKI-LAKI', label: 'LAKI-LAKI' },
+                    { value: 'PEREMPUAN', label: 'PEREMPUAN' },
+                  ]}
+                  placeholder="Pilih gender owner"
+                  searchPlaceholder="Cari gender..."
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="nama_pic" className="text-sm font-semibold text-gray-700">Nama PIC</Label>
@@ -406,22 +400,20 @@ export default function Group() {
               </div>
               <div className="grid gap-2">
                 <Label className="text-sm font-semibold text-gray-700">Gender PIC</Label>
-                <Select
+                <SearchableSelect
                   value={formData.gender_pic || 'none'}
                   onValueChange={(value) => setFormData((prev) => ({
                     ...prev,
                     gender_pic: value === 'none' ? null : value as 'LAKI-LAKI' | 'PEREMPUAN',
                   }))}
-                >
-                  <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <SelectValue placeholder="Pilih gender PIC" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Kosongkan</SelectItem>
-                    <SelectItem value="LAKI-LAKI">LAKI-LAKI</SelectItem>
-                    <SelectItem value="PEREMPUAN">PEREMPUAN</SelectItem>
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: 'none', label: 'Kosongkan' },
+                    { value: 'LAKI-LAKI', label: 'LAKI-LAKI' },
+                    { value: 'PEREMPUAN', label: 'PEREMPUAN' },
+                  ]}
+                  placeholder="Pilih gender PIC"
+                  searchPlaceholder="Cari gender..."
+                />
               </div>
             </div>
             <div className="grid gap-2">

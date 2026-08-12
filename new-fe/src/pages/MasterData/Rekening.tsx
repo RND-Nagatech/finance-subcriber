@@ -7,13 +7,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Table,
   TableBody,
@@ -419,36 +413,38 @@ export default function Rekening() {
           </div>
           <div className="flex flex-col">
             <Label htmlFor="filter-bank" className="text-sm font-semibold text-gray-700 mb-1">Filter Bank</Label>
-            <select
-              id="filter-bank"
+            <SearchableSelect
               value={filterBank}
-              onChange={(e) => {
-                setFilterBank(e.target.value);
+              onValueChange={(value) => {
+                setFilterBank(value);
                 setPage(1);
               }}
-              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-48"
-            >
-              <option value="ALL">Semua</option>
-              {bankFilterOptions.map((bank) => (
-                <option key={bank} value={bank}>{bank}</option>
-              ))}
-            </select>
+              options={[
+                { value: 'ALL', label: 'Semua' },
+                ...bankFilterOptions.map((bank) => ({ value: bank, label: bank })),
+              ]}
+              placeholder="Filter bank"
+              searchPlaceholder="Cari bank..."
+              className="min-w-48"
+            />
           </div>
           <div className="flex flex-col">
             <Label htmlFor="page-size-rekening" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
-            <select
-              id="page-size-rekening"
+            <SearchableSelect
               value={String(pageSize)}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
+              onValueChange={(value) => {
+                setPageSize(Number(value));
                 setPage(1);
               }}
-              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
-            >
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-            </select>
+              options={[
+                { value: '10', label: '10' },
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+              ]}
+              placeholder="Per halaman"
+              searchPlaceholder="Cari jumlah..."
+              className="w-32"
+            />
           </div>
         </div>
 
@@ -564,23 +560,22 @@ export default function Rekening() {
           <form onSubmit={handleSubmit} className="space-y-6 py-4">
             <div className="grid gap-2">
               <Label htmlFor="bank_id" className="text-sm font-semibold text-gray-700">Kode Bank</Label>
-              <select
-                id="bank_id"
-                name="bank_id"
+              <SearchableSelect
                 value={formData.bank_id}
-                onChange={handleChange}
-                required
-                className="bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2 rounded-md"
-              >
-                <option value="">Pilih Kode Bank</option>
-                {bankList.map((b) => (
-                  <option key={b._id} value={b._id}>{b.kode_bank} - {b.nama_bank}</option>
-                ))}
-              </select>
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, bank_id: value }))}
+                options={bankList.map((b) => ({
+                  value: b._id,
+                  label: `${b.kode_bank} - ${b.nama_bank}`,
+                  keywords: `${b.kode_bank} ${b.nama_bank}`,
+                }))}
+                placeholder="Pilih Kode Bank"
+                searchPlaceholder="Cari bank..."
+                className="text-base"
+              />
             </div>
             <div className="grid gap-2">
               <Label className="text-sm font-semibold text-gray-700">Perusahaan</Label>
-              <div className="bg-blue-50 focus-within:bg-white border-2 border-gray-200 transition-all duration-200 rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+              <div className="border-2 border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all duration-200 rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
                 {perusahaanList.length === 0 ? (
                   <p className="text-sm text-gray-500">Belum ada data perusahaan.</p>
                 ) : (
@@ -613,7 +608,7 @@ export default function Rekening() {
                 onChange={handleChange}
                 required
                 maxLength={30}
-                className="uppercase tracking-widest font-mono bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2"
+                className="uppercase tracking-widest font-mono border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-base px-4 py-2"
                 autoComplete="off"
                 placeholder="Masukkan no rekening"
               />
@@ -627,7 +622,7 @@ export default function Rekening() {
                 onChange={handleChange}
                 required
                 maxLength={100}
-                className="uppercase tracking-wide bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2"
+                className="uppercase tracking-wide border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-base px-4 py-2"
                 autoComplete="off"
                 placeholder="Masukkan nama rekening"
               />
@@ -642,7 +637,7 @@ export default function Rekening() {
                   value={saldoDisplay}
                   onChange={handleChange}
                   onBlur={handleSaldoBlur}
-                  className="font-mono bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2"
+                  className="font-mono border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-base px-4 py-2"
                   autoComplete="off"
                   placeholder="0"
                 />
@@ -699,43 +694,31 @@ export default function Rekening() {
             <form onSubmit={handleTransferSubmit} className="space-y-4">
               <div className="grid gap-2">
                 <Label htmlFor="from_rekening_id">Rekening Sumber</Label>
-                <Select
+                <SearchableSelect
                   value={transferForm.from_rekening_id}
                   onValueChange={(value) => setTransferForm((p) => ({ ...p, from_rekening_id: value }))}
-                >
-                  <SelectTrigger id="from_rekening_id" className="border-2 border-gray-200">
-                    <SelectValue placeholder="Pilih rekening sumber" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {rekeningList.filter((r) => !!r._id).map((r) => (
-                      <SelectItem key={r._id} value={r._id as string}>
-                        <span className="block max-w-[460px] truncate" title={formatRekeningOptionLabel(r)}>
-                          {formatRekeningOptionLabel(r)}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={rekeningList.filter((r) => !!r._id).map((r) => ({
+                    value: r._id as string,
+                    label: formatRekeningOptionLabel(r),
+                    keywords: `${r.kode_bank || ''} ${r.no_rekening || ''} ${r.nama_rekening || ''}`,
+                  }))}
+                  placeholder="Pilih rekening sumber"
+                  searchPlaceholder="Cari rekening..."
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="to_rekening_id">Rekening Tujuan</Label>
-                <Select
+                <SearchableSelect
                   value={transferForm.to_rekening_id}
                   onValueChange={(value) => setTransferForm((p) => ({ ...p, to_rekening_id: value }))}
-                >
-                  <SelectTrigger id="to_rekening_id" className="border-2 border-gray-200">
-                    <SelectValue placeholder="Pilih rekening tujuan" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {rekeningList.filter((r) => !!r._id).map((r) => (
-                      <SelectItem key={r._id} value={r._id as string}>
-                        <span className="block max-w-[460px] truncate" title={formatRekeningOptionLabel(r)}>
-                          {formatRekeningOptionLabel(r)}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={rekeningList.filter((r) => !!r._id).map((r) => ({
+                    value: r._id as string,
+                    label: formatRekeningOptionLabel(r),
+                    keywords: `${r.kode_bank || ''} ${r.no_rekening || ''} ${r.nama_rekening || ''}`,
+                  }))}
+                  placeholder="Pilih rekening tujuan"
+                  searchPlaceholder="Cari rekening..."
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="nominal_transfer">Nominal Transfer (Rp)</Label>

@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface YearSelectProps {
   value: string;
@@ -20,20 +14,17 @@ export const YearSelect: React.FC<YearSelectProps> = ({ value, onChange, years, 
     {!hideActiveLabel ? (
       <span className="mb-1 text-sm text-muted-foreground">Tahun Fiskal Aktif: <span className="font-semibold text-primary">{value}</span></span>
     ) : null}
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-40">
-        <SelectValue placeholder="Pilih Tahun" />
-      </SelectTrigger>
-      <SelectContent className="max-h-56 overflow-y-auto">
-        {loading ? (
-          <SelectItem value={value}>{value}</SelectItem>
-        ) : (
-          years.map(year => (
-            <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-          ))
-        )}
-      </SelectContent>
-    </Select>
+    <SearchableSelect
+      value={value}
+      onValueChange={onChange}
+      options={(loading ? [Number(value)] : years).map((year) => ({
+        value: year.toString(),
+        label: year.toString(),
+      }))}
+      placeholder="Pilih Tahun"
+      searchPlaceholder="Cari tahun..."
+      className="w-40"
+    />
   </div>
 );
 

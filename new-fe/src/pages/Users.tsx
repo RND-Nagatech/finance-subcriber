@@ -29,13 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -305,18 +299,20 @@ export default function Users() {
                 <Label htmlFor="role" className="text-right">
                   Role
                 </Label>
-                <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="superuser">Superuser</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="finance">Finance</SelectItem>
-                    <SelectItem value="corsec">Corsec</SelectItem>
-                    <SelectItem value="user">User</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={formData.role}
+                  onValueChange={(value) => setFormData({ ...formData, role: value })}
+                  options={[
+                    { value: 'superuser', label: 'Superuser' },
+                    { value: 'admin', label: 'Admin' },
+                    { value: 'finance', label: 'Finance' },
+                    { value: 'corsec', label: 'Corsec' },
+                    { value: 'user', label: 'User' },
+                  ]}
+                  placeholder="Pilih role"
+                  searchPlaceholder="Cari role..."
+                  className="col-span-3"
+                />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="password" className="text-right">

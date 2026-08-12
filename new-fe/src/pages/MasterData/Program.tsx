@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Card,
   CardContent,
@@ -282,36 +283,38 @@ export default function Program() {
           </div>
           <div className="flex flex-col">
             <Label htmlFor="filter-group-program" className="text-sm font-semibold text-gray-700 mb-1">Filter Group Program</Label>
-            <select
-              id="filter-group-program"
+            <SearchableSelect
               value={filterGroupProgram}
-              onChange={(e) => {
-                setFilterGroupProgram(e.target.value);
+              onValueChange={(value) => {
+                setFilterGroupProgram(value);
                 setPage(1);
               }}
-              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 min-w-56"
-            >
-              <option value="ALL">Semua</option>
-              {groupProgramOptions.map((grp) => (
-                <option key={grp.value} value={grp.value}>{grp.label}</option>
-              ))}
-            </select>
+              options={[
+                { value: 'ALL', label: 'Semua' },
+                ...groupProgramOptions.map((grp) => ({ value: grp.value, label: grp.label })),
+              ]}
+              placeholder="Filter group program"
+              searchPlaceholder="Cari group program..."
+              className="min-w-56"
+            />
           </div>
           <div className="flex flex-col">
             <Label htmlFor="page-size-program" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
-            <select
-              id="page-size-program"
+            <SearchableSelect
               value={String(pageSize)}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
+              onValueChange={(value) => {
+                setPageSize(Number(value));
                 setPage(1);
               }}
-              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
-            >
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-            </select>
+              options={[
+                { value: '10', label: '10' },
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+              ]}
+              placeholder="Per halaman"
+              searchPlaceholder="Cari jumlah..."
+              className="w-32"
+            />
           </div>
         </div>
 
@@ -436,18 +439,13 @@ export default function Program() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="group_program" className="text-sm font-semibold text-gray-700">Group Program</Label>
-              <select
-                id="group_program"
+              <SearchableSelect
                 value={formData.group_program}
-                onChange={e => setFormData({...formData, group_program: e.target.value})}
-                className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                required
-              >
-                <option value="">Pilih group program</option>
-                {groupProgramOptions.map((grp) => (
-                  <option key={grp.value} value={grp.value}>{grp.label}</option>
-                ))}
-              </select>
+                onValueChange={(value) => setFormData({...formData, group_program: value})}
+                options={groupProgramOptions.map((grp) => ({ value: grp.value, label: grp.label }))}
+                placeholder="Pilih group program"
+                searchPlaceholder="Cari group program..."
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="biaya" className="text-sm font-semibold text-gray-700">Biaya Program (Rp)</Label>

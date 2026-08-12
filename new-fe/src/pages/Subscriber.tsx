@@ -9,13 +9,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Table,
   TableBody,
@@ -25,7 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ModalForm } from '@/components/ModalForm';
-import { Plus, Pencil, Trash2, Check, ChevronDown, ChevronRight, Search, X, Server, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, Search, X, Server, Calendar as CalendarIcon } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -226,7 +220,6 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
   const [searchField, setSearchField] = useState<string>('toko'); // Default search field
   const [searchValue, setSearchValue] = useState<string>('');
   const [debouncedSearchValue, setDebouncedSearchValue] = useState<string>('');
-  const [programSearch, setProgramSearch] = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [filterGroupToko, setFilterGroupToko] = useState<string>('ALL');
   const [filterMonth, setFilterMonth] = useState<string>('ALL');
@@ -281,11 +274,6 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
   });
 
   // Filter programs based on search
-  const filteredPrograms = programs.filter(program =>
-    program.nama.toLowerCase().includes(programSearch.toLowerCase()) ||
-    program.kode.toLowerCase().includes(programSearch.toLowerCase())
-  );
-
   // Fetch subscribers with pagination and search
   const { data: response, isLoading, error } = useQuery({
     queryKey: ['subscriber', mode, page, limit, searchField, debouncedSearchValue, filterGroupToko, filterMonth, filterYear, filterStatusSubscriber],
@@ -760,100 +748,105 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
             <div className="flex items-center gap-3">
               <div className="flex flex-col">
                 <Label className="mb-1 text-sm text-gray-700">Group Toko</Label>
-                <Select value={filterGroupToko} onValueChange={setFilterGroupToko}>
-                  <SelectTrigger className="w-56 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <SelectValue placeholder="Group Toko" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All</SelectItem>
-                    {groupOptions.map((group: GroupOption) => (
-                      <SelectItem key={group.kode_group} value={group.kode_group}>
-                        {group.kode_group} - {group.nama_group}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={filterGroupToko}
+                  onValueChange={setFilterGroupToko}
+                  options={[
+                    { value: 'ALL', label: 'All' },
+                    ...groupOptions.map((group: GroupOption) => ({
+                      value: group.kode_group,
+                      label: `${group.kode_group} - ${group.nama_group}`,
+                    })),
+                  ]}
+                  placeholder="Group Toko"
+                  searchPlaceholder="Cari group toko..."
+                  className="w-56"
+                />
               </div>
               <div className="flex flex-col">
                 <Label className="mb-1 text-sm text-gray-700">Bulan</Label>
-                <Select value={filterMonth} onValueChange={setFilterMonth}>
-                  <SelectTrigger className="w-44 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <SelectValue placeholder="Bulan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MONTH_OPTIONS.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={filterMonth}
+                  onValueChange={setFilterMonth}
+                  options={MONTH_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+                  placeholder="Bulan"
+                  searchPlaceholder="Cari bulan..."
+                  className="w-44"
+                />
               </div>
               <div className="flex flex-col">
                 <Label className="mb-1 text-sm text-gray-700">Tahun</Label>
-                <Select value={filterYear} onValueChange={setFilterYear}>
-                  <SelectTrigger className="w-36 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <SelectValue placeholder="Tahun" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">All</SelectItem>
-                    {availableYears.map((y) => (
-                      <SelectItem key={y} value={y}>{y}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={filterYear}
+                  onValueChange={setFilterYear}
+                  options={[
+                    { value: 'ALL', label: 'All' },
+                    ...availableYears.map((y) => ({ value: y, label: y })),
+                  ]}
+                  placeholder="Tahun"
+                  searchPlaceholder="Cari tahun..."
+                  className="w-36"
+                />
               </div>
               {!isOutstandMode && (
                 <div className="flex flex-col">
                   <Label className="mb-1 text-sm text-gray-700">Status</Label>
-                  <Select value={filterStatusSubscriber} onValueChange={(value) => setFilterStatusSubscriber(value as 'AKTIF' | 'NON_AKTIF' | 'ALL')}>
-                    <SelectTrigger className="w-40 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="AKTIF">Aktif</SelectItem>
-                      <SelectItem value="NON_AKTIF">Non Aktif</SelectItem>
-                      <SelectItem value="ALL">All</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect
+                    value={filterStatusSubscriber}
+                    onValueChange={(value) => setFilterStatusSubscriber(value as 'AKTIF' | 'NON_AKTIF' | 'ALL')}
+                    options={[
+                      { value: 'AKTIF', label: 'Aktif' },
+                      { value: 'NON_AKTIF', label: 'Non Aktif' },
+                      { value: 'ALL', label: 'All' },
+                    ]}
+                    placeholder="Status"
+                    searchPlaceholder="Cari status..."
+                    className="w-40"
+                  />
                 </div>
               )}
               <div className="flex flex-col">
                 <Label className="mb-1 text-sm text-gray-700">Tampilkan</Label>
-                <Select value={limit.toString()} onValueChange={(value) => setLimit(Number(value))}>
-                  <SelectTrigger className="w-32 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <SelectValue placeholder="Limit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="25">25</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={limit.toString()}
+                  onValueChange={(value) => setLimit(Number(value))}
+                  options={[
+                    { value: '10', label: '10' },
+                    { value: '25', label: '25' },
+                    { value: '50', label: '50' },
+                    { value: '100', label: '100' },
+                  ]}
+                  placeholder="Limit"
+                  searchPlaceholder="Cari limit..."
+                  className="w-32"
+                />
               </div>
             </div>
             <div className="flex-1 relative">
               <div className="flex gap-2">
-                <Select value={searchField} onValueChange={setSearchField}>
-                  <SelectTrigger className="w-40 border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
-                    <SelectValue placeholder="Field" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="toko">Toko</SelectItem>
-                    <SelectItem value="daerah">Daerah</SelectItem>
-                    <SelectItem value="program">Program</SelectItem>
-                    <SelectItem value="internal_kode">Internal Kode</SelectItem>
-                    <SelectItem value="kode">Kode</SelectItem>
-                    <SelectItem value="sales">Sales</SelectItem>
-                    <SelectItem value="nama_owner">Nama Owner</SelectItem>
-                    <SelectItem value="no_hp_owner">No HP Owner</SelectItem>
-                    <SelectItem value="nama_pic">Nama PIC</SelectItem>
-                    <SelectItem value="no_hp_pic">No HP PIC</SelectItem>
-                    <SelectItem value="nama_group">Group Toko</SelectItem>
-                    <SelectItem value="grup">Group Program</SelectItem>
-                    <SelectItem value="server_location">Server Location</SelectItem>
-                    <SelectItem value="domain">Domain</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={searchField}
+                  onValueChange={setSearchField}
+                  options={[
+                    { value: 'toko', label: 'Toko' },
+                    { value: 'daerah', label: 'Daerah' },
+                    { value: 'program', label: 'Program' },
+                    { value: 'internal_kode', label: 'Internal Kode' },
+                    { value: 'kode', label: 'Kode' },
+                    { value: 'sales', label: 'Sales' },
+                    { value: 'nama_owner', label: 'Nama Owner' },
+                    { value: 'no_hp_owner', label: 'No HP Owner' },
+                    { value: 'nama_pic', label: 'Nama PIC' },
+                    { value: 'no_hp_pic', label: 'No HP PIC' },
+                    { value: 'nama_group', label: 'Group Toko' },
+                    { value: 'grup', label: 'Group Program' },
+                    { value: 'server_location', label: 'Server Location' },
+                    { value: 'domain', label: 'Domain' },
+                  ]}
+                  placeholder="Field"
+                  searchPlaceholder="Cari field..."
+                  className="w-40"
+                />
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <Input
@@ -1296,7 +1289,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="group_id" className="text-sm font-semibold text-gray-700">Group Toko</Label>
-                <Select
+                <SearchableSelect
                   value={formData.group_id || 'none'}
                   onValueChange={(value) => {
                     if (value === 'none') {
@@ -1306,19 +1299,16 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                     const selectedGroup = groupOptions.find((item) => (item._id || item.value) === value);
                     if (selectedGroup) handleGroupSelect(selectedGroup);
                   }}
-                >
-                  <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
-                    <SelectValue placeholder="Pilih group toko..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[300px] bg-white/95">
-                    <SelectItem value="none">Kosongkan</SelectItem>
-                    {groupOptions.map((group) => (
-                      <SelectItem key={group._id || group.value} value={group._id || group.value}>
-                        {group.kode_group} - {group.nama_group}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: 'none', label: 'Kosongkan' },
+                    ...groupOptions.map((group) => ({
+                      value: group._id || group.value,
+                      label: `${group.kode_group} - ${group.nama_group}`,
+                    })),
+                  ]}
+                  placeholder="Pilih group toko..."
+                  searchPlaceholder="Cari group toko..."
+                />
               </div>
 
               <div className="grid gap-2">
@@ -1334,7 +1324,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="program" className="text-sm font-semibold text-gray-700">Program</Label>
-                <Select
+                <SearchableSelect
                   value={formData.program}
                   onValueChange={(value) => {
                     const selectedProgram = programs.find(p => p.nama === value);
@@ -1342,43 +1332,15 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                       handleProgramSelect(selectedProgram);
                     }
                   }}
-                >
-                  <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
-                    <SelectValue placeholder="Pilih program..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[300px] overflow-y-auto">
-                    <div className="p-2">
-                      <Input
-                        placeholder="Cari program..."
-                        value={programSearch}
-                        onChange={(e) => setProgramSearch(e.target.value)}
-                        className="mb-2"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                    {filteredPrograms.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-gray-500">
-                        Program tidak ditemukan.
-                      </div>
-                    ) : (
-                      filteredPrograms.map((program) => (
-                        <SelectItem
-                          key={program._id}
-                          value={program.nama}
-                          className="cursor-pointer hover:bg-blue-50"
-                        >
-                          <div className="flex items-center">
-                            <Check
-                              className={`mr-2 h-4 w-4 ${formData.program === program.nama ? "opacity-100" : "opacity-0"}`}
-                            />
-                            {program.kode} - {program.nama} ({formatCurrency(program.biaya)})
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                  options={programs.map((program) => ({
+                    value: program.nama,
+                    label: `${program.kode} - ${program.nama} (${formatCurrency(program.biaya)})`,
+                    keywords: `${program.kode} ${program.nama} ${program.grup || ''}`,
+                  }))}
+                  placeholder="Pilih program..."
+                  searchPlaceholder="Cari program..."
+                  emptyText="Program tidak ditemukan."
+                />
               </div>
 
               <div className="grid gap-2">
@@ -1456,20 +1418,18 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="via" className="text-sm font-semibold text-gray-700">Via</Label>
-                <Select
+                <SearchableSelect
                   value={formData.via}
                   onValueChange={(value: 'VISIT' | 'ONLINE') =>
                     setFormData({ ...formData, via: value })
                   }
-                >
-                  <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
-                    <SelectValue placeholder="Pilih via" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white/95 backdrop-blur-sm border-gray-200 shadow-xl">
-                    <SelectItem value="VISIT" className="hover:bg-blue-50 focus:bg-blue-50">VISIT</SelectItem>
-                    <SelectItem value="ONLINE" className="hover:bg-blue-50 focus:bg-blue-50">ONLINE</SelectItem>
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: 'VISIT', label: 'VISIT' },
+                    { value: 'ONLINE', label: 'ONLINE' },
+                  ]}
+                  placeholder="Pilih via"
+                  searchPlaceholder="Cari via..."
+                />
               </div>
 
               <div className="grid gap-2">
@@ -1567,21 +1527,19 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
                 <div className="grid gap-2">
                   <Label htmlFor="gender_owner" className="text-sm font-semibold text-gray-700">Gender Owner</Label>
-                  <Select
+                  <SearchableSelect
                     value={formData.gender_owner || 'none'}
                     onValueChange={(value: 'none' | 'LAKI-LAKI' | 'PEREMPUAN') =>
                       setFormData({ ...formData, gender_owner: value === 'none' ? null : value })
                     }
-                  >
-                    <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
-                      <SelectValue placeholder="Pilih gender owner" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white/95 backdrop-blur-sm border-gray-200 shadow-xl">
-                      <SelectItem value="none" className="hover:bg-blue-50 focus:bg-blue-50">Kosongkan</SelectItem>
-                      <SelectItem value="LAKI-LAKI" className="hover:bg-blue-50 focus:bg-blue-50">LAKI-LAKI</SelectItem>
-                      <SelectItem value="PEREMPUAN" className="hover:bg-blue-50 focus:bg-blue-50">PEREMPUAN</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: 'none', label: 'Kosongkan' },
+                      { value: 'LAKI-LAKI', label: 'LAKI-LAKI' },
+                      { value: 'PEREMPUAN', label: 'PEREMPUAN' },
+                    ]}
+                    placeholder="Pilih gender owner"
+                    searchPlaceholder="Cari gender..."
+                  />
                 </div>
 
                 <div className="grid gap-2">
@@ -1608,21 +1566,19 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
                 <div className="grid gap-2">
                   <Label htmlFor="gender_pic" className="text-sm font-semibold text-gray-700">Gender PIC</Label>
-                  <Select
+                  <SearchableSelect
                     value={formData.gender_pic || 'none'}
                     onValueChange={(value: 'none' | 'LAKI-LAKI' | 'PEREMPUAN') =>
                       setFormData({ ...formData, gender_pic: value === 'none' ? null : value })
                     }
-                  >
-                    <SelectTrigger className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200">
-                      <SelectValue placeholder="Pilih gender PIC" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white/95 backdrop-blur-sm border-gray-200 shadow-xl">
-                      <SelectItem value="none" className="hover:bg-blue-50 focus:bg-blue-50">Kosongkan</SelectItem>
-                      <SelectItem value="LAKI-LAKI" className="hover:bg-blue-50 focus:bg-blue-50">LAKI-LAKI</SelectItem>
-                      <SelectItem value="PEREMPUAN" className="hover:bg-blue-50 focus:bg-blue-50">PEREMPUAN</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: 'none', label: 'Kosongkan' },
+                      { value: 'LAKI-LAKI', label: 'LAKI-LAKI' },
+                      { value: 'PEREMPUAN', label: 'PEREMPUAN' },
+                    ]}
+                    placeholder="Pilih gender PIC"
+                    searchPlaceholder="Cari gender..."
+                  />
                 </div>
               </div>
             </div>

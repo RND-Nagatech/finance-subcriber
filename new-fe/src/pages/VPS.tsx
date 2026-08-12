@@ -11,8 +11,7 @@ import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Combobox, ComboboxOption } from '@/components/ui/Combobox';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink, ChevronDown, Ban, Calendar as CalendarIcon } from 'lucide-react';
 import axiosInstance from '@/api/axiosInstance';
@@ -793,19 +792,18 @@ export default function VPS() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="w-full sm:w-[150px]">
               <Label>Tahun Fiskal</Label>
-              <Select value={String(fiscalYearFilter)} onValueChange={(value) => {
-                fiscalYearInitializedRef.current = true;
-                setFiscalYearFilter(Number(value));
-                setPeriodFrom('');
-                setPeriodTo('');
-              }}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {fiscalYearOptions.map((year) => (
-                    <SelectItem key={year} value={String(year)}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={String(fiscalYearFilter)}
+                onValueChange={(value) => {
+                  fiscalYearInitializedRef.current = true;
+                  setFiscalYearFilter(Number(value));
+                  setPeriodFrom('');
+                  setPeriodTo('');
+                }}
+                options={fiscalYearOptions.map((year) => ({ value: String(year), label: String(year) }))}
+                placeholder="Tahun"
+                searchPlaceholder="Cari tahun..."
+              />
             </div>
             <div className="w-full sm:w-[180px]">
               <Label>Periode Dari</Label>
@@ -825,40 +823,41 @@ export default function VPS() {
             </div>
             <div className="min-w-[220px] flex-1">
               <Label>Group Toko</Label>
-              <Select value={groupTokoFilter} onValueChange={(v) => {
-                setGroupTokoFilter(v);
-                setTokoFilter('ALL');
-              }}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {groupTokoOptions.map((group) => (
-                    <SelectItem key={group.value} value={group.value}>{group.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={groupTokoFilter}
+                onValueChange={(v) => {
+                  setGroupTokoFilter(v);
+                  setTokoFilter('ALL');
+                }}
+                options={groupTokoOptions}
+                placeholder="Group Toko"
+                searchPlaceholder="Cari group toko..."
+              />
             </div>
             <div className="min-w-[220px] flex-1">
               <Label>Toko</Label>
-              <Select value={tokoFilter} onValueChange={setTokoFilter}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {tokoOptions.map((name) => (
-                    <SelectItem key={name} value={name}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={tokoFilter}
+                onValueChange={setTokoFilter}
+                options={tokoOptions.map((name) => ({ value: name, label: name }))}
+                placeholder="Toko"
+                searchPlaceholder="Cari toko..."
+              />
             </div>
             <div className="w-full sm:w-[130px]">
               <Label>Status</Label>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OPEN">OPEN</SelectItem>
-                  <SelectItem value="PROCESS">PROCESS</SelectItem>
-                  <SelectItem value="DONE">DONE</SelectItem>
-                  <SelectItem value="ALL">ALL</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as any)}
+                options={[
+                  { value: 'OPEN', label: 'OPEN' },
+                  { value: 'PROCESS', label: 'PROCESS' },
+                  { value: 'DONE', label: 'DONE' },
+                  { value: 'ALL', label: 'ALL' },
+                ]}
+                placeholder="Status"
+                searchPlaceholder="Cari status..."
+              />
             </div>
             <label className="flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border-2 border-gray-200 bg-white px-3 text-sm text-gray-700">
               <input
@@ -1664,18 +1663,16 @@ function VpsFormDialog({ open, onOpenChange, editItem, onSuccess }: { open: bool
         {!editItem ? (
           <div className="space-y-2">
             <Label>Toko</Label>
-            <Combobox
+            <SearchableSelect
               options={subs?.map(s => ({
                 value: s._id,
-                label: `${s.toko} — ${currency(s.biaya)}`,
-                extra: s,
+                label: `${s.toko} - ${currency(s.biaya)}`,
+                keywords: `${s.kode_subscriber || ''} ${s.program || ''} ${s.daerah || ''}`,
               })) || []}
               value={subscriberId}
-              onChange={setSubscriberId}
+              onValueChange={setSubscriberId}
               placeholder="Pilih Toko"
-              renderOption={(opt, active) => (
-                <span className={active ? 'font-semibold' : ''}>{opt.label}</span>
-              )}
+              searchPlaceholder="Cari toko..."
             />
           </div>
         ) : null}
@@ -2596,7 +2593,7 @@ function InvoiceGenerateDialog({
 
           <div className="rounded-md border mt-3 p-3 space-y-3">
             <Label className="font-semibold">Rekening Footer Pembayaran</Label>
-            <Select
+            <SearchableSelect
               value={paymentAccountPicker || undefined}
               onValueChange={(val) => {
                 setPaymentAccountPicker(val);
@@ -2604,22 +2601,14 @@ function InvoiceGenerateDialog({
                 setTimeout(() => setPaymentAccountPicker(''), 0);
               }}
               disabled={(paymentAccounts || []).length === 0}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Pilih rekening untuk ditambahkan" />
-              </SelectTrigger>
-              <SelectContent>
-                {(paymentAccounts || []).map((acc: any, idx: number) => {
+              options={(paymentAccounts || []).map((acc: any, idx: number) => {
                   const key = getPaymentAccountKey(acc, idx);
-                  return (
-                    <SelectItem key={key} value={key}>
-                      {(acc?.kode_bank || '-')} - {(acc?.no_rekening || '-')}
-                      {acc?.nama_rekening ? ` (${acc.nama_rekening})` : ''}
-                    </SelectItem>
-                  );
+                  const label = `${(acc?.kode_bank || '-')} - ${(acc?.no_rekening || '-')}${acc?.nama_rekening ? ` (${acc.nama_rekening})` : ''}`;
+                  return { value: key, label, keywords: `${acc?.kode_bank || ''} ${acc?.no_rekening || ''} ${acc?.nama_rekening || ''}` };
                 })}
-              </SelectContent>
-            </Select>
+              placeholder="Pilih rekening untuk ditambahkan"
+              searchPlaceholder="Cari rekening..."
+            />
 
             {selectedPaymentAccounts.length > 0 ? (
               <div className="flex flex-wrap gap-3">

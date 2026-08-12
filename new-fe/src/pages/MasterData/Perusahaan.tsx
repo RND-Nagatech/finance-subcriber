@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import {
   Card,
   CardContent,
@@ -196,19 +197,21 @@ export default function Perusahaan() {
           </div>
           <div className="flex flex-col">
             <Label htmlFor="page-size-perusahaan" className="text-sm font-semibold text-gray-700 mb-1">Per Halaman</Label>
-            <select
-              id="page-size-perusahaan"
+            <SearchableSelect
               value={String(pageSize)}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
+              onValueChange={(value) => {
+                setPageSize(Number(value));
                 setPage(1);
               }}
-              className="bg-white border-2 border-gray-200 rounded-md px-3 py-2 h-10"
-            >
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-            </select>
+              options={[
+                { value: '10', label: '10' },
+                { value: '25', label: '25' },
+                { value: '50', label: '50' },
+              ]}
+              placeholder="Per halaman"
+              searchPlaceholder="Cari jumlah..."
+              className="w-32"
+            />
           </div>
         </div>
 
@@ -304,7 +307,7 @@ export default function Perusahaan() {
                 onChange={handleChange}
                 required
                 maxLength={10}
-                className={`uppercase tracking-widest font-mono border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2 ${editId ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-blue-50 focus:bg-white text-gray-900'}`}
+                className={`uppercase tracking-widest font-mono border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2 ${editId ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-gray-900'}`}
                 autoComplete="off"
                 placeholder="Masukkan kode perusahaan"
                 readOnly={!!editId}
@@ -324,7 +327,7 @@ export default function Perusahaan() {
                 onChange={handleChange}
                 required
                 maxLength={100}
-                className="uppercase tracking-wide bg-blue-50 focus:bg-white border-2 border-gray-200 transition-all duration-200 text-base px-4 py-2 text-gray-900"
+                className="uppercase tracking-wide border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-base px-4 py-2 text-gray-900"
                 autoComplete="off"
                 placeholder="Masukkan nama perusahaan"
               />
