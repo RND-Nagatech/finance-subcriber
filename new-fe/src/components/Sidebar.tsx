@@ -209,7 +209,7 @@ export default function AppSidebar() {
 
                 <SidebarMenuItem>
                   <NavLink to="/subscription">
-                    <SidebarMenuButton isActive={location.pathname === "/subscription"} className={menuButtonClass("emerald")}>
+                    <SidebarMenuButton isActive={location.pathname === "/subscription"} className={menuButtonClass()}>
                       <Server className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
                       <span className="font-medium">Subscription</span>
                     </SidebarMenuButton>
