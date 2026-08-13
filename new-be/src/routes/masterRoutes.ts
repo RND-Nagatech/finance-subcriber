@@ -19,6 +19,13 @@ import {
   listGroupProgramOptions,
   updateGroupProgram,
 } from '../controllers/groupProgramController';
+import {
+  createKaryawan,
+  deleteKaryawan,
+  listKaryawan,
+  listKaryawanOptions,
+  updateKaryawan,
+} from '../controllers/karyawanController';
 import { authenticate } from '../middleware/authMiddleware';
 const router = Router();
 
@@ -41,6 +48,13 @@ router.get('/group-program/options', listGroupProgramOptions);
 router.post('/group-program', authenticate, createGroupProgram);
 router.put('/group-program/:id', authenticate, updateGroupProgram);
 router.delete('/group-program/:id', authenticate, deleteGroupProgram);
+
+// Karyawan routes
+router.get('/karyawan', listKaryawan);
+router.get('/karyawan/options', listKaryawanOptions);
+router.post('/karyawan', authenticate, createKaryawan);
+router.put('/karyawan/:id', authenticate, updateKaryawan);
+router.delete('/karyawan/:id', authenticate, deleteKaryawan);
 
 router.use('/bank', bankRoutes);
 router.use('/perusahaan', perusahaanRoutes);

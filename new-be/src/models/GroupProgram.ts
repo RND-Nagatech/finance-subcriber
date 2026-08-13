@@ -12,7 +12,7 @@ export interface IGroupProgram extends Document {
 }
 
 const GroupProgramSchema: Schema = new Schema({
-  group_program: { type: String, required: true, unique: true, trim: true },
+  group_program: { type: String, required: true, trim: true },
   status_aktv: { type: Boolean, default: true },
   input_date: { type: Date, default: Date.now },
   update_date: { type: Date, default: Date.now },
@@ -22,6 +22,9 @@ const GroupProgramSchema: Schema = new Schema({
   delete_by: { type: String, default: null },
 });
 
-GroupProgramSchema.index({ group_program: 1 });
+GroupProgramSchema.index(
+  { group_program: 1 },
+  { unique: true, partialFilterExpression: { delete_date: null } }
+);
 
 export default mongoose.model<IGroupProgram>('GroupProgram', GroupProgramSchema, 'tm_group_program');

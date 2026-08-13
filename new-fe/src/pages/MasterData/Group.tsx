@@ -328,7 +328,7 @@ export default function Group() {
               <Input
                 id="nama_group"
                 value={formData.nama_group}
-                onChange={(event) => setFormData((prev) => ({ ...prev, nama_group: event.target.value }))}
+                onChange={(event) => setFormData((prev) => ({ ...prev, nama_group: event.target.value.toUpperCase() }))}
                 className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 required
               />
@@ -344,8 +344,8 @@ export default function Group() {
                   value={formData.nama_owner || formData.owner || ''}
                   onChange={(event) => setFormData((prev) => ({
                     ...prev,
-                    nama_owner: event.target.value,
-                    owner: event.target.value,
+                    nama_owner: event.target.value.toUpperCase(),
+                    owner: event.target.value.toUpperCase(),
                   }))}
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
@@ -385,7 +385,7 @@ export default function Group() {
                 <Input
                   id="nama_pic"
                   value={formData.nama_pic || ''}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, nama_pic: event.target.value }))}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, nama_pic: event.target.value.toUpperCase() }))}
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
               </div>
@@ -421,7 +421,7 @@ export default function Group() {
               <Input
                 id="alamat"
                 value={formData.alamat}
-                onChange={(event) => setFormData((prev) => ({ ...prev, alamat: event.target.value }))}
+                onChange={(event) => setFormData((prev) => ({ ...prev, alamat: event.target.value.toUpperCase() }))}
                 className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
               />
             </div>

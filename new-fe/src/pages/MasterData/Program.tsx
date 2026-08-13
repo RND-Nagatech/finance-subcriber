@@ -409,7 +409,7 @@ export default function Program() {
               <Input
                 id="nama"
                 value={formData.nama}
-                onChange={e => setFormData({...formData, nama: e.target.value})}
+                onChange={e => setFormData({...formData, nama: e.target.value.toUpperCase()})}
                 placeholder="Masukkan nama program"
                 className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 required
@@ -431,7 +431,7 @@ export default function Program() {
               <Input
                 id="internal_kode"
                 value={formData.internal_kode}
-                onChange={e => setFormData({...formData, internal_kode: e.target.value})}
+                onChange={e => setFormData({...formData, internal_kode: e.target.value.toUpperCase()})}
                 placeholder="Masukkan internal kode"
                 className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 required

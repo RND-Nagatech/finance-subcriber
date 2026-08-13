@@ -254,7 +254,7 @@ export default function GroupProgram() {
               <Input
                 id="group_program"
                 value={formData.group_program}
-                onChange={(e) => setFormData({ group_program: e.target.value })}
+                onChange={(e) => setFormData({ group_program: e.target.value.toUpperCase() })}
                 placeholder="Masukkan group program"
                 className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 required

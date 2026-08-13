@@ -203,6 +203,21 @@ function DateTextInput({
           initialFocus
           className="rounded-md bg-white"
         />
+        <div className="border-t border-gray-100 p-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-center text-sm font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+            disabled={!value}
+            onClick={() => {
+              onChange('');
+              setOpen(false);
+            }}
+          >
+            Clear
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -271,8 +286,8 @@ export default function VPS() {
     }
   }, [activeFiscalYear]);
 
-  const defaultFiscalPeriodFrom = `${fiscalYearFilter - 1}-12`;
-  const defaultFiscalPeriodTo = `${fiscalYearFilter}-11`;
+  const defaultFiscalPeriodFrom = `${fiscalYearFilter - 1}-12-01`;
+  const defaultFiscalPeriodTo = `${fiscalYearFilter}-11-30`;
   const effectivePeriodFrom = periodFrom || defaultFiscalPeriodFrom;
   const effectivePeriodTo = periodTo || defaultFiscalPeriodTo;
 
@@ -807,18 +822,16 @@ export default function VPS() {
             </div>
             <div className="w-full sm:w-[180px]">
               <Label>Periode Dari</Label>
-              <Input
-                type="month"
+              <DateTextInput
                 value={periodFrom}
-                onChange={(e) => setPeriodFrom(e.target.value)}
+                onChange={setPeriodFrom}
               />
             </div>
             <div className="w-full sm:w-[180px]">
               <Label>Periode Sampai</Label>
-              <Input
-                type="month"
+              <DateTextInput
                 value={periodTo}
-                onChange={(e) => setPeriodTo(e.target.value)}
+                onChange={setPeriodTo}
               />
             </div>
             <div className="min-w-[220px] flex-1">
@@ -1328,7 +1341,7 @@ export default function VPS() {
               <textarea
                 id="alasan-nonaktif"
                 value={alasanNonAktif}
-                onChange={(e) => setAlasanNonAktif(e.target.value)}
+                onChange={(e) => setAlasanNonAktif(e.target.value.toUpperCase())}
                 className="min-h-[90px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 placeholder="Masukkan alasan non aktif"
               />
@@ -2587,7 +2600,7 @@ function InvoiceGenerateDialog({
             </div>
             <div className="space-y-1 md:col-span-3">
               <Label>Alamat Toko</Label>
-              <Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
+              <Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value.toUpperCase())} />
             </div>
           </div>
 

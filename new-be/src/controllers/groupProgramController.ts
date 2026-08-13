@@ -54,9 +54,28 @@ export const createGroupProgram = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Group program wajib diisi.' });
     }
 
-    const exists = await GroupProgram.findOne({ group_program, status_aktv: true });
+    const exists = await GroupProgram.findOne({ group_program, status_aktv: true, delete_date: null });
     if (exists) {
       return res.status(400).json({ message: 'Group program sudah digunakan.' });
+    }
+
+    const deletedData = await GroupProgram.findOne({
+      group_program,
+      $or: [{ status_aktv: false }, { delete_date: { $ne: null } }],
+    });
+    if (deletedData) {
+      deletedData.status_aktv = true;
+      deletedData.delete_date = null;
+      deletedData.delete_by = null;
+      deletedData.update_date = new Date();
+      deletedData.update_by = resolveUserId(req);
+      await deletedData.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Group program lama berhasil diaktifkan kembali.',
+        data: deletedData,
+      });
     }
 
     const data = await GroupProgram.create({

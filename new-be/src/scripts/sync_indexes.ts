@@ -5,6 +5,10 @@ import TTVps from '../models/TTVps';
 import VpsSubscription from '../models/Vps';
 import Subscriber from '../models/Subscriber';
 import SubscriptionDetail from '../models/SubscriptionDetail';
+import Karyawan from '../models/Karyawan';
+import Group from '../models/Group';
+import GroupProgram from '../models/GroupProgram';
+import Program from '../models/Program';
 
 async function run() {
   try {
@@ -19,6 +23,10 @@ async function run() {
       { name: 'vps_subscriptions', fn: () => VpsSubscription.syncIndexes() },
       { name: 'tm_subscriber', fn: () => Subscriber.syncIndexes() },
       { name: 'tt_subscription_detail', fn: () => SubscriptionDetail.syncIndexes() },
+      { name: 'tm_karyawan', fn: () => Karyawan.syncIndexes() },
+      { name: 'tm_group', fn: () => Group.syncIndexes() },
+      { name: 'tm_group_program', fn: () => GroupProgram.syncIndexes() },
+      { name: 'tm_program', fn: () => Program.syncIndexes() },
     ];
 
     for (const t of tasks) {

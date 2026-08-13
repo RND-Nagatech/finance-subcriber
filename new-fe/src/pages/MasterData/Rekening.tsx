@@ -749,7 +749,7 @@ export default function Rekening() {
                 <Input
                   id="ket_transfer"
                   value={transferForm.keterangan}
-                  onChange={(e) => setTransferForm((p) => ({ ...p, keterangan: e.target.value }))}
+                  onChange={(e) => setTransferForm((p) => ({ ...p, keterangan: e.target.value.toUpperCase() }))}
                   placeholder="Opsional"
                 />
               </div>

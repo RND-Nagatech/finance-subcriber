@@ -132,9 +132,39 @@ export const createGroup = async (req: Request, res: Response) => {
     const exists = await Group.findOne({
       kode_group,
       status_aktv: true,
+      delete_date: null,
     });
     if (exists) {
       return res.status(400).json({ message: 'Kode group sudah digunakan.' });
+    }
+
+    const deletedGroup = await Group.findOne({
+      kode_group,
+      $or: [{ status_aktv: false }, { delete_date: { $ne: null } }],
+    });
+    if (deletedGroup) {
+      deletedGroup.nama_group = nama_group;
+      deletedGroup.owner = nama_owner || '';
+      deletedGroup.no_hp = no_hp_owner || '';
+      deletedGroup.nama_owner = nama_owner;
+      deletedGroup.no_hp_owner = no_hp_owner;
+      deletedGroup.gender_owner = gender_owner;
+      deletedGroup.nama_pic = nama_pic;
+      deletedGroup.no_hp_pic = no_hp_pic;
+      deletedGroup.gender_pic = gender_pic;
+      deletedGroup.alamat = alamat;
+      deletedGroup.status_aktv = true;
+      deletedGroup.delete_date = null;
+      deletedGroup.delete_by = null;
+      deletedGroup.update_date = new Date();
+      deletedGroup.update_by = resolveUserId(req);
+      await deletedGroup.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Group toko lama berhasil diaktifkan kembali.',
+        data: deletedGroup,
+      });
     }
 
     const group = await Group.create({

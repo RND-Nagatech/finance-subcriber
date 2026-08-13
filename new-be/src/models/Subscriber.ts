@@ -7,6 +7,7 @@ export interface ISubscriber extends Document {
   nama_group: string | null;
   no_ok: string | null;
   nomor_telepon: string | null;
+  kode_sales: string | null;
   sales: string | null;
   nama_owner: string | null;
   no_hp_owner: string | null;
@@ -29,6 +30,7 @@ export interface ISubscriber extends Document {
   tgl_terbayar: string | null;
   tgl_berakhir_langganan: string | null;
   tgl_bayar_selanjutnya: string | null;
+  kode_implementator: string | null;
   implementator: string | null;
   via: 'VISIT' | 'ONLINE';
   internal_kode: string;
@@ -55,6 +57,7 @@ const SubscriberSchema: Schema = new Schema({
   nama_group: { type: String, required: false, default: null, trim: true },
   no_ok: { type: String, required: false, default: null },
   nomor_telepon: { type: String, required: false, default: null },
+  kode_sales: { type: String, required: false, default: null, trim: true, uppercase: true },
   sales: { type: String, required: false, default: null },
   nama_owner: { type: String, required: false, default: null },
   no_hp_owner: { type: String, required: false, default: null },
@@ -77,6 +80,7 @@ const SubscriberSchema: Schema = new Schema({
   tgl_terbayar: { type: String, required: false, default: null, trim: true },
   tgl_berakhir_langganan: { type: String, required: false, default: null, trim: true },
   tgl_bayar_selanjutnya: { type: String, required: false, default: null, trim: true },
+  kode_implementator: { type: String, required: false, default: null, trim: true, uppercase: true },
   implementator: { type: String, required: false, default: null },
   via: { type: String, required: true, enum: ['VISIT', 'ONLINE'] },
   internal_kode: { type: String, required: true },
@@ -100,6 +104,8 @@ const SubscriberSchema: Schema = new Schema({
 
 SubscriberSchema.index({ group_id: 1 });
 SubscriberSchema.index({ kode_group: 1 });
+SubscriberSchema.index({ kode_sales: 1 });
+SubscriberSchema.index({ kode_implementator: 1 });
 SubscriberSchema.index({ server_location: 1 });
 SubscriberSchema.index({ status_subscriber: 1 });
 

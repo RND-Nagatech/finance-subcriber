@@ -485,7 +485,12 @@ export const searchDetails = async (req: Request, res: Response) => {
     if (!includeInactive) match.is_active = { $ne: false };
     if (status !== 'ALL') match.status = status;
     if (hasPeriode) {
-      match.periode = { $gte: periodeFrom, $lte: periodeTo };
+      const isDateRange = periodeFrom.length >= 10 || periodeTo.length >= 10;
+      if (isDateRange) {
+        match.tgl_mulai_tagihan = { $gte: periodeFrom, $lte: periodeTo };
+      } else {
+        match.periode = { $gte: periodeFrom, $lte: periodeTo };
+      }
     }
     if (hasToko) {
       match.toko = toko;

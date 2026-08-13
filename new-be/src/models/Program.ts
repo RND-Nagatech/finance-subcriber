@@ -18,8 +18,8 @@ export interface IProgram extends Document {
 }
 
 const ProgramSchema: Schema = new Schema({
-  nama: { type: String, required: true, unique: true },
-  kode: { type: String, required: true, unique: true },
+  nama: { type: String, required: true },
+  kode: { type: String, required: true },
   internal_kode: { type: String, required: true },
   biaya: { type: Number, required: true, min: 0 },
     group_program: { type: String, required: true },
@@ -33,5 +33,14 @@ const ProgramSchema: Schema = new Schema({
   update_by: { type: String, default: null },
   delete_by: { type: String, default: null },
 });
+
+ProgramSchema.index(
+  { nama: 1 },
+  { unique: true, partialFilterExpression: { delete_date: null } }
+);
+ProgramSchema.index(
+  { kode: 1 },
+  { unique: true, partialFilterExpression: { delete_date: null } }
+);
 
 export default mongoose.model<IProgram>('Program', ProgramSchema, 'tm_program');

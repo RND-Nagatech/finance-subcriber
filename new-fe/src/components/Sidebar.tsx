@@ -166,6 +166,7 @@ export default function AppSidebar() {
                         { path: "/master/group", label: "Group Toko", icon: UserRoundCheck },
                         { path: "/master/group-program", label: "Group Program", icon: Database },
                         { path: "/master/program", label: "Program", icon: Database },
+                        { path: "/master/karyawan", label: "Karyawan", icon: Users },
                         { path: "/master/perusahaan", label: "Perusahaan", icon: Database },
                         { path: "/master/bank", label: "Bank", icon: CreditCard },
                         { path: "/master/rekening", label: "Rekening", icon: CreditCard },

@@ -22,7 +22,7 @@ export interface IGroup extends Document {
 }
 
 const GroupSchema: Schema = new Schema({
-  kode_group: { type: String, required: true, unique: true, trim: true, uppercase: true },
+  kode_group: { type: String, required: true, trim: true, uppercase: true },
   nama_group: { type: String, required: true, trim: true },
   owner: { type: String, required: false, trim: true },
   no_hp: { type: String, required: false, trim: true },
@@ -42,6 +42,10 @@ const GroupSchema: Schema = new Schema({
   delete_by: { type: String, default: null },
 });
 
+GroupSchema.index(
+  { kode_group: 1 },
+  { unique: true, partialFilterExpression: { delete_date: null } }
+);
 GroupSchema.index({ nama_group: 1 });
 GroupSchema.index({ owner: 1 });
 GroupSchema.index({ nama_owner: 1 });

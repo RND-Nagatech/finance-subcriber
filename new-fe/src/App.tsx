@@ -18,6 +18,7 @@ import Dashboard from "@/pages/SubscriberVpsDashboard";
 import Bank from "@/pages/MasterData/Bank";
 import Group from "@/pages/MasterData/Group";
 import GroupProgram from "@/pages/MasterData/GroupProgram";
+import Karyawan from "@/pages/MasterData/Karyawan";
 import Perusahaan from "@/pages/MasterData/Perusahaan";
 import Program from "@/pages/MasterData/Program";
 import Rekening from "@/pages/MasterData/Rekening";
@@ -55,6 +56,7 @@ const App = () => (
           <Route path="/subscription" element={<ProtectedPage><Subscription /></ProtectedPage>} />
           <Route path="/master/group" element={<ProtectedPage><Group /></ProtectedPage>} />
           <Route path="/master/group-program" element={<ProtectedPage><GroupProgram /></ProtectedPage>} />
+          <Route path="/master/karyawan" element={<ProtectedPage><Karyawan /></ProtectedPage>} />
           <Route path="/master/bank" element={<ProtectedPage><Bank /></ProtectedPage>} />
           <Route path="/master/perusahaan" element={<ProtectedPage><Perusahaan /></ProtectedPage>} />
           <Route path="/master/program" element={<ProtectedPage><Program /></ProtectedPage>} />

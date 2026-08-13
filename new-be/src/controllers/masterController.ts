@@ -12,6 +12,7 @@ import SubscriberTahun from '../models/SubscriberTahun';
 import Subscription from '../models/Subscription';
 import SubscriptionDetail from '../models/SubscriptionDetail';
 import Group from '../models/Group';
+import Karyawan from '../models/Karyawan';
 import CustomDashboard, { ICustomDashboard } from '../models/CustomDashboard';
 import Transaksi from '../models/Transaksi';
 import { addDays, getTempo, parseDateOnly, toPeriode } from '../utils/subscriptionPeriod';
@@ -228,6 +229,28 @@ const normalizeOptionalString = (value: unknown): string | null => {
 };
 
 const normalizeOptionalDate = (value: unknown): string | null => normalizeDateOnlyString(value);
+
+const resolveKaryawanSelection = async (
+  kode: unknown,
+  fallbackName: unknown
+): Promise<{ kode: string | null; nama: string | null }> => {
+  const normalizedKode = normalizeOptionalString(kode)?.toUpperCase() || null;
+  if (!normalizedKode) {
+    return { kode: null, nama: normalizeOptionalString(fallbackName) };
+  }
+
+  const karyawan = await Karyawan.findOne({
+    kode_karyawan: normalizedKode,
+    status_aktv: true,
+    delete_date: null,
+  });
+
+  if (!karyawan) {
+    throw new Error('Karyawan tidak ditemukan atau tidak aktif');
+  }
+
+  return { kode: karyawan.kode_karyawan, nama: karyawan.nama_karyawan };
+};
 
 const normalizeGender = (value: unknown): 'LAKI-LAKI' | 'PEREMPUAN' | null => {
   const normalized = normalizeOptionalString(value)?.toUpperCase();
@@ -803,6 +826,33 @@ export const createProgram = async (req: Request, res: Response) => {
     }
 
     const userId = resolveUserId(req);
+    const exists = await Program.findOne({ nama, status_aktv: true, delete_date: null });
+    if (exists) {
+      return res.status(400).json({ message: 'Nama program tersebut sudah digunakan. Silakan gunakan nama lain.' });
+    }
+
+    const deletedProgram = await Program.findOne({
+      nama,
+      $or: [{ status_aktv: false }, { delete_date: { $ne: null } }],
+    });
+    if (deletedProgram) {
+      deletedProgram.internal_kode = internal_kode;
+      deletedProgram.biaya = biaya;
+      deletedProgram.group_program = groupProgram.group_program;
+      deletedProgram.status_aktv = true;
+      deletedProgram.delete_date = null;
+      deletedProgram.delete_by = null;
+      deletedProgram.update_date = new Date();
+      deletedProgram.update_by = userId;
+      await deletedProgram.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Program lama berhasil diaktifkan kembali.',
+        data: deletedProgram,
+      });
+    }
+
     const finalKode = await generateNextKode(Program);
 
     const p = new Program({
@@ -1155,6 +1205,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       group_id,
       no_ok,
       nomor_telepon,
+      kode_sales,
       sales,
       nama_owner,
       no_hp_owner,
@@ -1177,6 +1228,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       tgl_terbayar,
       tgl_berakhir_langganan,
       tgl_bayar_selanjutnya,
+      kode_implementator,
       implementator,
       via,
       internal_kode,
@@ -1203,6 +1255,8 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
 
     // Use custom biaya if provided, otherwise use program biaya
     const subscriberBiaya = customBiaya !== undefined ? customBiaya : program.biaya;
+    const selectedSales = await resolveKaryawanSelection(kode_sales, sales);
+    const selectedImplementator = await resolveKaryawanSelection(kode_implementator, implementator);
 
     // Calculate prev_subscriber, current_subscriber, prev_biaya, and current_biaya
     const lastSubscriber = await Subscriber.findOne({
@@ -1232,7 +1286,8 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       nama_group: group?.nama_group || normalizeOptionalString(req.body.nama_group),
       no_ok,
       nomor_telepon,
-      sales,
+      kode_sales: selectedSales.kode,
+      sales: selectedSales.nama,
       nama_owner: normalizeOptionalString(nama_owner) || group?.nama_owner || group?.owner || null,
       no_hp_owner: normalizeOptionalString(no_hp_owner) || group?.no_hp_owner || group?.no_hp || null,
       gender_owner: normalizeGender(gender_owner) || group?.gender_owner || null,
@@ -1254,7 +1309,8 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       tgl_terbayar: normalizeOptionalDate(tgl_terbayar),
       tgl_berakhir_langganan: normalizeOptionalDate(tgl_berakhir_langganan),
       tgl_bayar_selanjutnya: normalizeOptionalDate(tgl_bayar_selanjutnya),
-      implementator,
+      kode_implementator: selectedImplementator.kode,
+      implementator: selectedImplementator.nama,
       via,
       internal_kode: finalInternalKode,
       prev_subscriber: prevSubscriber,
@@ -1285,6 +1341,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       group_id,
       no_ok,
       nomor_telepon,
+      kode_sales,
       sales,
       nama_owner,
       no_hp_owner,
@@ -1307,6 +1364,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
       tgl_terbayar,
       tgl_berakhir_langganan,
       tgl_bayar_selanjutnya,
+      kode_implementator,
       implementator,
       via,
       internal_kode,
@@ -1393,7 +1451,13 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     old.nama_group = group_id !== undefined ? (group?.nama_group || null) : old.nama_group;
     old.no_ok = no_ok ?? old.no_ok;
     old.nomor_telepon = nomor_telepon ?? old.nomor_telepon;
-    old.sales = sales ?? old.sales;
+    if (kode_sales !== undefined) {
+      const selectedSales = await resolveKaryawanSelection(kode_sales, sales);
+      old.kode_sales = selectedSales.kode;
+      old.sales = selectedSales.nama;
+    } else {
+      old.sales = sales ?? old.sales;
+    }
     old.nama_owner = nama_owner !== undefined ? normalizeOptionalString(nama_owner) : (group?.nama_owner || group?.owner || old.nama_owner);
     old.no_hp_owner = no_hp_owner !== undefined ? normalizeOptionalString(no_hp_owner) : (group?.no_hp_owner || group?.no_hp || old.no_hp_owner);
     old.gender_owner = gender_owner !== undefined ? normalizeGender(gender_owner) : (group?.gender_owner || old.gender_owner);
@@ -1417,7 +1481,13 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     old.tgl_terbayar = tgl_terbayar !== undefined ? normalizeOptionalDate(tgl_terbayar) : old.tgl_terbayar;
     old.tgl_berakhir_langganan = tgl_berakhir_langganan !== undefined ? normalizeOptionalDate(tgl_berakhir_langganan) : old.tgl_berakhir_langganan;
     old.tgl_bayar_selanjutnya = tgl_bayar_selanjutnya !== undefined ? normalizeOptionalDate(tgl_bayar_selanjutnya) : old.tgl_bayar_selanjutnya;
-    old.implementator = implementator ?? old.implementator;
+    if (kode_implementator !== undefined) {
+      const selectedImplementator = await resolveKaryawanSelection(kode_implementator, implementator);
+      old.kode_implementator = selectedImplementator.kode;
+      old.implementator = selectedImplementator.nama;
+    } else {
+      old.implementator = implementator ?? old.implementator;
+    }
     old.via = via ?? old.via;
     old.internal_kode = internal_kode ?? old.internal_kode;
     old.prev_subscriber = prevSubscriber;
@@ -1443,6 +1513,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
         nama_group: old.nama_group,
         no_ok: old.no_ok,
         nomor_telepon: old.nomor_telepon,
+        kode_sales: old.kode_sales,
         sales: old.sales,
         nama_owner: old.nama_owner,
         no_hp_owner: old.no_hp_owner,
@@ -1465,6 +1536,7 @@ export const updateSubscriber = async (req: Request, res: Response) => {
         tgl_terbayar: old.tgl_terbayar,
         tgl_berakhir_langganan: old.tgl_berakhir_langganan,
         tgl_bayar_selanjutnya: old.tgl_bayar_selanjutnya,
+        kode_implementator: old.kode_implementator,
         implementator: old.implementator,
         via: old.via,
         internal_kode: old.internal_kode,

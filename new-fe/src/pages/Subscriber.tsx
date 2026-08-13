@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
 import { fetchGroupOptions, GroupOption } from '@/api/group';
+import { fetchKaryawanOptions, KaryawanOption } from '@/api/karyawan';
 import { createSubscription } from '@/api/subscription';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,7 @@ interface Subscriber {
   kode_group?: string | null;
   nama_group?: string | null;
   no_ok: string | null;
+  kode_sales?: string | null;
   sales: string | null;
   nama_owner: string | null;
   no_hp_owner: string | null;
@@ -68,6 +70,7 @@ interface Subscriber {
   tgl_terbayar?: string | null;
   tgl_berakhir_langganan?: string | null;
   tgl_bayar_selanjutnya?: string | null;
+  kode_implementator?: string | null;
   implementator: string | null;
   via: 'VISIT' | 'ONLINE';
   status_subscriber?: 'OUTSTAND' | 'AKTIF' | 'NON_AKTIF';
@@ -161,6 +164,7 @@ const initialSubscriberForm: Subscriber = {
   kode_group: null,
   nama_group: null,
   no_ok: null,
+  kode_sales: null,
   sales: null,
   nama_owner: null,
   no_hp_owner: null,
@@ -188,6 +192,7 @@ const initialSubscriberForm: Subscriber = {
   tgl_terbayar: null,
   tgl_berakhir_langganan: null,
   tgl_bayar_selanjutnya: null,
+  kode_implementator: null,
   implementator: null,
   via: 'VISIT',
   status_subscriber: 'AKTIF',
@@ -263,6 +268,10 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
     queryKey: ['group-options'],
     queryFn: fetchGroupOptions,
   });
+  const { data: karyawanOptions = [] } = useQuery<KaryawanOption[]>({
+    queryKey: ['karyawan-options'],
+    queryFn: fetchKaryawanOptions,
+  });
 
   // Fetch all available years for filter dropdown
   const { data: allYears = [] } = useQuery({
@@ -335,6 +344,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
       if (editId) {
         return axiosInstance.put(`/subscriber/${editId}`, {
           no_ok: payload.no_ok,
+          kode_sales: payload.kode_sales,
           sales: payload.sales,
           group_id: payload.group_id,
           kode_group: payload.kode_group,
@@ -361,6 +371,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
           tgl_terbayar: payload.tgl_terbayar,
           tgl_berakhir_langganan: payload.tgl_berakhir_langganan,
           tgl_bayar_selanjutnya: payload.tgl_bayar_selanjutnya,
+          kode_implementator: payload.kode_implementator,
           implementator: payload.implementator,
           via: payload.via,
           status_subscriber: isOutstandMode ? 'OUTSTAND' : (payload.status_subscriber || 'AKTIF'),
@@ -369,6 +380,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
       }
       return axiosInstance.post('/subscriber', {
         no_ok: payload.no_ok,
+        kode_sales: payload.kode_sales,
         sales: payload.sales,
         group_id: payload.group_id,
         kode_group: payload.kode_group,
@@ -395,6 +407,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
         tgl_terbayar: payload.tgl_terbayar,
         tgl_berakhir_langganan: payload.tgl_berakhir_langganan,
         tgl_bayar_selanjutnya: payload.tgl_bayar_selanjutnya,
+        kode_implementator: payload.kode_implementator,
         implementator: payload.implementator,
         via: payload.via,
         status_subscriber: isOutstandMode ? 'OUTSTAND' : 'AKTIF',
@@ -646,7 +659,6 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
     setEditId(null);
     setFormData({ ...initialSubscriberForm, status_subscriber: isOutstandMode ? 'OUTSTAND' : 'AKTIF' });
     setFormattedBiaya('');
-    setProgramSearch('');
   };
 
   const handleProgramSelect = (program: Program) => {
@@ -1246,7 +1258,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                 <Input
                   id="no_ok"
                   value={formData.no_ok || ''}
-                  onChange={(e) => setFormData({ ...formData, no_ok: e.target.value || null })}
+                  onChange={(e) => setFormData({ ...formData, no_ok: e.target.value.toUpperCase() || null })}
                   placeholder="Masukkan NO OK"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
@@ -1254,12 +1266,30 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="sales" className="text-sm font-semibold text-gray-700">Sales</Label>
-                <Input
-                  id="sales"
-                  value={formData.sales || ''}
-                  onChange={(e) => setFormData({ ...formData, sales: e.target.value || null })}
-                  placeholder="Masukkan nama sales"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                <SearchableSelect
+                  value={formData.kode_sales || 'none'}
+                  onValueChange={(value) => {
+                    if (value === 'none') {
+                      setFormData({ ...formData, kode_sales: null, sales: null });
+                      return;
+                    }
+                    const selectedSales = karyawanOptions.find((item) => item.kode_karyawan === value || item.value === value);
+                    setFormData({
+                      ...formData,
+                      kode_sales: value,
+                      sales: selectedSales?.nama_karyawan || selectedSales?.label || null,
+                    });
+                  }}
+                  options={[
+                    { value: 'none', label: 'Kosongkan' },
+                    ...karyawanOptions.map((item) => ({
+                      value: item.kode_karyawan,
+                      label: `${item.kode_karyawan} - ${item.nama_karyawan}`,
+                      keywords: `${item.nama_karyawan} ${item.jabatan || ''} ${item.divisi || ''} ${item.no_hp || ''}`,
+                    })),
+                  ]}
+                  placeholder="Pilih sales..."
+                  searchPlaceholder="Cari sales..."
                 />
               </div>
 
@@ -1268,7 +1298,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                 <Input
                   id="toko"
                   value={formData.toko}
-                  onChange={(e) => setFormData({ ...formData, toko: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, toko: e.target.value.toUpperCase() })}
                   placeholder="Masukkan nama toko"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   required
@@ -1280,7 +1310,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                 <Input
                   id="daerah"
                   value={formData.daerah}
-                  onChange={(e) => setFormData({ ...formData, daerah: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, daerah: e.target.value.toUpperCase() })}
                   placeholder="Masukkan daerah"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   required
@@ -1316,7 +1346,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                 <Input
                   id="alamat"
                   value={formData.alamat || ''}
-                  onChange={(e) => setFormData({ ...formData, alamat: e.target.value || null })}
+                  onChange={(e) => setFormData({ ...formData, alamat: e.target.value.toUpperCase() || null })}
                   placeholder="Terisi otomatis dari master group, bisa diubah"
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                 />
@@ -1434,12 +1464,30 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
               <div className="grid gap-2">
                 <Label htmlFor="implementator" className="text-sm font-semibold text-gray-700">Implementator</Label>
-                <Input
-                  id="implementator"
-                  value={formData.implementator || ''}
-                  onChange={(e) => setFormData({ ...formData, implementator: e.target.value || null })}
-                  placeholder="Masukkan nama implementator"
-                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                <SearchableSelect
+                  value={formData.kode_implementator || 'none'}
+                  onValueChange={(value) => {
+                    if (value === 'none') {
+                      setFormData({ ...formData, kode_implementator: null, implementator: null });
+                      return;
+                    }
+                    const selectedImplementator = karyawanOptions.find((item) => item.kode_karyawan === value || item.value === value);
+                    setFormData({
+                      ...formData,
+                      kode_implementator: value,
+                      implementator: selectedImplementator?.nama_karyawan || selectedImplementator?.label || null,
+                    });
+                  }}
+                  options={[
+                    { value: 'none', label: 'Kosongkan' },
+                    ...karyawanOptions.map((item) => ({
+                      value: item.kode_karyawan,
+                      label: `${item.kode_karyawan} - ${item.nama_karyawan}`,
+                      keywords: `${item.nama_karyawan} ${item.jabatan || ''} ${item.divisi || ''} ${item.no_hp || ''}`,
+                    })),
+                  ]}
+                  placeholder="Pilih implementator..."
+                  searchPlaceholder="Cari implementator..."
                 />
               </div>
 
@@ -1508,7 +1556,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                   <Input
                     id="nama_owner"
                     value={formData.nama_owner || ''}
-                    onChange={(e) => setFormData({ ...formData, nama_owner: e.target.value || null })}
+                    onChange={(e) => setFormData({ ...formData, nama_owner: e.target.value.toUpperCase() || null })}
                     placeholder="Masukkan nama owner"
                     className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   />
@@ -1547,7 +1595,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                   <Input
                     id="nama_pic"
                     value={formData.nama_pic || ''}
-                    onChange={(e) => setFormData({ ...formData, nama_pic: e.target.value || null })}
+                    onChange={(e) => setFormData({ ...formData, nama_pic: e.target.value.toUpperCase() || null })}
                     placeholder="Masukkan nama PIC"
                     className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   />
