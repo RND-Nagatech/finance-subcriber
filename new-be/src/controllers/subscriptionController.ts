@@ -89,6 +89,11 @@ const getFiscalEndDate = (date: Date) => {
   return new Date(Date.UTC(endYear, 11, 0, 12, 0, 0, 0));
 };
 
+const periodeFromPaidDate = (value: unknown): string | null => {
+  const paidDate = parseDateOnly(value);
+  return paidDate ? toPeriode(paidDate) : null;
+};
+
 const buildFiscalSchedule = (params: {
   startDate: Date;
   jumlahBulan: number;
@@ -141,20 +146,18 @@ const recalcRekapTahun = async (tahun: number, userTag: string) => {
 
 const recalcSubscriptionPeriode = async (periode: string, userTag: string) => {
   const [summary] = await SubscriptionDetail.aggregate([
-    { $match: { periode, delete_date: null } },
+    {
+      $match: {
+        delete_date: null,
+        status: 'DONE',
+        tgl_lunas: { $gte: `${periode}-01`, $lte: `${periode}-31` },
+      },
+    },
     {
       $group: {
         _id: null,
-        realisasi: {
-          $sum: {
-            $cond: [{ $eq: ['$status', 'DONE'] }, '$total_biaya', 0],
-          },
-        },
-        total_subscriber_realisasi: {
-          $sum: {
-            $cond: [{ $eq: ['$status', 'DONE'] }, 1, 0],
-          },
-        },
+        realisasi: { $sum: '$total_biaya' },
+        total_subscriber_realisasi: { $sum: 1 },
       },
     },
   ]);
@@ -173,32 +176,93 @@ const recalcSubscriptionPeriode = async (periode: string, userTag: string) => {
   );
 };
 
-const addScheduleToMonthlyRekap = async (
-  entries: ReturnType<typeof buildFiscalSchedule>,
-  userTag: string
-) => {
-  for (const entry of entries) {
+const getFiscalPeriods = (tahun: number) => {
+  const periods: string[] = [];
+  for (let month = 11; month <= 22; month += 1) {
+    const date = new Date(Date.UTC(tahun - 1, month, 1, 12));
+    periods.push(toPeriode(date));
+  }
+  return periods;
+};
+
+const rebuildSubscriptionMonthlyRekap = async (tahun: number, userTag: string) => {
+  const fiscalYear = Number(tahun || 0);
+  if (!fiscalYear) return;
+  const periods = getFiscalPeriods(fiscalYear);
+  const monthly: Record<string, { estimasi: number; realisasi: number; total_subscriber_estimasi: number; total_subscriber_realisasi: number }> = {};
+  periods.forEach((periode) => {
+    monthly[periode] = { estimasi: 0, realisasi: 0, total_subscriber_estimasi: 0, total_subscriber_realisasi: 0 };
+  });
+
+  const details: any[] = await SubscriptionDetail.find({
+    delete_date: null,
+    status: { $in: ['OPEN', 'PROCESS', 'DONE'] },
+  }).lean();
+  const hasLaterActiveUnpaid = (detail: any) => details.some((other) => (
+    String(other._id) !== String(detail._id)
+    && String(other.subscriber_id) === String(detail.subscriber_id)
+    && other.status !== 'DONE'
+    && other.is_active !== false
+    && String(other.tgl_mulai_tagihan || '') > String(detail.tgl_mulai_tagihan || '')
+  ));
+
+  for (const detail of details) {
+    if (detail.status === 'DONE') {
+      if (Number(detail.tahun || 0) === fiscalYear && monthly[detail.periode]) {
+        monthly[detail.periode].estimasi += Number(detail.total_biaya || 0);
+        monthly[detail.periode].total_subscriber_estimasi += 1;
+      }
+      const paidPeriode = periodeFromPaidDate(detail.tgl_lunas);
+      if (paidPeriode && monthly[paidPeriode]) {
+        monthly[paidPeriode].realisasi += Number(detail.total_biaya || 0);
+        monthly[paidPeriode].total_subscriber_realisasi += 1;
+      }
+      continue;
+    }
+    if (detail.is_active === false) continue;
+    if (detail.status === 'PROCESS' && hasLaterActiveUnpaid(detail)) {
+      if (Number(detail.tahun || 0) === fiscalYear && monthly[detail.periode]) {
+        monthly[detail.periode].estimasi += Number(detail.total_biaya || 0);
+        monthly[detail.periode].total_subscriber_estimasi += 1;
+      }
+      continue;
+    }
+    const startDate = parseDateOnly(detail.tgl_mulai_tagihan);
+    if (!startDate) continue;
+    const schedule = buildFiscalSchedule({
+      startDate,
+      jumlahBulan: Math.max(1, Number(detail.jumlah_bulan || 1)),
+      biayaPerBulan: Math.max(0, Number(detail.biaya_per_bulan || 0)),
+      firstDiskon: Number(detail.diskon || 0),
+    });
+    for (const entry of schedule) {
+      if (entry.tahun !== fiscalYear || !monthly[entry.periode]) continue;
+      monthly[entry.periode].estimasi += Number(entry.totalBiaya || 0);
+      monthly[entry.periode].total_subscriber_estimasi += 1;
+    }
+  }
+
+  const now = new Date();
+  for (const [periode, values] of Object.entries(monthly)) {
     await Subscription.updateOne(
-      { periode: entry.periode },
+      { periode },
       {
         $set: {
-          periode: entry.periode,
-          tahun: entry.tahun,
-          updated_at: new Date(),
-          update_date: new Date(),
+          periode,
+          tahun: fiscalYear,
+          estimasi: Math.max(0, values.estimasi),
+          realisasi: Math.max(0, values.realisasi),
+          total_subscriber_estimasi: Math.max(0, values.total_subscriber_estimasi),
+          total_subscriber_realisasi: Math.max(0, values.total_subscriber_realisasi),
+          updated_at: now,
+          update_date: now,
           update_by: userTag,
-        },
-        $inc: {
-          estimasi: entry.totalBiaya,
-          total_subscriber_estimasi: 1,
-        },
-        $setOnInsert: {
-          realisasi: 0,
-          total_subscriber_realisasi: 0,
-          input_date: new Date(),
-          input_by: userTag,
           delete_date: null,
           delete_by: null,
+        },
+        $setOnInsert: {
+          input_date: now,
+          input_by: userTag,
         },
       },
       { upsert: true }
@@ -206,49 +270,30 @@ const addScheduleToMonthlyRekap = async (
   }
 };
 
-const applyScheduleDeltaToMonthlyRekap = async (
-  entries: ReturnType<typeof buildFiscalSchedule>,
-  multiplier: 1 | -1,
-  userTag: string
-) => {
-  const affectedYears = new Set<number>();
-  const affectedPeriodes = new Set<string>();
-
-  for (const entry of entries) {
-    affectedYears.add(entry.tahun);
-    affectedPeriodes.add(entry.periode);
-    await Subscription.updateOne(
-      { periode: entry.periode },
-      {
-        $set: {
-          periode: entry.periode,
-          tahun: entry.tahun,
-          updated_at: new Date(),
-          update_date: new Date(),
-          update_by: userTag,
-        },
-        $inc: {
-          estimasi: entry.totalBiaya * multiplier,
-          total_subscriber_estimasi: multiplier,
-        },
-        $setOnInsert: {
-          realisasi: 0,
-          total_subscriber_realisasi: 0,
-          input_date: new Date(),
-          input_by: userTag,
-          delete_date: null,
-          delete_by: null,
-        },
-      },
-      { upsert: true }
-    );
+const getDetailRekapYears = (detail: any) => {
+  const years = new Set<number>();
+  if (!detail) return years;
+  const detailYear = Number(detail.tahun || 0);
+  if (detailYear) years.add(detailYear);
+  const paidDate = parseDateOnly(detail.tgl_lunas);
+  if (paidDate) years.add(getFiscalYear(paidDate));
+  const startDate = parseDateOnly(detail.tgl_mulai_tagihan);
+  if (startDate && detail.status !== 'DONE' && detail.is_active !== false) {
+    const schedule = buildFiscalSchedule({
+      startDate,
+      jumlahBulan: Math.max(1, Number(detail.jumlah_bulan || 1)),
+      biayaPerBulan: Math.max(0, Number(detail.biaya_per_bulan || 0)),
+      firstDiskon: Number(detail.diskon || 0),
+    });
+    schedule.forEach((entry) => years.add(entry.tahun));
   }
+  return years;
+};
 
-  for (const periode of affectedPeriodes) {
-    await recalcSubscriptionPeriode(periode, userTag);
-  }
-  for (const tahun of affectedYears) {
-    await recalcRekapTahun(tahun, userTag);
+const rebuildSubscriptionYears = async (years: Iterable<number>, userTag: string) => {
+  const cleanYears = [...new Set([...years].map(Number).filter(Boolean))];
+  for (const year of cleanYears) {
+    await rebuildSubscriptionMonthlyRekap(year, userTag);
   }
 };
 
@@ -295,8 +340,7 @@ const createOpenDetail = async (
     update_by: userTag,
   });
 
-  await recalcSubscriptionPeriode(toPeriode(startDate), userTag);
-  await recalcRekapTahun(getFiscalYear(startDate), userTag);
+  await rebuildSubscriptionYears(getDetailRekapYears(detail), userTag);
   return detail;
 };
 
@@ -304,15 +348,16 @@ const isSubscriberSubscriptionActive = async (subscriberId: any) => {
   if (!subscriberId) return false;
   const subscriber: any = await Subscriber.findOne({ _id: subscriberId, delete_date: null }).lean();
   if (!subscriber) return false;
-  if (subscriber.status_aktv === false || subscriber.active === false) return false;
+  if (subscriber.status_aktv === false) return false;
   return subscriber.status_subscriber !== 'NON_AKTIF';
 };
 
-const validateNewSubscriptionStart = async (subscriberId: any, startDate: Date) => {
+const validateNewSubscriptionStart = async (subscriberId: any, startDate: Date, program?: string | null) => {
   const startYmd = formatDateOnly(startDate);
   const duplicate = await SubscriptionDetail.findOne({
     subscriber_id: subscriberId,
     tgl_mulai_tagihan: startYmd,
+    ...(program ? { program } : {}),
     delete_date: null,
   }).lean();
   if (duplicate) {
@@ -365,7 +410,7 @@ const markDetailLunas = async (params: {
     return { detail, nextDetail: null, alreadyPaid: true };
   }
 
-  const previousYear = detail.tahun;
+  const affectedYears = getDetailRekapYears(detail);
   detail.diskon = Math.max(0, Number(diskon ?? detail.diskon ?? 0));
   detail.total_biaya = Math.max(0, detail.jumlah_biaya - detail.diskon);
   detail.status = 'DONE';
@@ -391,15 +436,6 @@ const markDetailLunas = async (params: {
       delete_date: null,
     });
     if (!existingOpen && !existingNext) {
-      const nextFiscalYear = getFiscalYear(nextStartDate);
-      if (nextFiscalYear !== Number(previousYear || 0)) {
-        const nextSchedule = buildFiscalSchedule({
-          startDate: nextStartDate,
-          jumlahBulan: Math.max(1, Number(detail.jumlah_bulan || 1)),
-          biayaPerBulan: Math.max(0, Number(detail.biaya_per_bulan || 0)),
-        });
-        await applyScheduleDeltaToMonthlyRekap(nextSchedule, 1, userTag);
-      }
       nextDetail = await createOpenDetail(
         {
           chain_id: detail.chain_id,
@@ -416,11 +452,9 @@ const markDetailLunas = async (params: {
     }
   }
 
-  await recalcSubscriptionPeriode(detail.periode, userTag);
-  await recalcRekapTahun(previousYear, userTag);
-  if (nextDetail && nextDetail.tahun !== previousYear) {
-    await recalcRekapTahun(nextDetail.tahun, userTag);
-  }
+  getDetailRekapYears(detail).forEach((year) => affectedYears.add(year));
+  getDetailRekapYears(nextDetail).forEach((year) => affectedYears.add(year));
+  await rebuildSubscriptionYears(affectedYears, userTag);
   await rebuildSubscriberTahunForDetails([detail, nextDetail], userTag);
 
   return { detail, nextDetail, alreadyPaid: false };
@@ -458,12 +492,15 @@ const buildInvoiceMeta = async (detail: any, userTag: string) => {
 };
 
 const ensureInvoiceMeta = async (detail: any, userTag: string) => {
+  const affectedYears = getDetailRekapYears(detail);
   detail.invoice_meta = await buildInvoiceMeta(detail, userTag);
   detail.status = 'PROCESS';
   detail.update_date = new Date();
   detail.update_by = userTag;
   await detail.save();
-  await recalcRekapTahun(detail.tahun, userTag);
+  getDetailRekapYears(detail).forEach((year) => affectedYears.add(year));
+  await rebuildSubscriptionYears(affectedYears, userTag);
+  await rebuildSubscriberTahunForDetails([detail], userTag);
   return detail;
 };
 
@@ -522,7 +559,7 @@ export const createSubscription = async (req: Request, res: Response) => {
     const active = await SubscriptionDetail.findOne({ subscriber_id, status: { $in: ['OPEN', 'PROCESS'] }, is_active: { $ne: false }, delete_date: null });
     if (active) return res.status(400).json({ message: 'Subscriber sudah memiliki subscription aktif.' });
     try {
-      await validateNewSubscriptionStart(subscriber._id, startDate);
+      await validateNewSubscriptionStart(subscriber._id, startDate, subscriber.program);
     } catch (error: any) {
       return res.status(400).json({ message: error?.message || 'Tanggal mulai subscription tidak valid.' });
     }
@@ -538,8 +575,6 @@ export const createSubscription = async (req: Request, res: Response) => {
       firstDiskon: Number(diskon || 0),
     });
 
-    await addScheduleToMonthlyRekap(scheduleEntries, userTag);
-
     const detail = await createOpenDetail({
       chain_id: chainId,
       subscriber_id: subscriber._id,
@@ -552,9 +587,6 @@ export const createSubscription = async (req: Request, res: Response) => {
       diskon: Number(diskon || 0),
       keterangan: normalizeOptionalString(keterangan),
     });
-    for (const entry of scheduleEntries) {
-      await recalcRekapTahun(entry.tahun, userTag);
-    }
     await rebuildSubscriberTahun(subscriber._id, detail.tahun, userTag);
     res.status(201).json({ success: true, message: 'Subscription berhasil dibuat.', data: { rekap: scheduleEntries, detail } });
   } catch (error: any) {
@@ -614,8 +646,7 @@ export const updateSubscriptionDetailStatus = async (req: Request, res: Response
       return res.json({ success: true, message: 'Status diperbarui.', data: { detail: result.detail, next_detail: result.nextDetail } });
     }
 
-    const previousYear = detail.tahun;
-    const previousPeriode = detail.periode;
+    const affectedYears = getDetailRekapYears(detail);
     let removedNextDetail: any = null;
     if (detail.status === 'DONE' && status === 'PROCESS') {
       const nextDetail = await SubscriptionDetail.findOne({
@@ -625,16 +656,8 @@ export const updateSubscriptionDetailStatus = async (req: Request, res: Response
         delete_date: null,
       });
       if (nextDetail) {
-        removedNextDetail = { periode: nextDetail.periode, tahun: nextDetail.tahun, subscriber_id: nextDetail.subscriber_id };
-        if (Number(nextDetail.tahun || 0) !== Number(detail.tahun || 0)) {
-          const nextSchedule = buildFiscalSchedule({
-            startDate: parseDateOnly(nextDetail.tgl_mulai_tagihan) || new Date(nextDetail.tgl_mulai_tagihan),
-            jumlahBulan: Math.max(1, Number(nextDetail.jumlah_bulan || 1)),
-            biayaPerBulan: Math.max(0, Number(nextDetail.biaya_per_bulan || 0)),
-            firstDiskon: Number(nextDetail.diskon || 0),
-          });
-          await applyScheduleDeltaToMonthlyRekap(nextSchedule, -1, userTag);
-        }
+        removedNextDetail = nextDetail.toObject ? nextDetail.toObject() : nextDetail;
+        getDetailRekapYears(removedNextDetail).forEach((year) => affectedYears.add(year));
         await SubscriptionDetail.deleteOne({ _id: nextDetail._id });
       }
       detail.tgl_lunas = null;
@@ -648,12 +671,8 @@ export const updateSubscriptionDetailStatus = async (req: Request, res: Response
     await detail.save();
     await syncSubscriberPaymentDatesFromLatestDone(detail.subscriber_id, userTag);
 
-    await recalcSubscriptionPeriode(previousPeriode, userTag);
-    await recalcRekapTahun(previousYear, userTag);
-    if (removedNextDetail) {
-      await recalcSubscriptionPeriode(removedNextDetail.periode, userTag);
-      await recalcRekapTahun(removedNextDetail.tahun, userTag);
-    }
+    getDetailRekapYears(detail).forEach((year) => affectedYears.add(year));
+    await rebuildSubscriptionYears(affectedYears, userTag);
     await rebuildSubscriberTahunForDetails([detail, removedNextDetail], userTag);
     res.json({ success: true, message: 'Status diperbarui.', data: detail });
   } catch (error: any) {
@@ -679,16 +698,8 @@ export const updateSubscriptionDetail = async (req: Request, res: Response) => {
 
     const oldStartDate = parseDateOnly(detail.tgl_mulai_tagihan);
     if (!oldStartDate) return res.status(400).json({ message: 'Tgl mulai tagihan lama tidak valid.' });
-    const oldJumlahBulan = Number(detail.jumlah_bulan || 1);
-    const oldBiayaPerBulan = Number(detail.biaya_per_bulan || 0);
-    const oldDiskon = Number(detail.diskon || 0);
     const oldSummaryTarget = { subscriber_id: detail.subscriber_id, tahun: detail.tahun };
-    const oldSchedule = buildFiscalSchedule({
-      startDate: oldStartDate,
-      jumlahBulan: oldJumlahBulan,
-      biayaPerBulan: oldBiayaPerBulan,
-      firstDiskon: oldDiskon,
-    });
+    const affectedYears = getDetailRekapYears(detail);
 
     const nextStartDate = tgl_mulai_tagihan ? parseDateOnly(tgl_mulai_tagihan) : oldStartDate;
     if (!nextStartDate) return res.status(400).json({ message: 'Tgl mulai tagihan tidak valid.' });
@@ -696,15 +707,6 @@ export const updateSubscriptionDetail = async (req: Request, res: Response) => {
     const nextBiayaPerBulan = Math.max(0, Number(biaya_per_bulan ?? detail.biaya_per_bulan ?? 0));
     const nextJumlahBiaya = nextBiayaPerBulan * nextJumlahBulan;
     const nextDiskon = Math.max(0, Math.min(nextJumlahBiaya, Number(diskon || 0)));
-    const newSchedule = buildFiscalSchedule({
-      startDate: nextStartDate,
-      jumlahBulan: nextJumlahBulan,
-      biayaPerBulan: nextBiayaPerBulan,
-      firstDiskon: nextDiskon,
-    });
-
-    await applyScheduleDeltaToMonthlyRekap(oldSchedule, -1, userTag);
-
     const tempo = getTempo(nextStartDate, nextJumlahBulan);
     const nextPayDate = addDays(tempo, 1);
     detail.tgl_mulai_tagihan = formatDateOnly(nextStartDate);
@@ -724,7 +726,8 @@ export const updateSubscriptionDetail = async (req: Request, res: Response) => {
     detail.update_by = userTag;
     await detail.save();
 
-    await applyScheduleDeltaToMonthlyRekap(newSchedule, 1, userTag);
+    getDetailRekapYears(detail).forEach((year) => affectedYears.add(year));
+    await rebuildSubscriptionYears(affectedYears, userTag);
     await rebuildSubscriberTahunForDetails([oldSummaryTarget, detail], userTag);
 
     res.json({ success: true, message: 'Detail subscription berhasil diupdate.', data: detail });
@@ -747,12 +750,7 @@ export const deleteSubscriptionDetail = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Hapus hanya tersedia untuk detail subscription status OPEN.' });
     }
 
-    const oldSchedule = buildFiscalSchedule({
-      startDate: parseDateOnly(detail.tgl_mulai_tagihan) || new Date(),
-      jumlahBulan: Number(detail.jumlah_bulan || 1),
-      biayaPerBulan: Number(detail.biaya_per_bulan || 0),
-      firstDiskon: Number(detail.diskon || 0),
-    });
+    const affectedYears = getDetailRekapYears(detail);
 
     detail.delete_date = new Date();
     detail.delete_by = userTag;
@@ -760,7 +758,7 @@ export const deleteSubscriptionDetail = async (req: Request, res: Response) => {
     detail.update_by = userTag;
     await detail.save();
 
-    await applyScheduleDeltaToMonthlyRekap(oldSchedule, -1, userTag);
+    await rebuildSubscriptionYears(affectedYears, userTag);
     await rebuildSubscriberTahunForDetails([detail], userTag);
 
     res.json({ success: true, message: 'Detail subscription berhasil dihapus.' });

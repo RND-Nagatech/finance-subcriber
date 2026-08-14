@@ -194,7 +194,7 @@ SubscriptionDetailSchema.index(
   { unique: true }
 );
 SubscriptionDetailSchema.index(
-  { subscriber_id: 1, tgl_mulai_tagihan: 1, delete_date: 1 },
+  { subscriber_id: 1, tgl_mulai_tagihan: 1, program: 1, delete_date: 1 },
   { unique: true }
 );
 
