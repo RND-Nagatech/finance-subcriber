@@ -200,24 +200,22 @@ export default function GroupProgram() {
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-50 hover:to-indigo-50 border-b border-blue-200/50">
                 <TableHead className="px-6 py-4 font-semibold text-gray-900">Group Program</TableHead>
-                <TableHead className="w-48 px-6 py-4 font-semibold text-gray-900">Input By</TableHead>
                 <TableHead className="w-32 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center py-12">Memuat data group program...</TableCell>
+                  <TableCell colSpan={2} className="text-center py-12">Memuat data group program...</TableCell>
                 </TableRow>
               ) : filteredList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center py-12 text-gray-600">Belum ada data group program</TableCell>
+                  <TableCell colSpan={2} className="text-center py-12 text-gray-600">Belum ada data group program</TableCell>
                 </TableRow>
               ) : (
                 displayRows.map((item) => (
                   <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
                     <TableCell className="px-6 py-4 font-medium text-gray-900">{item.group_program}</TableCell>
-                    <TableCell className="w-48 px-6 py-4 text-gray-700">{item.input_by || '-'}</TableCell>
                     <TableCell className="w-32 px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={() => handleOpenModal(item)} className="border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200">
