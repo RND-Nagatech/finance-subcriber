@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { sourceCollection, targetCollection } from './patch_config';
 
 type AnyDoc = Record<string, any>;
 type DetailDoc = AnyDoc & {
@@ -10,10 +11,11 @@ type DetailDoc = AnyDoc & {
   kode_subscriber: string;
 };
 
-const SOURCE_COLLECTION = 'tt_subscription_detail2';
-const DETAIL_COLLECTION = 'tt_subscription_detail';
-const MONTHLY_COLLECTION = 'tt_subscription';
-const SUBSCRIBER_TAHUN_COLLECTION = 'tt_subscriber_tahun';
+const SOURCE_COLLECTION = sourceCollection('tt_subscription_detail');
+const DETAIL_COLLECTION = targetCollection('tt_subscription_detail');
+const MONTHLY_COLLECTION = targetCollection('tt_subscription');
+const SUBSCRIBER_TAHUN_COLLECTION = targetCollection('tt_subscriber_tahun');
+const SUBSCRIBER_COLLECTION = targetCollection('tm_subscriber');
 
 const args = new Set(process.argv.slice(2));
 const APPLY = args.has('--apply');
@@ -454,7 +456,8 @@ async function main() {
   const detailTarget = db.collection(DETAIL_COLLECTION);
   const monthlyTarget = db.collection(MONTHLY_COLLECTION);
   const subscriberTahunTarget = db.collection(SUBSCRIBER_TAHUN_COLLECTION);
-  const subscriberCol = db.collection('tm_subscriber');
+  const subscriberCol = db.collection(SUBSCRIBER_COLLECTION);
+  console.log(`📦 Source: ${SOURCE_COLLECTION} -> Target: ${DETAIL_COLLECTION}, ${MONTHLY_COLLECTION}, ${SUBSCRIBER_TAHUN_COLLECTION}`);
 
   const sourceRows = await source.find({ delete_date: null }).toArray();
   const subscribers = await subscriberCol.find(INCLUDE_INACTIVE_SUBSCRIBER ? {} : {

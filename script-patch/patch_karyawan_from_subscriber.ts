@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { targetCollection } from './patch_config';
 
 type AnyDoc = Record<string, any>;
 type Candidate = {
@@ -85,9 +86,10 @@ const upsertCandidate = (
 async function main() {
   await connectDB();
   const db = mongoose.connection.db;
-  const subscriber = db.collection('tm_subscriber');
-  const karyawan = db.collection('tm_karyawan');
+  const subscriber = db.collection(targetCollection('tm_subscriber'));
+  const karyawan = db.collection(targetCollection('tm_karyawan'));
   const now = new Date();
+  console.log(`📦 Source: ${subscriber.collectionName} -> Target: ${karyawan.collectionName}`);
 
   const subscriberFilter = INCLUDE_INACTIVE_SUBSCRIBER ? {} : { status_aktv: { $ne: false }, delete_date: null };
   const rows = await subscriber

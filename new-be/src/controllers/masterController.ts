@@ -953,11 +953,13 @@ export const listSubscriber = async (req: Request, res: Response) => {
       year,
       all,
       kode_group,
-      status_subscriber
+      status_subscriber,
+      active_only
     } = req.query;
 
     const pageNum = Number(page) || 1;
-    const limitNum = Math.min(Number(limit) || 10, 100);
+    const maxLimit = all ? 10000 : 100;
+    const limitNum = Math.min(Number(limit) || 10, maxLimit);
     const skip = (pageNum - 1) * limitNum;
     const summaryYear = year && String(year) !== 'ALL'
       ? Number(year)
@@ -967,7 +969,7 @@ export const listSubscriber = async (req: Request, res: Response) => {
     // BASE MATCH
     // ===============================
     const baseMatch: any = {};
-    if (!all) baseMatch.status_aktv = true;
+    if (!all || String(active_only || '') === '1') baseMatch.status_aktv = true;
     if (kode_group && String(kode_group) !== 'ALL') {
       baseMatch.kode_group = String(kode_group);
     }

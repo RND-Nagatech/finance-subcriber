@@ -128,7 +128,7 @@ export interface SubscriberDTO {
   no_hp_pic?: string | null;
 }
 export async function fetchSubscribers(all = true): Promise<SubscriberDTO[]> {
-  const params = all ? { all: 1, limit: 10000 } : {};
+  const params = all ? { all: 1, active_only: 1, status_subscriber: 'ALL', limit: 10000 } : {};
   const resp = await axiosInstance.get('/subscriber', { params });
   const payload = resp?.data;
   // Backend returns { data: [...], pagination: {...} }

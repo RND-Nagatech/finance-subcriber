@@ -1,13 +1,14 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { sourceCollection, targetCollection } from './patch_config';
 
 type AnyDoc = Record<string, any>;
 type BulkOperation = { insertOne: { document: AnyDoc } } | { updateOne: { filter: AnyDoc; update: AnyDoc } };
 
-const SOURCE_COLLECTION = 'tm_program2';
-const TARGET_COLLECTION = 'tm_program';
-const GROUP_COLLECTION = 'tm_group_program';
+const SOURCE_COLLECTION = sourceCollection('tm_program');
+const TARGET_COLLECTION = targetCollection('tm_program');
+const GROUP_COLLECTION = targetCollection('tm_group_program');
 
 const args = new Set(process.argv.slice(2));
 const APPLY = args.has('--apply');
@@ -129,6 +130,7 @@ async function main() {
   const target = db.collection(TARGET_COLLECTION);
   const groupTarget = db.collection(GROUP_COLLECTION);
   const now = new Date();
+  console.log(`📦 Source: ${SOURCE_COLLECTION} -> Target: ${TARGET_COLLECTION}`);
 
   const sourceFilter = INCLUDE_INACTIVE ? {} : { status_aktv: { $ne: false }, delete_date: null };
   const sourceRows = await source.find(sourceFilter).toArray();

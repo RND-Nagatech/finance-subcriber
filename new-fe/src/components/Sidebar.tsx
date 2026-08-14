@@ -218,14 +218,25 @@ export default function AppSidebar() {
                 </SidebarMenuItem>
 
                 {user?.role === "superuser" && (
-                  <SidebarMenuItem>
-                    <NavLink to="/users">
-                      <SidebarMenuButton isActive={location.pathname === "/users"} className={menuButtonClass()}>
-                        <Users className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
-                        <span className="font-medium">Users</span>
-                      </SidebarMenuButton>
-                    </NavLink>
-                  </SidebarMenuItem>
+                  <>
+                    <SidebarMenuItem>
+                      <NavLink to="/maintenance/patch">
+                        <SidebarMenuButton isActive={location.pathname === "/maintenance/patch"} className={menuButtonClass()}>
+                          <Database className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                          <span className="font-medium">Patch Data</span>
+                        </SidebarMenuButton>
+                      </NavLink>
+                    </SidebarMenuItem>
+
+                    <SidebarMenuItem>
+                      <NavLink to="/users">
+                        <SidebarMenuButton isActive={location.pathname === "/users"} className={menuButtonClass()}>
+                          <Users className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                          <span className="font-medium">Users</span>
+                        </SidebarMenuButton>
+                      </NavLink>
+                    </SidebarMenuItem>
+                  </>
                 )}
               </SidebarMenu>
             </SidebarGroupContent>

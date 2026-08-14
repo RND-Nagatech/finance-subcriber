@@ -25,6 +25,7 @@ import Rekening from "@/pages/MasterData/Rekening";
 import Subscriber from "@/pages/Subscriber";
 import Subscription from "@/pages/VPS";
 import Users from "@/pages/Users";
+import MaintenancePatch from "@/pages/MaintenancePatch";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,6 +55,7 @@ const App = () => (
           <Route path="/subscriber" element={<ProtectedPage><Subscriber /></ProtectedPage>} />
           <Route path="/subscriber-outstand" element={<ProtectedPage><Subscriber mode="outstand" /></ProtectedPage>} />
           <Route path="/subscription" element={<ProtectedPage><Subscription /></ProtectedPage>} />
+          <Route path="/maintenance/patch" element={<ProtectedPage><MaintenancePatch /></ProtectedPage>} />
           <Route path="/master/group" element={<ProtectedPage><Group /></ProtectedPage>} />
           <Route path="/master/group-program" element={<ProtectedPage><GroupProgram /></ProtectedPage>} />
           <Route path="/master/karyawan" element={<ProtectedPage><Karyawan /></ProtectedPage>} />

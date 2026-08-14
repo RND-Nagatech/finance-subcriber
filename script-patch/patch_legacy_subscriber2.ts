@@ -1,12 +1,16 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { sourceCollection, targetCollection } from './patch_config';
 
 type AnyDoc = Record<string, any>;
 type BulkOperation = { insertOne: { document: AnyDoc } } | { updateOne: { filter: AnyDoc; update: AnyDoc } };
 
-const SOURCE_COLLECTION = 'tm_subscriber2';
-const TARGET_COLLECTION = 'tm_subscriber';
+const SOURCE_COLLECTION = sourceCollection('tm_subscriber');
+const TARGET_COLLECTION = targetCollection('tm_subscriber');
+const TARGET_KARYAWAN_COLLECTION = targetCollection('tm_karyawan');
+const TARGET_PROGRAM_COLLECTION = targetCollection('tm_program');
+const SOURCE_PROGRAM_COLLECTION = sourceCollection('tm_program');
 
 const args = new Set(process.argv.slice(2));
 const APPLY = args.has('--apply');
@@ -200,7 +204,8 @@ async function main() {
   const db = mongoose.connection.db;
   const source = db.collection(SOURCE_COLLECTION);
   const target = db.collection(TARGET_COLLECTION);
-  const karyawan = await db.collection('tm_karyawan')
+  console.log(`📦 Source: ${SOURCE_COLLECTION} -> Target: ${TARGET_COLLECTION}`);
+  const karyawan = await db.collection(TARGET_KARYAWAN_COLLECTION)
     .find({ status_aktv: { $ne: false }, delete_date: null })
     .project({ kode_karyawan: 1, nama_karyawan: 1 })
     .toArray();
@@ -210,11 +215,11 @@ async function main() {
       .filter(([name, kode]) => Boolean(name && kode)) as Array<[string, string]>
   );
   const programRows = [
-    ...await db.collection('tm_program')
+    ...await db.collection(TARGET_PROGRAM_COLLECTION)
       .find({ status_aktv: { $ne: false }, delete_date: null })
       .project({ nama: 1, group_program: 1 })
       .toArray(),
-    ...await db.collection('tm_program2')
+    ...await db.collection(SOURCE_PROGRAM_COLLECTION)
       .find({})
       .project({ nama: 1, group_program: 1 })
       .toArray(),

@@ -14,6 +14,7 @@ import subscriptionRoutes from './routes/subscriptionRoutes';
 import subscriptionVpsAdapterRoutes from './routes/subscriptionVpsAdapterRoutes';
 import subscriptionVpsAvailableRoutes from './routes/subscriptionVpsAvailableRoutes';
 import userRoutes from './routes/userRoutes';
+import maintenanceRoutes from './routes/maintenanceRoutes';
 import { errorLoggerMiddleware } from './middleware/errorLoggerMiddleware';
 
 const app = express();
@@ -62,6 +63,7 @@ app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/tt-vps', subscriptionVpsAdapterRoutes);
 app.use('/api/vps', subscriptionVpsAvailableRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/maintenance', maintenanceRoutes);
 
 // Error logging middleware
 app.use(errorLoggerMiddleware);

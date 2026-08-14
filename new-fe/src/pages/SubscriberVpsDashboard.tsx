@@ -223,6 +223,7 @@ export default function SubscriberVpsDashboard() {
   const subscriptionStep = 500_000_000;
   const subscriptionMinMaxTick = 1_500_000_000;
   const subscriptionMaxTick = Math.max(subscriptionMinMaxTick, Math.ceil(subscriptionMaxSelected / subscriptionStep) * subscriptionStep);
+  const subscriptionChartDomainMax = Math.max(subscriptionMaxTick, Math.ceil((subscriptionMaxSelected * 1.12) / 50_000_000) * 50_000_000);
   const subscriptionTicks = Array.from({ length: Math.floor(subscriptionMaxTick / subscriptionStep) + 1 }, (_, i) => i * subscriptionStep);
 
   const loadImageAsDataURL = (url: string): Promise<{ dataUrl: string; width: number; height: number } | null> => {
@@ -567,7 +568,7 @@ export default function SubscriberVpsDashboard() {
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={subscriptionChartData} margin={{ top: 20, right: 30, left: 55, bottom: 20 }}>
+                <BarChart data={subscriptionChartData} margin={{ top: 46, right: 30, left: 55, bottom: 20 }}>
                   <XAxis
                     dataKey="name"
                     interval={0}
@@ -577,7 +578,7 @@ export default function SubscriberVpsDashboard() {
                     width={70}
                     tickMargin={6}
                     ticks={subscriptionTicks}
-                    domain={[0, subscriptionMaxTick]}
+                    domain={[0, subscriptionChartDomainMax]}
                     allowDecimals={false}
                     tickFormatter={(value) => formatCurrency(Number(value))}
                     fontSize={12}
@@ -599,7 +600,7 @@ export default function SubscriberVpsDashboard() {
                     <LabelList
                       dataKey={selectedSubscriptionKey}
                       position="top"
-                      offset={10}
+                      offset={8}
                       formatter={(value: number) => (isAmountVisible("subscription-bar-labels") ? `Rp ${Number(value || 0).toLocaleString("id-ID")}` : "")}
                       style={{ fontSize: 11, fill: "#374151", fontWeight: 600 }}
                     />

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { targetCollection } from './patch_config';
 
 type AnyDoc = Record<string, any>;
 type BulkOperation = { insertOne: { document: AnyDoc } } | { updateOne: { filter: AnyDoc; update: AnyDoc } };
@@ -143,9 +144,10 @@ const buildCandidate = (namaGroup: string, rows: AnyDoc[], kodeGroup: string, id
 async function main() {
   await connectDB();
   const db = mongoose.connection.db;
-  const subscriber = db.collection('tm_subscriber');
-  const group = db.collection('tm_group');
+  const subscriber = db.collection(targetCollection('tm_subscriber'));
+  const group = db.collection(targetCollection('tm_group'));
   const now = new Date();
+  console.log(`📦 Source: ${subscriber.collectionName} -> Target: ${group.collectionName}`);
 
   const subscriberFilter: AnyDoc = {
     nama_group: { $nin: [null, ''] },
