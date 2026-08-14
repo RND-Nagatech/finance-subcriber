@@ -971,7 +971,24 @@ export const listSubscriber = async (req: Request, res: Response) => {
     const baseMatch: any = {};
     if (!all || String(active_only || '') === '1') baseMatch.status_aktv = true;
     if (kode_group && String(kode_group) !== 'ALL') {
-      baseMatch.kode_group = String(kode_group);
+      const kodeGroupFilter = String(kode_group);
+      const group = await Group.findOne({
+        kode_group: kodeGroupFilter,
+        status_aktv: true,
+        delete_date: null,
+      }).lean();
+
+      baseMatch.$and = [
+        ...(baseMatch.$and || []),
+        {
+          $or: [
+            { kode_group: kodeGroupFilter },
+            ...(group?.nama_group
+              ? [{ kode_group: { $in: [null, ''] }, nama_group: group.nama_group }]
+              : []),
+          ],
+        },
+      ];
     }
 
     const statusSubscriber = String(status_subscriber || 'AKTIF').toUpperCase();

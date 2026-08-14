@@ -4,7 +4,10 @@ import path from 'path';
 import { targetCollection } from './patch_config';
 
 type AnyDoc = Record<string, any>;
-type BulkOperation = { insertOne: { document: AnyDoc } } | { updateOne: { filter: AnyDoc; update: AnyDoc } };
+type BulkOperation =
+  | { insertOne: { document: AnyDoc } }
+  | { updateOne: { filter: AnyDoc; update: AnyDoc } }
+  | { updateMany: { filter: AnyDoc; update: AnyDoc } };
 
 type GroupCandidate = {
   _id: mongoose.Types.ObjectId;
@@ -323,7 +326,7 @@ async function main() {
 
     const rawNames = [...candidate.rawNames];
     subscriberOps.push({
-      updateOne: {
+      updateMany: {
         filter: { nama_group: { $in: rawNames } },
         update: {
           $set: {

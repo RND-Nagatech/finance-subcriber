@@ -52,8 +52,8 @@ const App = () => (
           <Route path="/register" element={<Register />} />
 
           <Route path="/dashboard" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
-          <Route path="/subscriber" element={<ProtectedPage><Subscriber /></ProtectedPage>} />
-          <Route path="/subscriber-outstand" element={<ProtectedPage><Subscriber mode="outstand" /></ProtectedPage>} />
+          <Route path="/subscriber" element={<ProtectedPage><Subscriber key="subscriber" /></ProtectedPage>} />
+          <Route path="/subscriber-outstand" element={<ProtectedPage><Subscriber key="subscriber-outstand" mode="outstand" /></ProtectedPage>} />
           <Route path="/subscription" element={<ProtectedPage><Subscription /></ProtectedPage>} />
           <Route path="/maintenance/patch" element={<ProtectedPage><MaintenancePatch /></ProtectedPage>} />
           <Route path="/master/group" element={<ProtectedPage><Group /></ProtectedPage>} />
