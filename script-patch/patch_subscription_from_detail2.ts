@@ -7,8 +7,12 @@ type AnyDoc = Record<string, any>;
 type DetailDoc = AnyDoc & {
   _patch_source?: 'legacy' | 'synthetic';
   _patch_reason?: string;
-  subscriber_id: mongoose.Types.ObjectId;
-  kode_subscriber: string;
+  subscriber_id: mongoose.Types.ObjectId | null;
+  kode_subscriber: string | null;
+  patch_match_status?: 'MATCHED' | 'UNVERIFIED' | 'VERIFIED';
+  patch_match_reason?: string | null;
+  patch_source_toko?: string | null;
+  patch_source_program?: string | null;
 };
 
 const SOURCE_COLLECTION = sourceCollection('tt_subscription_detail');
@@ -22,6 +26,7 @@ const APPLY = args.has('--apply');
 const REPLACE_TARGET = args.has('--replace-target');
 const INCLUDE_INACTIVE_SUBSCRIBER = !args.has('--active-only');
 const PATCH_SUBSCRIBER_DATES = !args.has('--skip-subscriber-dates');
+const FILL_MISSING_INACTIVE = args.has('--fill-missing-inactive');
 
 const USER_TAG = 'patch-subscription-from-detail2';
 
@@ -165,9 +170,41 @@ const normalizeLooseName = (value: unknown) => normalizeKey(value)
   .replace(/\s+/g, ' ')
   .trim();
 
+const stripParenthetical = (value: unknown) => normalizeKey(value)
+  .replace(/\([^)]*\)/g, ' ')
+  .replace(/[^A-Z0-9]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const getParentheticalTerms = (value: unknown) => {
+  const text = normalizeKey(value);
+  const matches = [...text.matchAll(/\(([^)]*)\)/g)];
+  return matches.flatMap((match) => getNameTokens(match[1]).filter((token) => token.length >= 3));
+};
+
 const getNameTokens = (value: unknown) => normalizeLooseName(value)
   .split(' ')
   .filter((token) => token.length >= 2);
+
+const branchTokens = new Set(['CAB', 'CABANG', 'PUSAT', 'HQ', 'BACKUP']);
+
+const hasBranchToken = (value: unknown) => getNameTokens(value).some((token) => branchTokens.has(token));
+
+const canOverrideInactiveExact = (row: AnyDoc, subscriber: AnyDoc) => {
+  const sourceBase = stripParenthetical(row.toko);
+  const targetBase = stripParenthetical(subscriber.toko);
+  if (sourceBase && targetBase && sourceBase === targetBase) return true;
+
+  const sourceTokens = getStoreTokens(row.toko);
+  const targetTokens = getStoreTokens(subscriber.toko);
+  if (sourceTokens.length < 2 || targetTokens.length < 2) return false;
+
+  const sourceSet = new Set(sourceTokens);
+  const targetSet = new Set(targetTokens);
+  const sourceAllInTarget = sourceTokens.every((token) => targetSet.has(token));
+  const targetAllInSource = targetTokens.every((token) => sourceSet.has(token));
+  return sourceAllInTarget || targetAllInSource;
+};
 
 const namesLookRelated = (left: unknown, right: unknown) => {
   const leftName = normalizeLooseName(left);
@@ -209,6 +246,32 @@ const nameSimilarityScore = (left: unknown, right: unknown) => {
   score += reverseShared.length * 20;
   score -= Math.abs(leftTokens.length - rightTokens.length) * 5;
   return score;
+};
+
+const getStoreTokens = (value: unknown) => getNameTokens(value).filter((token) => token.length >= 3);
+
+const hasSubsetTokens = (sourceTokens: string[], targetTokens: string[]) => {
+  if (sourceTokens.length < 2) return false;
+  const targetSet = new Set(targetTokens);
+  return sourceTokens.every((token) => targetSet.has(token));
+};
+
+const hasStrongStoreNameMatch = (left: unknown, right: unknown) => {
+  const leftName = normalizeLooseName(left);
+  const rightName = normalizeLooseName(right);
+  if (!leftName || !rightName) return false;
+  if (leftName === rightName) return true;
+
+  const leftTokens = getStoreTokens(left);
+  const rightTokens = getStoreTokens(right);
+  if (!leftTokens.length || !rightTokens.length) return false;
+
+  if (hasSubsetTokens(leftTokens, rightTokens)) return true;
+  if (hasSubsetTokens(rightTokens, leftTokens)) return true;
+
+  const rightSet = new Set(rightTokens);
+  const shared = leftTokens.filter((token) => rightSet.has(token));
+  return shared.length >= 2 && shared.length >= Math.min(leftTokens.length, rightTokens.length) - 1;
 };
 
 const normalizePhone = (value: unknown) => cleanString(value)?.replace(/\D+/g, '') || '';
@@ -254,6 +317,34 @@ const programScore = (rowProgram: unknown, subscriberProgram: unknown) => {
   return namesLookRelated(source, target) ? 80 : 0;
 };
 
+const subscriberDateValues = (subscriber: AnyDoc) => [
+  subscriber.tanggal,
+  subscriber.tgl_implementasi,
+  subscriber.tgl_dijalankan,
+  subscriber.input_date,
+].map(normalizeYmd).filter(Boolean) as string[];
+
+const dateAffinityScore = (row: AnyDoc, subscriber: AnyDoc) => {
+  const source = normalizeYmd(row.start || row.tgl_mulai_tagihan);
+  if (!source) return 0;
+  const sourceDate = parseYmd(source);
+  if (!sourceDate) return 0;
+
+  let best = 0;
+  for (const target of subscriberDateValues(subscriber)) {
+    if (source === target) best = Math.max(best, 220);
+    if (source.slice(5) === target.slice(5)) best = Math.max(best, 180);
+
+    const targetDate = parseYmd(target);
+    if (!targetDate) continue;
+    const diffDays = Math.abs(sourceDate.getTime() - targetDate.getTime()) / 86400000;
+    if (diffDays <= 7) best = Math.max(best, 140);
+    else if (diffDays <= 31) best = Math.max(best, 70);
+  }
+
+  return best;
+};
+
 const isSubscriberActive = (row: AnyDoc) => {
   if (!row || row.delete_date) return false;
   if (row.status_aktv === false) return false;
@@ -273,33 +364,66 @@ const chooseSubscriber = (candidates: AnyDoc[]) => {
 };
 
 const chooseLooseSubscriber = (row: AnyDoc, subscribers: AnyDoc[]) => {
-  const rowNames = getRowNames(row);
+  const rowNames = [row.toko].filter(cleanString);
   const rowPhones = getRowPhones(row);
   const rowAddresses = getRowAddresses(row);
   const rowDaerah = normalizeKey(row.daerah || row.doku_payment?.customer?.city);
+  const rowBaseName = stripParenthetical(row.toko);
+  const rowParentheticalTerms = getParentheticalTerms(row.toko);
 
   const ranked = subscribers
     .map((subscriber) => {
-      const bestNameScore = Math.max(...rowNames.map((name) => nameSimilarityScore(name, subscriber.toko)), 0);
+      const subscriberBaseName = stripParenthetical(subscriber.toko);
+      const subscriberParentheticalTerms = getParentheticalTerms(subscriber.toko);
+      const baseNameScore = rowBaseName && subscriberBaseName && rowBaseName === subscriberBaseName ? 420 : 0;
+      const extraBranchPenalty = !hasBranchToken(row.toko) && hasBranchToken(subscriber.toko) ? 260 : 0;
+      const conflictingParentheticalPenalty = rowParentheticalTerms.length
+        && subscriberParentheticalTerms.length
+        && !rowParentheticalTerms.some((term) => subscriberParentheticalTerms.includes(term))
+        ? 220
+        : 0;
+      const nameMatches = rowNames.map((name) => ({
+        score: nameSimilarityScore(name, subscriber.toko),
+        strong: hasStrongStoreNameMatch(name, subscriber.toko),
+      }));
+      const bestNameScore = Math.max(...nameMatches.map((match) => match.score), 0);
+      const hasStrongNameMatch = nameMatches.some((match) => match.strong);
       const sourcePhones = new Set(rowPhones);
       const hasPhoneMatch = getSubscriberPhones(subscriber).some((phone) => sourcePhones.has(phone));
       const addressScore = Math.max(...rowAddresses.map((address) => tokenOverlapScore(address, subscriber.alamat)), 0);
       const daerahScore = rowDaerah && normalizeKey(subscriber.daerah) === rowDaerah ? 150 : 0;
+      const dateScore = dateAffinityScore(row, subscriber);
       const score = bestNameScore
+        + baseNameScore
         + programScore(row.program, subscriber.program)
         + daerahScore
         + addressScore
+        + dateScore
         + (hasPhoneMatch ? 300 : 0)
-        + (isSubscriberActive(subscriber) ? 20 : 0);
-      return { subscriber, score, bestNameScore, addressScore, daerahScore, hasPhoneMatch };
+        + (isSubscriberActive(subscriber) ? 20 : 0)
+        - conflictingParentheticalPenalty
+        - extraBranchPenalty;
+      return {
+        subscriber,
+        score,
+        bestNameScore,
+        baseNameScore,
+        addressScore,
+        daerahScore,
+        dateScore,
+        conflictingParentheticalPenalty,
+        extraBranchPenalty,
+        hasPhoneMatch,
+        hasStrongNameMatch,
+      };
     })
-    .filter((item) => item.score >= 250 && (item.bestNameScore >= 80 || item.hasPhoneMatch || item.addressScore >= 60))
+    .filter((item) => item.score >= 250 && (item.hasStrongNameMatch || item.baseNameScore > 0 || item.hasPhoneMatch || item.addressScore >= 90))
     .sort((a, b) => b.score - a.score);
 
   if (!ranked.length) return { subscriber: null as AnyDoc | null, reason: 'unmatched' };
 
   const [first, second] = ranked;
-  if (!second || first.score > second.score) {
+  if (!second || first.score - second.score >= 120) {
     return { subscriber: first.subscriber, reason: `loose-score:${first.score}` };
   }
 
@@ -319,15 +443,97 @@ const pickCurrentUnpaidRows = (rows: AnyDoc[]) => {
   if (!inactiveIndexes.length) return { selected: [unpaid[0]], notes };
 
   notes.push('punya segmen nonaktif di data lama');
+  const firstInactiveIndex = inactiveIndexes[0];
   const lastInactiveIndex = inactiveIndexes[inactiveIndexes.length - 1];
   const reactivated = unpaid.slice(lastInactiveIndex + 1).find((row) => row.is_active !== false);
   if (reactivated) {
-    notes.push('dipilih tagihan aktif pertama setelah nonaktif terakhir');
+    notes.push('ditemukan tagihan aktif setelah blok nonaktif');
     return { selected: [reactivated], notes };
   }
 
-  notes.push('subscriber terlihat nonaktif; disimpan marker nonaktif terakhir');
-  return { selected: [unpaid[lastInactiveIndex]], notes };
+  notes.push('subscriber terlihat nonaktif; disimpan marker awal nonaktif');
+  return { selected: [unpaid[firstInactiveIndex]], notes };
+};
+
+const selectLegacyRowsForPatch = (rows: AnyDoc[]) => {
+  const selected: AnyDoc[] = [];
+  const notes: string[] = [];
+  let skipGeneratedOpenAfterInactive = false;
+  let suppressedSyntheticOpen = false;
+  let skippedInactiveRows = 0;
+  let skippedOpenRows = 0;
+  let skippedExtraOpenRows = 0;
+  let hasCurrentUnpaidRow = false;
+
+  const findNextAfterInactiveBlock = (startIndex: number) => {
+    for (let index = startIndex + 1; index < rows.length; index += 1) {
+      if (rows[index].is_active !== false) return rows[index];
+    }
+    return null;
+  };
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const status = normalizeStatus(row.status);
+
+    if (row.is_active === false && status !== 'DONE') {
+      const inactiveBlock: AnyDoc[] = [row];
+      while (
+        index + 1 < rows.length
+        && rows[index + 1].is_active === false
+        && normalizeStatus(rows[index + 1].status) !== 'DONE'
+      ) {
+        index += 1;
+        inactiveBlock.push(rows[index]);
+      }
+
+      const firstInactive = inactiveBlock[0];
+      const next = findNextAfterInactiveBlock(index);
+      const nextStatus = next ? normalizeStatus(next.status) : null;
+      skippedInactiveRows += Math.max(0, inactiveBlock.length - 1);
+      selected.push(firstInactive);
+
+      if (nextStatus === 'OPEN') {
+        skipGeneratedOpenAfterInactive = true;
+        suppressedSyntheticOpen = true;
+        continue;
+      }
+
+      if (nextStatus === 'DONE') {
+        skipGeneratedOpenAfterInactive = false;
+        continue;
+      }
+
+      skipGeneratedOpenAfterInactive = false;
+      continue;
+    }
+
+    if (skipGeneratedOpenAfterInactive && status === 'OPEN') {
+      skippedOpenRows += 1;
+      suppressedSyntheticOpen = true;
+      continue;
+    }
+
+    if (row.is_active !== false && (status === 'OPEN' || status === 'PROCESS')) {
+      if (hasCurrentUnpaidRow) {
+        skippedExtraOpenRows += 1;
+        suppressedSyntheticOpen = true;
+        continue;
+      }
+      hasCurrentUnpaidRow = true;
+    }
+
+    selected.push(row);
+    if (status === 'DONE') {
+      skipGeneratedOpenAfterInactive = false;
+    }
+  }
+
+  if (skippedInactiveRows) notes.push(`skip ${skippedInactiveRows} baris nonaktif lama; marker awal nonaktif tetap disimpan`);
+  if (skippedOpenRows) notes.push(`skip ${skippedOpenRows} baris OPEN legacy setelah nonaktif`);
+  if (skippedExtraOpenRows) notes.push(`skip ${skippedExtraOpenRows} baris tagihan berjalan legacy tambahan; hanya tagihan berjalan pertama yang disimpan`);
+
+  return { selected, notes, suppressedSyntheticOpen, skippedInactiveRows, skippedOpenRows, skippedExtraOpenRows };
 };
 
 const cloneInvoiceMeta = (row: AnyDoc, start: string, tempo: string) => {
@@ -347,7 +553,9 @@ const cloneDokuPayment = (row: AnyDoc) => row.doku_payment
   ? JSON.parse(JSON.stringify(row.doku_payment))
   : undefined;
 
-const buildDetailDoc = (row: AnyDoc, subscriber: AnyDoc, reason: string): DetailDoc | null => {
+const isUnverifiedDetail = (detail: DetailDoc) => detail.patch_match_status === 'UNVERIFIED' || !detail.subscriber_id;
+
+const buildDetailDoc = (row: AnyDoc, subscriber: AnyDoc | null, reason: string): DetailDoc | null => {
   const startDate = parseYmd(row.start);
   if (!startDate) return null;
   const months = Math.max(1, toNumber(row.bulan, 1));
@@ -365,18 +573,18 @@ const buildDetailDoc = (row: AnyDoc, subscriber: AnyDoc, reason: string): Detail
   return {
     subscription_id: null,
     chain_id: cleanString(row.chain_id) || `legacy-${String(row._id)}`,
-    subscriber_id: subscriber._id,
-    kode_subscriber: cleanString(subscriber.kode) || '',
-    toko: cleanString(row.toko) || subscriber.toko,
-    program: cleanString(row.program) || subscriber.program,
-    daerah: cleanString(row.daerah) || subscriber.daerah || null,
+    subscriber_id: subscriber?._id || null,
+    kode_subscriber: subscriber ? (cleanString(subscriber.kode) || null) : null,
+    toko: cleanString(row.toko) || subscriber?.toko || '-',
+    program: cleanString(row.program) || subscriber?.program || '-',
+    daerah: cleanString(row.daerah) || subscriber?.daerah || null,
     periode: toPeriode(startDate),
     tahun: getFiscalYear(startDate),
     tgl_mulai_tagihan: start,
     jumlah_bulan: months,
     tgl_berakhir_langganan: tempoYmd,
     tgl_bayar_selanjutnya: formatYmd(nextStart),
-    biaya_per_bulan: Math.max(0, toNumber(row.harga, subscriber.biaya || 0)),
+    biaya_per_bulan: Math.max(0, toNumber(row.harga, subscriber?.biaya || 0)),
     jumlah_biaya: jumlahBiaya,
     diskon,
     diskon_percent: diskonPercent,
@@ -396,6 +604,10 @@ const buildDetailDoc = (row: AnyDoc, subscriber: AnyDoc, reason: string): Detail
     delete_by: null,
     _patch_source: 'legacy',
     _patch_reason: reason,
+    patch_match_status: subscriber ? 'MATCHED' : 'UNVERIFIED',
+    patch_match_reason: reason,
+    patch_source_toko: cleanString(row.toko),
+    patch_source_program: cleanString(row.program),
   };
 };
 
@@ -439,6 +651,47 @@ const buildSyntheticOpen = (latestDone: DetailDoc): DetailDoc | null => {
     delete_by: null,
     _patch_source: 'synthetic',
     _patch_reason: 'synthetic-current-open-after-last-done',
+  };
+};
+
+const buildSyntheticInactiveGap = (previous: DetailDoc, start: Date): DetailDoc => {
+  const tempo = getTempo(start, previous.jumlah_bulan);
+  const nextStart = addDays(tempo, 1);
+  const jumlahBiaya = previous.biaya_per_bulan * previous.jumlah_bulan;
+  const now = new Date();
+
+  return {
+    subscription_id: null,
+    chain_id: previous.chain_id,
+    subscriber_id: previous.subscriber_id,
+    kode_subscriber: previous.kode_subscriber,
+    toko: previous.toko,
+    program: previous.program,
+    daerah: previous.daerah || null,
+    periode: toPeriode(start),
+    tahun: getFiscalYear(start),
+    tgl_mulai_tagihan: formatYmd(start),
+    jumlah_bulan: previous.jumlah_bulan,
+    tgl_berakhir_langganan: formatYmd(tempo),
+    tgl_bayar_selanjutnya: formatYmd(nextStart),
+    biaya_per_bulan: previous.biaya_per_bulan,
+    jumlah_biaya: jumlahBiaya,
+    diskon: 0,
+    diskon_percent: 0,
+    total_biaya: jumlahBiaya,
+    is_active: false,
+    status: 'OPEN',
+    tgl_lunas: null,
+    metode_bayar: null,
+    keterangan: 'Dibuat otomatis dari patch data lama untuk menutup gap nonaktif',
+    input_date: now,
+    update_date: now,
+    delete_date: null,
+    input_by: USER_TAG,
+    update_by: USER_TAG,
+    delete_by: null,
+    _patch_source: 'synthetic',
+    _patch_reason: 'synthetic-inactive-gap',
   };
 };
 
@@ -490,12 +743,20 @@ async function main() {
     chains: rowsByChain.size,
     matchedChains: 0,
     unmatchedChains: 0,
+    unverifiedRows: 0,
     invalidDateRows: 0,
     legacyDoneRows: 0,
     legacyProcessRows: 0,
     selectedCurrentRows: 0,
+    preservedInactiveRows: 0,
+    skippedInactiveRows: 0,
+    skippedOpenRowsAfterInactive: 0,
+    skippedExtraOpenRows: 0,
     syntheticOpenRows: 0,
+    syntheticInactiveGapRows: 0,
     duplicateRowsSkipped: 0,
+    sequenceGapsDetected: 0,
+    sequenceOverlapsDetected: 0,
     wouldInsertDetails: 0,
     wouldInsertMonthly: 0,
     wouldInsertSubscriberTahun: 0,
@@ -506,16 +767,25 @@ async function main() {
     updatedSubscriberDates: 0,
     notes: {
       chainWithInactiveSegments: 0,
+      chainWithSkippedLegacyGeneratedOpen: 0,
+      chainWithSkippedExtraOpenRows: 0,
       chainWithSyntheticOpen: 0,
+      chainWithSyntheticInactiveGap: 0,
       chainWithSkippedDuplicate: 0,
       chainWithLooseMatch: 0,
     },
     examples: {
       unmatched: [] as AnyDoc[],
+      unverified: [] as AnyDoc[],
       invalidDate: [] as AnyDoc[],
       inactiveSegments: [] as AnyDoc[],
+      skippedLegacyGeneratedOpen: [] as AnyDoc[],
       duplicateSkipped: [] as AnyDoc[],
       syntheticOpen: [] as AnyDoc[],
+      looseMatches: [] as AnyDoc[],
+      sequenceGaps: [] as AnyDoc[],
+      sequenceOverlaps: [] as AnyDoc[],
+      syntheticInactiveGap: [] as AnyDoc[],
     },
   };
 
@@ -524,6 +794,7 @@ async function main() {
   subscribers.forEach((subscriber) => subscriberById.set(String(subscriber._id), subscriber));
   const latestDoneBySubscriber = new Map<string, DetailDoc>();
   const hasCurrentBySubscriber = new Set<string>();
+  const suppressSyntheticBySubscriber = new Set<string>();
 
   for (const [chainId, rows] of rowsByChain) {
     rows.sort((a, b) => (normalizeYmd(a.start) || String(a.start)).localeCompare(normalizeYmd(b.start) || String(b.start)));
@@ -536,11 +807,6 @@ async function main() {
       matchReason = `toko:${picked.reason}`;
     }
     if (!picked.subscriber) {
-      picked = chooseLooseSubscriber(first, subscribers);
-      matchReason = picked.subscriber ? picked.reason : `loose:${picked.reason}`;
-    }
-
-    if (!picked.subscriber) {
       stats.unmatchedChains += 1;
       if (stats.examples.unmatched.length < 12) {
         stats.examples.unmatched.push({
@@ -552,14 +818,29 @@ async function main() {
           statuses: rows.map((row) => row.status).slice(0, 12),
         });
       }
-      continue;
+      matchReason = `unverified:strict-name-not-found:${picked.reason}`;
+    } else {
+      stats.matchedChains += 1;
     }
-    stats.matchedChains += 1;
-    if (matchReason.startsWith('loose-')) stats.notes.chainWithLooseMatch += 1;
+    if (picked.subscriber && (matchReason.startsWith('loose-') || matchReason.startsWith('active-loose-'))) {
+      stats.notes.chainWithLooseMatch += 1;
+      if (stats.examples.looseMatches.length < 20) {
+        stats.examples.looseMatches.push({
+          chain_id: chainId,
+          source_toko: first.toko,
+          source_program: first.program,
+          target_id: String(picked.subscriber._id),
+          target_kode: picked.subscriber.kode,
+          target_toko: picked.subscriber.toko,
+          target_program: picked.subscriber.program,
+          reason: matchReason,
+        });
+      }
+    }
 
-    const doneRows = rows.filter((row) => normalizeStatus(row.status) === 'DONE');
-    const activeProcessRows = rows.filter((row) => normalizeStatus(row.status) === 'PROCESS' && row.is_active !== false);
-    const { selected, notes } = pickCurrentUnpaidRows(rows);
+    const { selected: currentSelection, notes } = pickCurrentUnpaidRows(rows);
+    const legacySelection = selectLegacyRowsForPatch(rows);
+    const selectedRows = legacySelection.selected;
     if (notes.length) {
       stats.notes.chainWithInactiveSegments += 1;
       if (stats.examples.inactiveSegments.length < 12) {
@@ -568,15 +849,31 @@ async function main() {
           toko: first.toko,
           program: first.program,
           notes,
-          selected_start: selected[0]?.start,
+          selected_start: currentSelection[0]?.start,
           rows: rows.map((row) => ({ start: row.start, status: row.status, is_active: row.is_active })),
         });
       }
     }
-
-    const selectedById = new Set(selected.map((row) => String(row._id)));
-    const processRows = activeProcessRows.filter((row) => !selectedById.has(String(row._id)));
-    const selectedRows = [...doneRows, ...processRows, ...selected];
+    if (legacySelection.skippedInactiveRows || legacySelection.skippedOpenRows || legacySelection.skippedExtraOpenRows) {
+      stats.skippedInactiveRows += legacySelection.skippedInactiveRows;
+      stats.skippedOpenRowsAfterInactive += legacySelection.skippedOpenRows;
+      stats.skippedExtraOpenRows += legacySelection.skippedExtraOpenRows;
+      stats.notes.chainWithSkippedLegacyGeneratedOpen += 1;
+      if (legacySelection.skippedExtraOpenRows) stats.notes.chainWithSkippedExtraOpenRows += 1;
+      if (stats.examples.skippedLegacyGeneratedOpen.length < 12) {
+        stats.examples.skippedLegacyGeneratedOpen.push({
+          chain_id: chainId,
+          toko: first.toko,
+          program: first.program,
+          notes: legacySelection.notes,
+          skipped_inactive: legacySelection.skippedInactiveRows,
+          skipped_open: legacySelection.skippedOpenRows,
+          skipped_extra_open: legacySelection.skippedExtraOpenRows,
+          kept: selectedRows.map((row) => ({ start: row.start, status: row.status, is_active: row.is_active })),
+          rows: rows.map((row) => ({ start: row.start, status: row.status, is_active: row.is_active })),
+        });
+      }
+    }
     let latestDoneDetail: DetailDoc | null = null;
     for (const row of selectedRows) {
       const detail = buildDetailDoc(row, picked.subscriber, matchReason);
@@ -588,9 +885,26 @@ async function main() {
         continue;
       }
       candidateDetails.push(detail);
+      if (isUnverifiedDetail(detail)) {
+        stats.unverifiedRows += 1;
+        if (stats.examples.unverified.length < 20) {
+          stats.examples.unverified.push({
+            chain_id: chainId,
+            toko: detail.toko,
+            program: detail.program,
+            start: detail.tgl_mulai_tagihan,
+            status: detail.status,
+            reason: matchReason,
+          });
+        }
+        continue;
+      }
       if (detail.status === 'DONE') {
         stats.legacyDoneRows += 1;
         if (!latestDoneDetail || detail.tgl_mulai_tagihan > latestDoneDetail.tgl_mulai_tagihan) latestDoneDetail = detail;
+      } else if (detail.is_active === false) {
+        stats.preservedInactiveRows += 1;
+        hasCurrentBySubscriber.add(String(detail.subscriber_id));
       } else if (detail.status === 'PROCESS') {
         stats.legacyProcessRows += 1;
         hasCurrentBySubscriber.add(String(detail.subscriber_id));
@@ -602,6 +916,7 @@ async function main() {
 
     if (latestDoneDetail) {
       const subscriberId = String(latestDoneDetail.subscriber_id);
+      if (legacySelection.suppressedSyntheticOpen) suppressSyntheticBySubscriber.add(subscriberId);
       const current = latestDoneBySubscriber.get(subscriberId);
       if (!current || latestDoneDetail.tgl_mulai_tagihan > current.tgl_mulai_tagihan) {
         latestDoneBySubscriber.set(subscriberId, latestDoneDetail);
@@ -611,7 +926,7 @@ async function main() {
 
   for (const [subscriberId, latestDoneDetail] of latestDoneBySubscriber) {
     const subscriber = subscriberById.get(subscriberId);
-    if (hasCurrentBySubscriber.has(subscriberId) || !isSubscriberActive(subscriber)) continue;
+    if (hasCurrentBySubscriber.has(subscriberId) || suppressSyntheticBySubscriber.has(subscriberId) || !isSubscriberActive(subscriber)) continue;
     const synthetic = buildSyntheticOpen(latestDoneDetail);
     if (synthetic) {
       candidateDetails.push(synthetic);
@@ -630,7 +945,8 @@ async function main() {
 
   const finalBySubscriberStart = new Map<string, DetailDoc>();
   for (const detail of candidateDetails) {
-    const key = `${String(detail.subscriber_id)}||${detail.tgl_mulai_tagihan}||${normalizeKey(detail.program)}||null`;
+    const relationKey = detail.subscriber_id ? `sub:${String(detail.subscriber_id)}` : `chain:${detail.chain_id}`;
+    const key = `${relationKey}||${detail.tgl_mulai_tagihan}||${normalizeKey(detail.program)}||null`;
     const existing = finalBySubscriberStart.get(key);
     if (!existing) {
       finalBySubscriberStart.set(key, detail);
@@ -654,11 +970,90 @@ async function main() {
     }
   }
 
-  const finalDetails = [...finalBySubscriberStart.values()]
+  const finalDetailsBeforeGaps = [...finalBySubscriberStart.values()]
     .sort((a, b) => a.tgl_mulai_tagihan.localeCompare(b.tgl_mulai_tagihan) || a.toko.localeCompare(b.toko));
+
+  const finalDetails = [...finalDetailsBeforeGaps];
+  const detailsBySubscriberProgram = new Map<string, DetailDoc[]>();
+  for (const detail of finalDetailsBeforeGaps) {
+    if (isUnverifiedDetail(detail)) continue;
+    const key = `${String(detail.subscriber_id)}||${normalizeKey(detail.program)}`;
+    if (!detailsBySubscriberProgram.has(key)) detailsBySubscriberProgram.set(key, []);
+    detailsBySubscriberProgram.get(key)?.push(detail);
+  }
+
+  for (const rows of detailsBySubscriberProgram.values()) {
+    rows.sort((a, b) => a.tgl_mulai_tagihan.localeCompare(b.tgl_mulai_tagihan));
+    for (let index = 0; index < rows.length - 1; index += 1) {
+      const current = rows[index];
+      const next = rows[index + 1];
+      const expectedNext = current.tgl_bayar_selanjutnya;
+      if (!expectedNext || expectedNext === next.tgl_mulai_tagihan) continue;
+      if (expectedNext > next.tgl_mulai_tagihan) {
+        stats.sequenceOverlapsDetected += 1;
+        if (stats.examples.sequenceOverlaps.length < 12) {
+          stats.examples.sequenceOverlaps.push({
+            subscriber_id: String(current.subscriber_id),
+            toko: current.toko,
+            program: current.program,
+            current_start: current.tgl_mulai_tagihan,
+            current_next: expectedNext,
+            next_start: next.tgl_mulai_tagihan,
+          });
+        }
+        continue;
+      }
+
+      stats.sequenceGapsDetected += 1;
+      if (stats.examples.sequenceGaps.length < 12) {
+        stats.examples.sequenceGaps.push({
+          subscriber_id: String(current.subscriber_id),
+          toko: current.toko,
+          program: current.program,
+          current_start: current.tgl_mulai_tagihan,
+          expected_next: expectedNext,
+          actual_next: next.tgl_mulai_tagihan,
+          current_status: current.status,
+          current_is_active: current.is_active,
+          next_status: next.status,
+          next_is_active: next.is_active,
+        });
+      }
+
+      if (!FILL_MISSING_INACTIVE) continue;
+      let cursor = parseYmd(expectedNext);
+      const nextStart = parseYmd(next.tgl_mulai_tagihan);
+      let guard = 0;
+      while (cursor && nextStart && cursor < nextStart && guard < 36) {
+        const synthetic = buildSyntheticInactiveGap(current, cursor);
+        const syntheticKey = `${String(synthetic.subscriber_id)}||${synthetic.tgl_mulai_tagihan}||${normalizeKey(synthetic.program)}||null`;
+        if (!finalBySubscriberStart.has(syntheticKey)) {
+          finalBySubscriberStart.set(syntheticKey, synthetic);
+          finalDetails.push(synthetic);
+          stats.syntheticInactiveGapRows += 1;
+          stats.notes.chainWithSyntheticInactiveGap += 1;
+          if (stats.examples.syntheticInactiveGap.length < 12) {
+            stats.examples.syntheticInactiveGap.push({
+              subscriber_id: String(synthetic.subscriber_id),
+              toko: synthetic.toko,
+              program: synthetic.program,
+              start: synthetic.tgl_mulai_tagihan,
+              before_start: current.tgl_mulai_tagihan,
+              next_existing_start: next.tgl_mulai_tagihan,
+            });
+          }
+        }
+        cursor = parseYmd(synthetic.tgl_bayar_selanjutnya);
+        guard += 1;
+      }
+    }
+  }
+
+  finalDetails.sort((a, b) => a.tgl_mulai_tagihan.localeCompare(b.tgl_mulai_tagihan) || a.toko.localeCompare(b.toko));
 
   const hasLaterActiveUnpaid = (detail: DetailDoc) => finalDetails.some((other) => (
     other !== detail
+    && !isUnverifiedDetail(other)
     && String(other.subscriber_id) === String(detail.subscriber_id)
     && other.status !== 'DONE'
     && other.is_active !== false
@@ -683,6 +1078,7 @@ async function main() {
   };
 
   for (const detail of finalDetails) {
+    if (isUnverifiedDetail(detail)) continue;
     if (detail.status === 'DONE') {
       addMonthly(detail.periode, detail.tahun, {
         estimasi: detail.total_biaya,
@@ -699,7 +1095,7 @@ async function main() {
     }
 
     if (detail.is_active === false) continue;
-    if (detail.status === 'PROCESS' && hasLaterActiveUnpaid(detail)) {
+    if (hasLaterActiveUnpaid(detail)) {
       addMonthly(detail.periode, detail.tahun, {
         estimasi: detail.total_biaya,
         total_subscriber_estimasi: 1,
@@ -736,6 +1132,7 @@ async function main() {
 
   const subscriberYearMap = new Map<string, AnyDoc>();
   const addSubscriberYear = (detail: DetailDoc, tahun: number, values: Partial<AnyDoc>) => {
+    if (isUnverifiedDetail(detail)) return;
     const key = `${String(detail.subscriber_id)}||${tahun}`;
     const subscriber = subscriberById.get(String(detail.subscriber_id)) || {};
     const current = subscriberYearMap.get(key) || {
@@ -765,12 +1162,13 @@ async function main() {
   };
 
   for (const detail of finalDetails) {
+    if (isUnverifiedDetail(detail)) continue;
     if (detail.status === 'DONE') {
       addSubscriberYear(detail, detail.tahun, { tagihan_terbayar: detail.total_biaya });
       continue;
     }
     if (detail.is_active === false) continue;
-    if (detail.status === 'PROCESS' && hasLaterActiveUnpaid(detail)) {
+    if (hasLaterActiveUnpaid(detail)) {
       addSubscriberYear(detail, detail.tahun, { sisa_tagihan: detail.total_biaya });
       continue;
     }
@@ -786,6 +1184,7 @@ async function main() {
   if (PATCH_SUBSCRIBER_DATES) {
     const latestDoneBySubscriber = new Map<string, DetailDoc>();
     for (const detail of finalDetails) {
+      if (isUnverifiedDetail(detail)) continue;
       if (detail.status !== 'DONE') continue;
       const key = String(detail.subscriber_id);
       const current = latestDoneBySubscriber.get(key);
@@ -823,9 +1222,10 @@ async function main() {
       ]);
     }
     await detailTarget.dropIndex('subscriber_id_1_tgl_mulai_tagihan_1_delete_date_1').catch(() => undefined);
+    await detailTarget.dropIndex('subscriber_id_1_tgl_mulai_tagihan_1_program_1_delete_date_1').catch(() => undefined);
     await detailTarget.createIndex(
       { subscriber_id: 1, tgl_mulai_tagihan: 1, program: 1, delete_date: 1 },
-      { unique: true }
+      { unique: true, partialFilterExpression: { subscriber_id: { $type: 'objectId' } } }
     );
 
     if (finalDetails.length) {
@@ -855,6 +1255,7 @@ async function main() {
       replaceTarget: REPLACE_TARGET,
       includeInactiveSubscriber: INCLUDE_INACTIVE_SUBSCRIBER,
       patchSubscriberDates: PATCH_SUBSCRIBER_DATES,
+      fillMissingInactive: FILL_MISSING_INACTIVE,
     },
     stats,
     preview: {

@@ -790,7 +790,7 @@ export const generateSubscriptionDokuPaymentLink = async (req: Request, res: Res
 
     const subscriber = await Subscriber.findById(detail.subscriber_id).lean();
     const customer = normalizeDokuCustomer({
-      id: detail.kode_subscriber,
+      id: detail.kode_subscriber || undefined,
       name: detail.toko,
       phone: subscriber?.no_hp_owner || subscriber?.nomor_telepon || undefined,
       address: subscriber?.alamat || undefined,

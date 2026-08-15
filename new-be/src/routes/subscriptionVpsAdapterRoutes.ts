@@ -25,6 +25,7 @@ import {
   updateItemActive,
   updateItemStatus,
   uploadInvoicePdfs,
+  verifySubscriptionDetail,
 } from '../controllers/subscriptionVpsAdapterController';
 
 const router = Router();
@@ -61,6 +62,7 @@ router.post('/generate-next-year/start', startGenerateNextFiscal);
 router.get('/generate-next-year/status', getGenerateStatus);
 router.patch('/details/:periode/item/:itemId/status', updateItemStatus);
 router.patch('/details/:periode/item/:itemId/active', updateItemActive);
+router.patch('/details/:periode/item/:itemId/verify', verifySubscriptionDetail);
 router.patch('/details/:periode/item/:itemId', updateItem);
 router.post('/details/:periode/item/:itemId/doku/payment-link', generateDokuPaymentLink);
 router.post('/invoice/generate', generateInvoiceAndMarkProcess);

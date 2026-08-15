@@ -5,8 +5,8 @@ export type SubscriptionDetailStatus = 'OPEN' | 'PROCESS' | 'DONE' | 'BATAL';
 export interface ISubscriptionDetail extends Document {
   subscription_id: mongoose.Types.ObjectId | null;
   chain_id: string;
-  subscriber_id: mongoose.Types.ObjectId;
-  kode_subscriber: string;
+  subscriber_id: mongoose.Types.ObjectId | null;
+  kode_subscriber: string | null;
   toko: string;
   program: string;
   daerah?: string | null;
@@ -83,13 +83,19 @@ export interface ISubscriptionDetail extends Document {
   input_by: string;
   update_by: string | null;
   delete_by: string | null;
+  patch_match_status?: 'MATCHED' | 'UNVERIFIED' | 'VERIFIED';
+  patch_match_reason?: string | null;
+  patch_source_toko?: string | null;
+  patch_source_program?: string | null;
+  verified_at?: Date | null;
+  verified_by?: string | null;
 }
 
 const SubscriptionDetailSchema: Schema = new Schema({
   subscription_id: { type: Schema.Types.ObjectId, ref: 'Subscription', required: false, default: null },
   chain_id: { type: String, required: true, trim: true },
-  subscriber_id: { type: Schema.Types.ObjectId, ref: 'Subscriber', required: true },
-  kode_subscriber: { type: String, required: true, trim: true },
+  subscriber_id: { type: Schema.Types.ObjectId, ref: 'Subscriber', required: false, default: null },
+  kode_subscriber: { type: String, required: false, default: null, trim: true },
   toko: { type: String, required: true, trim: true },
   program: { type: String, required: true, trim: true },
   daerah: { type: String, required: false, default: null, trim: true },
@@ -181,6 +187,12 @@ const SubscriptionDetailSchema: Schema = new Schema({
   input_by: { type: String, required: true },
   update_by: { type: String, default: null },
   delete_by: { type: String, default: null },
+  patch_match_status: { type: String, enum: ['MATCHED', 'UNVERIFIED', 'VERIFIED'], default: 'MATCHED' },
+  patch_match_reason: { type: String, required: false, default: null },
+  patch_source_toko: { type: String, required: false, default: null },
+  patch_source_program: { type: String, required: false, default: null },
+  verified_at: { type: Date, required: false, default: null },
+  verified_by: { type: String, required: false, default: null },
 });
 
 SubscriptionDetailSchema.index({ subscription_id: 1, status: 1 });
@@ -195,7 +207,10 @@ SubscriptionDetailSchema.index(
 );
 SubscriptionDetailSchema.index(
   { subscriber_id: 1, tgl_mulai_tagihan: 1, program: 1, delete_date: 1 },
-  { unique: true }
+  {
+    unique: true,
+    partialFilterExpression: { subscriber_id: { $type: 'objectId' } },
+  }
 );
 
 export default mongoose.model<ISubscriptionDetail>('SubscriptionDetail', SubscriptionDetailSchema, 'tt_subscription_detail');

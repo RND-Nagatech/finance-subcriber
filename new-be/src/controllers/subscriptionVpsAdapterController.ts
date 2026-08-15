@@ -34,6 +34,18 @@ const resolveUserId = (req: Request) => {
   return 'system';
 };
 
+const isUnverifiedDetail = (detail: any) => (
+  detail?.patch_match_status === 'UNVERIFIED'
+  || !detail?.subscriber_id
+  || !detail?.kode_subscriber
+);
+
+const requireVerifiedDetail = (detail: any, res: Response) => {
+  if (!isUnverifiedDetail(detail)) return false;
+  res.status(400).json({ message: 'Data subscription belum diverifikasi. Verifikasi relasi subscriber terlebih dahulu.' });
+  return true;
+};
+
 const formatYMD = (date: Date) => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -217,6 +229,8 @@ const rebuildSubscriptionMonthlyRekap = async (tahun: number, userTag: string) =
   const details: any[] = await SubscriptionDetail.find({
     delete_date: null,
     status: { $in: ['OPEN', 'PROCESS', 'DONE'] },
+    subscriber_id: { $ne: null },
+    patch_match_status: { $ne: 'UNVERIFIED' },
   }).lean();
   const hasLaterActiveUnpaid = (detail: any) => details.some((other) => (
     String(other._id) !== String(detail._id)
@@ -406,6 +420,7 @@ const syncSubscriberPaymentDatesFromLatestDone = async (subscriberId: any, userT
 const toDto = (detail: any) => ({
   _id: String(detail._id),
   ref_id: String(detail.subscriber_id || ''),
+  kode_subscriber: detail.kode_subscriber || null,
   periode: detail.periode,
   chain_id: detail.chain_id,
   toko: detail.toko,
@@ -427,6 +442,10 @@ const toDto = (detail: any) => ({
   invoice_meta: detail.invoice_meta,
   doku_payment: detail.doku_payment,
   keterangan: detail.keterangan || '-',
+  patch_match_status: detail.patch_match_status || (detail.subscriber_id ? 'MATCHED' : 'UNVERIFIED'),
+  patch_match_reason: detail.patch_match_reason || null,
+  patch_source_toko: detail.patch_source_toko || null,
+  patch_source_program: detail.patch_source_program || null,
 });
 
 const generateMonthlyInvoiceNumber = async () => {
@@ -676,11 +695,63 @@ export const deleteItem = async (req: Request, res: Response) => {
   res.json({ message: 'item deleted' });
 };
 
+export const verifySubscriptionDetail = async (req: Request, res: Response) => {
+  try {
+    const userTag = resolveUserId(req);
+    const { periode, itemId } = req.params;
+    const subscriberId = String(req.body.subscriber_id || '').trim();
+    if (!subscriberId) return res.status(400).json({ message: 'Subscriber wajib dipilih.' });
+
+    const detail: any = await SubscriptionDetail.findOne({ _id: itemId, periode, delete_date: null });
+    if (!detail) return res.status(404).json({ message: 'item not found' });
+    if (detail.status !== 'OPEN') return res.status(400).json({ message: 'Verifikasi tersedia hanya untuk status OPEN.' });
+
+    const subscriber: any = await Subscriber.findOne({ _id: subscriberId, delete_date: null });
+    if (!subscriber) return res.status(404).json({ message: 'Subscriber tidak ditemukan.' });
+
+    const duplicate = await SubscriptionDetail.findOne({
+      _id: { $ne: detail._id },
+      subscriber_id: subscriber._id,
+      tgl_mulai_tagihan: asYMD(detail.tgl_mulai_tagihan),
+      program: subscriber.program || detail.program,
+      delete_date: null,
+    }).lean();
+    if (duplicate) {
+      return res.status(400).json({
+        message: `Periode ${asYMD(detail.tgl_mulai_tagihan)} sudah ada untuk subscriber ${subscriber.toko}.`,
+      });
+    }
+
+    const affectedYears = getDetailRekapYears(detail);
+    const oldSummaryTarget = { subscriber_id: detail.subscriber_id, tahun: detail.tahun };
+    detail.subscriber_id = subscriber._id;
+    detail.kode_subscriber = subscriber.kode || null;
+    detail.toko = subscriber.toko || detail.toko;
+    detail.program = subscriber.program || detail.program;
+    detail.daerah = subscriber.daerah || detail.daerah || null;
+    detail.patch_match_status = 'VERIFIED';
+    detail.patch_match_reason = 'verified-from-ui';
+    detail.verified_at = new Date();
+    detail.verified_by = userTag;
+    detail.update_date = new Date();
+    detail.update_by = userTag;
+    await detail.save();
+
+    getDetailRekapYears(detail).forEach((year) => affectedYears.add(year));
+    await rebuildSubscriptionYears(affectedYears, userTag);
+    await rebuildSubscriberTahunForDetails([oldSummaryTarget, detail], userTag);
+    res.json({ message: 'Subscription berhasil diverifikasi.', item: toDto(detail) });
+  } catch (error: any) {
+    res.status(500).json({ message: error?.message || 'Server error', error });
+  }
+};
+
 export const updateItemActive = async (req: Request, res: Response) => {
   const userTag = resolveUserId(req);
   const { periode, itemId } = req.params;
   const detail: any = await SubscriptionDetail.findOne({ _id: itemId, periode, delete_date: null });
   if (!detail) return res.status(404).json({ message: 'item not found' });
+  if (requireVerifiedDetail(detail, res)) return;
   const isActive = Boolean(req.body.is_active);
   const wasActive = detail.is_active !== false;
   if (isActive && !wasActive) {
@@ -769,6 +840,7 @@ export const updateItemStatus = async (req: Request, res: Response) => {
   const status = String(req.body.status || '');
   const detail: any = await SubscriptionDetail.findOne({ _id: itemId, periode, delete_date: null });
   if (!detail) return res.status(404).json({ message: 'item not found' });
+  if (requireVerifiedDetail(detail, res)) return;
   if (!['OPEN', 'PROCESS', 'DONE'].includes(status)) return res.status(400).json({ message: 'status tidak valid' });
 
   const affectedYears = getDetailRekapYears(detail);
@@ -815,6 +887,9 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     if (found) docs.push(found);
   }
   if (!docs.length) return res.status(404).json({ message: 'item not found' });
+  if (docs.some(isUnverifiedDetail)) {
+    return res.status(400).json({ message: 'Ada data subscription yang belum diverifikasi. Verifikasi relasi subscriber terlebih dahulu.' });
+  }
 
   const invoiceNumber = docs[0].invoice_meta?.invoice_number || await generateMonthlyInvoiceNumber();
   const payload = req.body || {};
@@ -873,6 +948,7 @@ export const generateDokuPaymentLink = async (req: Request, res: Response) => {
     const { periode, itemId } = req.params;
     const detail: any = await SubscriptionDetail.findOne({ _id: itemId, periode, delete_date: null });
     if (!detail) return res.status(404).json({ message: 'item not found' });
+    if (requireVerifiedDetail(detail, res)) return;
     if (!detail.invoice_meta?.invoice_number) {
       detail.invoice_meta = {
         invoice_number: await generateMonthlyInvoiceNumber(),

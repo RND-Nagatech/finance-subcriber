@@ -5,6 +5,7 @@ export type TTVpsStatus = 'OPEN' | 'PROCESS' | 'DONE';
 export interface TTVpsDetailItemDTO {
   _id: string;
   ref_id?: string;
+  kode_subscriber?: string | null;
   toko: string;
   kode_group?: string | null;
   nama_group?: string | null;
@@ -60,6 +61,10 @@ export interface TTVpsDetailItemDTO {
     pdf_paid_url?: string;
   };
   doku_payment?: DokuPaymentDTO;
+  patch_match_status?: 'MATCHED' | 'UNVERIFIED' | 'VERIFIED';
+  patch_match_reason?: string | null;
+  patch_source_toko?: string | null;
+  patch_source_program?: string | null;
 }
 
 export interface DokuPaymentDTO {
@@ -216,6 +221,12 @@ export async function updateItem(params: { periode: string; itemId: string; star
   const { periode, itemId, ...body } = params;
   const { data } = await axiosInstance.patch(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}`, body);
   return data;
+}
+
+export async function verifySubscriptionDetail(params: { periode: string; itemId: string; subscriber_id: string }) {
+  const { periode, itemId, subscriber_id } = params;
+  const { data } = await axiosInstance.patch(`/tt-vps/details/${encodeURIComponent(periode)}/item/${itemId}/verify`, { subscriber_id });
+  return data as { message: string; item: TTVpsDetailItemDTO };
 }
 
 export async function updateItemActive(params: { periode: string; itemId: string; is_active: boolean; tgl_non_aktif?: string; alasan_non_aktif?: string }) {

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsSearch, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, uploadInvoiceVpsPdfs, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO } from '@/api/ttvps';
+import { createSchedule, deleteItem as deleteTTItem, fetchAvailableSubscribers, fetchDetailsSearch, fetchSubscribers, generateDokuPaymentLink, generateInvoiceVps, uploadInvoiceVpsPdfs, updateItemStatus, updateItem as updateTTItem, TTVpsDetailItemDTO, VpsSubscriberOption, updateItemActive, updateSubscriberPhoneByKode, DokuPaymentDTO, verifySubscriptionDetail } from '@/api/ttvps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import autoTable from 'jspdf-autotable';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink, ChevronDown, Ban, Calendar as CalendarIcon } from 'lucide-react';
+import { CheckCircle2, Trash2, Pencil, RotateCcw, FileCheck, FileDown, CreditCard, Copy, ExternalLink, ChevronDown, Ban, Calendar as CalendarIcon, Link2 } from 'lucide-react';
 import axiosInstance from '@/api/axiosInstance';
 import { fetchActiveFiscalYear } from '@/api/fiscal';
 import { Calendar as DatePickerCalendar } from '@/components/ui/calendar';
@@ -263,6 +263,9 @@ export default function VPS() {
   const [nonaktifItems, setNonaktifItems] = useState<VpsInvoiceItem[]>([]);
   const [tanggalNonAktif, setTanggalNonAktif] = useState('');
   const [alasanNonAktif, setAlasanNonAktif] = useState('');
+  const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
+  const [verifyItem, setVerifyItem] = useState<VpsInvoiceItem | null>(null);
+  const [verifySubscriberId, setVerifySubscriberId] = useState('');
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const pendingInvoiceDokuRef = useRef<{ item: VpsInvoiceItem; payment: DokuPaymentDTO } | null>(null);
 
@@ -372,7 +375,8 @@ export default function VPS() {
   }, [localItems, statusFilter, groupTokoFilter, tokoFilter, searchTerm]);
 
   const itemKey = (item: VpsInvoiceItem) => `${item.__periode}-${item._id}`;
-  const isSelectableForBulk = (_item: VpsInvoiceItem) => true;
+  const isUnverifiedItem = (item: VpsInvoiceItem) => item.patch_match_status === 'UNVERIFIED' || !item.ref_id;
+  const isSelectableForBulk = (item: VpsInvoiceItem) => !isUnverifiedItem(item);
   const isSelected = (item: VpsInvoiceItem) => !!selectedInvoiceItems[itemKey(item)];
   const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
 
@@ -457,6 +461,10 @@ export default function VPS() {
   const startCreate = () => { setEditItem(null); setOpen(true); };
   const startEdit = (item: VpsInvoiceItem) => { setEditItem(item); setOpenEdit(true); };
   const startGenerateInvoice = (item: VpsInvoiceItem) => {
+    if (isUnverifiedItem(item)) {
+      toast.warn('Verifikasi relasi subscriber terlebih dahulu.');
+      return;
+    }
     pendingInvoiceDokuRef.current = null;
     setInvoiceDialogMode('generate');
     setInvoiceItems([item]);
@@ -483,7 +491,8 @@ export default function VPS() {
   });
 
   const updateActiveMut = useMutation({
-    mutationFn: ({ periode, itemId, is_active }: { periode: string; itemId: string; is_active: boolean }) => updateItemActive({ periode, itemId, is_active }),
+    mutationFn: ({ periode, itemId, is_active, tgl_non_aktif, alasan_non_aktif }: { periode: string; itemId: string; is_active: boolean; tgl_non_aktif?: string; alasan_non_aktif?: string }) =>
+      updateItemActive({ periode, itemId, is_active, tgl_non_aktif, alasan_non_aktif }),
     onSuccess: (_data, variables) => {
       toast.success(variables.is_active ? 'Data diaktifkan' : 'Data dinonaktifkan');
       setLocalItems((prev) => prev.map((item) =>
@@ -566,9 +575,40 @@ export default function VPS() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal membuat link pembayaran DOKU.'),
   });
 
+  const verifyMut = useMutation({
+    mutationFn: ({ item, subscriberId }: { item: VpsInvoiceItem; subscriberId: string }) =>
+      verifySubscriptionDetail({ periode: item.__periode, itemId: item._id, subscriber_id: subscriberId }),
+    onSuccess: (data) => {
+      toast.success(data?.message || 'Subscription berhasil diverifikasi.');
+      setVerifyDialogOpen(false);
+      setVerifyItem(null);
+      setVerifySubscriberId('');
+      refreshVpsData();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Gagal verifikasi subscription.'),
+  });
+
   const handleDokuPayment = (item: VpsInvoiceItem) => {
+    if (isUnverifiedItem(item)) {
+      toast.warn('Verifikasi relasi subscriber terlebih dahulu.');
+      return;
+    }
     setSelectedDokuItem(item);
     generateDokuMut.mutate({ periode: item.__periode, itemId: item._id });
+  };
+
+  const openVerifyDialog = (item: VpsInvoiceItem) => {
+    setVerifyItem(item);
+    setVerifySubscriberId('');
+    setVerifyDialogOpen(true);
+  };
+
+  const confirmVerifyDetail = () => {
+    if (!verifyItem || !verifySubscriberId) {
+      toast.warn('Pilih subscriber yang benar terlebih dahulu.');
+      return;
+    }
+    verifyMut.mutate({ item: verifyItem, subscriberId: verifySubscriberId });
   };
 
   const refreshVpsData = () => {
@@ -776,7 +816,7 @@ export default function VPS() {
   // Summary for current table view
   const summary = useMemo(() => {
     const rows = Array.isArray(combinedItems) ? combinedItems : [];
-    const activeRows = rows.filter((it: any) => (it?.is_active ?? true) !== false);
+    const activeRows = rows.filter((it: any) => (it?.is_active ?? true) !== false && !isUnverifiedItem(it));
     const total = activeRows.reduce((sum: number, it: any) => sum + (Number(it?.total_harga) || 0), 0);
     const uniqueToko = new Set(activeRows.map((r: any) => r.toko)).size;
     return { total, uniqueToko, count: rows.length };
@@ -1018,16 +1058,17 @@ export default function VPS() {
                 <tbody>
                   {combinedItems?.map((item: VpsInvoiceItem) => {
                     const itemInactive = (item.is_active ?? true) === false;
+                    const itemUnverified = isUnverifiedItem(item);
                     return (
                     <Fragment key={`${item.__periode}-${item._id}`}>
-                    <tr key={`${item.__periode}-${item._id}`} className={`border-b ${itemInactive ? 'bg-red-50/70' : ''}`}>
+                    <tr key={`${item.__periode}-${item._id}`} className={`border-b ${itemUnverified ? 'bg-amber-50/80' : itemInactive ? 'bg-red-50/70' : ''}`}>
                       <td className="py-2 pr-4">
                         <input
                           type="checkbox"
                           checked={isSelected(item)}
                           disabled={!isSelectableForBulk(item)}
                           onChange={() => toggleSelected(item)}
-                          title="Pilih untuk bulk action"
+                          title={itemUnverified ? 'Verifikasi relasi subscriber terlebih dahulu' : 'Pilih untuk bulk action'}
                           className="h-4 w-4"
                         />
                       </td>
@@ -1053,15 +1094,29 @@ export default function VPS() {
                         {(item.is_active ?? true) === false && (
                           <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium ml-2">Nonaktif</span>
                         )}
+                        {itemUnverified && (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium ml-2">Belum Verifikasi</span>
+                        )}
                       </td>
                       <td className="py-2 pr-4 flex gap-2">
+                        {itemUnverified && (
+                          <Button
+                            size="icon"
+                            aria-label="Verifikasi subscriber"
+                            title="Verifikasi relasi subscriber"
+                            className="rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
+                            onClick={() => openVerifyDialog(item)}
+                          >
+                            <Link2 className="h-5 w-5" />
+                          </Button>
+                        )}
                         {item.status !== 'DONE' && (
                           <Button
                             size="icon"
                             aria-label="Link pembayaran DOKU"
                             title="Generate atau lihat link pembayaran DOKU"
                             className="rounded-full bg-cyan-600 hover:bg-cyan-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                            disabled={generateDokuMut.isPending || ((item.is_active ?? true) === false)}
+                            disabled={generateDokuMut.isPending || itemUnverified || ((item.is_active ?? true) === false)}
                             onClick={() => handleDokuPayment(item)}
                           >
                             <CreditCard className="h-5 w-5" />
@@ -1073,7 +1128,7 @@ export default function VPS() {
                             aria-label="Generate invoice"
                             title="Generate invoice"
                             className="rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                            disabled={generateInvoiceMut.isPending || ((item.is_active ?? true) === false)}
+                            disabled={generateInvoiceMut.isPending || itemUnverified || ((item.is_active ?? true) === false)}
                             onClick={() => startGenerateInvoice(item)}
                           >
                             <FileCheck className="h-5 w-5" />
@@ -1086,7 +1141,7 @@ export default function VPS() {
                               aria-label="Nonaktifkan"
                               title="Nonaktifkan data"
                               className="rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                              disabled={updateActiveMut.isPending}
+                              disabled={updateActiveMut.isPending || itemUnverified}
                               onClick={() => openNonaktifDialog([item])}
                             >
                               <span className="font-bold">Ø</span>
@@ -1104,7 +1159,7 @@ export default function VPS() {
                                 aria-label="Aktifkan kembali"
                                 title="Aktifkan kembali"
                                 className="rounded-full bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-600 hover:to-emerald-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                                disabled={updateActiveMut.isPending}
+                                disabled={updateActiveMut.isPending || itemUnverified}
                               >
                                 <span className="font-bold">↺</span>
                               </Button>
@@ -1135,7 +1190,7 @@ export default function VPS() {
                                 aria-label="Tandai selesai"
                                 title="Tandai selesai"
                                 className="rounded-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                                disabled={updateStatusMut.isPending}
+                                disabled={updateStatusMut.isPending || itemUnverified}
                               >
                                 <CheckCircle2 className="h-5 w-5" />
                               </Button>
@@ -1151,7 +1206,7 @@ export default function VPS() {
                                 aria-label="Batalkan proses"
                                 title="Batalkan proses"
                                 className="rounded-full bg-gradient-to-r from-orange-400 to-yellow-500 hover:from-orange-500 hover:to-yellow-600 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                                disabled={updateStatusMut.isPending}
+                                disabled={updateStatusMut.isPending || itemUnverified}
                               >
                                 <RotateCcw className="h-5 w-5" />
                               </Button>
@@ -1180,7 +1235,7 @@ export default function VPS() {
                                 aria-label="Batal pelunasan"
                                 title="Batal pelunasan"
                                 className="rounded-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md hover:shadow-lg border border-white/10 transition-transform hover:scale-105"
-                                disabled={updateStatusMut.isPending}
+                                disabled={updateStatusMut.isPending || itemUnverified}
                               >
                                 <RotateCcw className="h-5 w-5" />
                               </Button>
@@ -1218,7 +1273,7 @@ export default function VPS() {
                       </td>
                     </tr>
                     {expanded[`${item.__periode}-${item._id}`] && (
-                      <tr className={itemInactive ? 'bg-red-50/50' : 'bg-slate-50'}>
+                      <tr className={itemUnverified ? 'bg-amber-50/60' : itemInactive ? 'bg-red-50/50' : 'bg-slate-50'}>
                         <td colSpan={10} className="py-2 px-4">
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                             <div>
@@ -1360,6 +1415,62 @@ export default function VPS() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={verifyDialogOpen} onOpenChange={(openValue) => {
+        setVerifyDialogOpen(openValue);
+        if (!openValue) {
+          setVerifyItem(null);
+          setVerifySubscriberId('');
+        }
+      }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Verifikasi Subscription</DialogTitle>
+          </DialogHeader>
+          {verifyItem && (
+            <div className="space-y-5">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+                <div className="font-semibold text-slate-900">{verifyItem.patch_source_toko || verifyItem.toko}</div>
+                <div className="mt-1 text-slate-600">{verifyItem.patch_source_program || verifyItem.program}</div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-slate-700">
+                  <div>
+                    <div className="text-xs text-slate-500">Mulai Langganan</div>
+                    <div className="font-medium">{format(new Date(verifyItem.start), 'dd MMM yyyy')}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500">Total</div>
+                    <div className="font-medium">{currency(verifyItem.total_harga)}</div>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-amber-700">
+                  Data ini belum ikut rekap bulanan/tahunan sampai relasi subscriber diverifikasi.
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Subscriber</Label>
+                <SearchableSelect
+                  value={verifySubscriberId}
+                  onValueChange={setVerifySubscriberId}
+                  options={(subsAll || []).map((sub) => ({
+                    value: sub._id,
+                    label: `${sub.kode || '-'} - ${sub.toko}${sub.program ? ` (${sub.program})` : ''}`,
+                  }))}
+                  placeholder="Pilih subscriber..."
+                  searchPlaceholder="Cari subscriber..."
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setVerifyDialogOpen(false)} disabled={verifyMut.isPending}>
+                  Batal
+                </Button>
+                <Button type="button" onClick={confirmVerifyDetail} disabled={verifyMut.isPending || !verifySubscriberId}>
+                  Verifikasi
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

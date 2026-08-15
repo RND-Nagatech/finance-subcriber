@@ -179,6 +179,8 @@ export const rebuildAllSubscriberTahun = async (tahun: number, userTag = 'system
 
   const detailSubscriberIds = await SubscriptionDetail.distinct('subscriber_id', {
     tahun: fiscalYear,
+    subscriber_id: { $ne: null },
+    patch_match_status: { $ne: 'UNVERIFIED' },
     delete_date: null,
   });
   detailSubscriberIds.forEach((subscriberId: any) => subscriberIds.add(String(subscriberId)));
