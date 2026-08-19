@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { secureStorage } from '@/utils/secureStorage';
+import { getLoginFallbackUrl } from '@/utils/programInternalRedirect';
 
 const AUTH_401_EXCLUDED_PATHS = [
   '/auth/login',
@@ -42,9 +43,11 @@ axiosInstance.interceptors.response.use(
     const status = error.response?.status;
     const requestUrl = error.config?.url as string | undefined;
     if (status === 401 && !isAuth401ExcludedRequest(requestUrl)) {
+      const fallbackUrl = getLoginFallbackUrl();
       secureStorage.removeItem('auth_token');
       secureStorage.removeItem('user_name');
-      window.location.href = '/login';
+      secureStorage.removeItem('user_role');
+      window.location.href = fallbackUrl;
     }
     return Promise.reject(error);
   }

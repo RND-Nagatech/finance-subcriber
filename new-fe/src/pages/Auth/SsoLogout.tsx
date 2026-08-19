@@ -1,17 +1,20 @@
 import { useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { secureStorage } from "@/utils/secureStorage";
+import { programInternalLoginUrl } from "@/utils/programInternalRedirect";
 
 export default function SsoLogout() {
   const setUser = useAppStore((state) => state.setUser);
 
   useEffect(() => {
+    const isSilent = new URLSearchParams(window.location.search).get("silent") === "1";
     secureStorage.removeItem("auth_token");
     secureStorage.removeItem("user_name");
     secureStorage.removeItem("user_role");
-    secureStorage.removeItem("auth_source");
+    secureStorage.setItem("auth_source", "program-internal");
     setUser(null);
-    window.close();
+    if (isSilent) return;
+    window.location.replace(programInternalLoginUrl);
   }, [setUser]);
 
   return (

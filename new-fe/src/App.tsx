@@ -11,6 +11,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { MainLayout } from "@/components/MainLayout";
 import { fetchActiveFiscalYear } from "@/api/fiscal";
 import { useAppStore } from "@/store/useAppStore";
+import { getLoginFallbackUrl, isProgramInternalSession } from "@/utils/programInternalRedirect";
 
 import Login from "@/pages/Auth/Login";
 import Register from "@/pages/Auth/Register";
@@ -47,6 +48,7 @@ const App = () => (
       <Sonner />
       <ToastContainer position="top-right" autoClose={3000} />
       <FiscalYearInitializer />
+      <ProgramInternalLogoutListener />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -90,6 +92,21 @@ function FiscalYearInitializer() {
       setFiscalYear(Number(activeYear));
     }
   }, [activeYear, setFiscalYear]);
+
+  return null;
+}
+
+function ProgramInternalLogoutListener() {
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "auth_token" && !event.newValue && isProgramInternalSession()) {
+        window.location.replace(getLoginFallbackUrl());
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   return null;
 }

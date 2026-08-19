@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getLoginFallbackUrl } from "@/utils/programInternalRedirect";
 
 const api = axios.create({
   baseURL: "http://192.168.110.49:5000/api",
@@ -15,9 +16,11 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
+      const fallbackUrl = getLoginFallbackUrl();
       localStorage.removeItem("auth_token");
       localStorage.removeItem("user_name");
-      window.location.href = "/login";
+      localStorage.removeItem("user_role");
+      window.location.href = fallbackUrl;
     }
     return Promise.reject(err);
   }
