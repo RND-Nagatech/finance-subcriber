@@ -1291,12 +1291,9 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
     const userId = resolveUserId(req);
     const finalKode = await generateNextKode(Subscriber);
     const requestedInternalKode = normalizeOptionalString(internal_kode);
-    const internalKodeExists = requestedInternalKode
-      ? await Subscriber.exists({ internal_kode: requestedInternalKode })
-      : null;
-    const finalInternalKode = !requestedInternalKode || internalKodeExists
-      ? await generateNextKode(Subscriber, 'internal_kode')
-      : requestedInternalKode;
+    if (!requestedInternalKode) {
+      return res.status(400).json({ message: 'Internal Kode wajib diisi' });
+    }
 
     const subscriber = new Subscriber({
       kode: finalKode,
@@ -1331,7 +1328,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       kode_implementator: selectedImplementator.kode,
       implementator: selectedImplementator.nama,
       via,
-      internal_kode: finalInternalKode,
+      internal_kode: requestedInternalKode,
       prev_subscriber: prevSubscriber,
       current_subscriber: currentSubscriber,
       prev_biaya: prevBiaya,

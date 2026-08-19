@@ -26,6 +26,7 @@ export const useAppStore = create<AppState>((set) => ({
     secureStorage.removeItem('auth_token');
     secureStorage.removeItem('user_name');
     secureStorage.removeItem('user_role');
+    secureStorage.removeItem('auth_source');
     set({ user: null, isAuthenticated: false });
   },
   fiscalYear: Number(secureStorage.getItem('fiscal_year')) || new Date().getFullYear(),

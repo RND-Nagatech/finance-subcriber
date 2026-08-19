@@ -62,6 +62,7 @@ export default function Login() {
       secureStorage.setItem("auth_token", token);
       secureStorage.setItem("user_name", user.name);
       secureStorage.setItem("user_role", user.role);
+      secureStorage.removeItem("auth_source");
       setUser({ name: user.name, email: user.email, role: user.role });
       toast.success("Login berhasil!");
       navigate("/dashboard");
@@ -145,6 +146,7 @@ export default function Login() {
         secureStorage.setItem("auth_token", "webauthn_dummy_token");
         secureStorage.setItem("user_name", userName);
         secureStorage.setItem("user_role", userRole);
+        secureStorage.removeItem("auth_source");
         setUser({ name: userName, email, role: userRole });
         toast.success("Login YubiKey berhasil!");
         navigate("/dashboard");

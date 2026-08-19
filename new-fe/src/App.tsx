@@ -14,6 +14,8 @@ import { useAppStore } from "@/store/useAppStore";
 
 import Login from "@/pages/Auth/Login";
 import Register from "@/pages/Auth/Register";
+import SsoCallback from "@/pages/Auth/SsoCallback";
+import SsoLogout from "@/pages/Auth/SsoLogout";
 import Dashboard from "@/pages/SubscriberVpsDashboard";
 import Bank from "@/pages/MasterData/Bank";
 import Group from "@/pages/MasterData/Group";
@@ -50,6 +52,8 @@ const App = () => (
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/sso/callback" element={<SsoCallback />} />
+          <Route path="/sso/logout" element={<SsoLogout />} />
 
           <Route path="/dashboard" element={<ProtectedPage><Dashboard /></ProtectedPage>} />
           <Route path="/subscriber" element={<ProtectedPage><Subscriber key="subscriber" /></ProtectedPage>} />

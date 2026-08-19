@@ -35,6 +35,7 @@ import axiosInstance from "@/api/axiosInstance";
 import { cn } from "@/lib/utils";
 import { NavLink } from "@/components/NavLink";
 import { useAppStore } from "@/store/useAppStore";
+import { secureStorage } from "@/utils/secureStorage";
 import { ChevronDown, CreditCard, Database, KeyRound, LayoutDashboard, LogOut, Server, UserRoundCheck, Users, Wallet } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -42,6 +43,7 @@ export default function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAppStore();
+  const isProgramInternalSession = secureStorage.getItem("auth_source") === "program-internal";
   const [isMasterOpen, setIsMasterOpen] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -121,15 +123,17 @@ export default function AppSidebar() {
                     <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Active User</p>
                     <p className="font-semibold text-white text-sm">{user.name}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setChangePasswordOpen(true)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600/70 bg-slate-700/70 text-slate-200 hover:text-white hover:bg-slate-600 transition-colors"
-                    title="Ganti Password"
-                    aria-label="Ganti Password"
-                  >
-                    <KeyRound className="w-4 h-4" />
-                  </button>
+                  {!isProgramInternalSession && (
+                    <button
+                      type="button"
+                      onClick={() => setChangePasswordOpen(true)}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-600/70 bg-slate-700/70 text-slate-200 hover:text-white hover:bg-slate-600 transition-colors"
+                      title="Ganti Password"
+                      aria-label="Ganti Password"
+                    >
+                      <KeyRound className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -242,37 +246,39 @@ export default function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          <div className="mt-auto w-full px-4 pb-6 pt-4 relative z-10">
-            <div className="h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent mb-4" />
-            <SidebarFooter>
-              <SidebarMenu className="space-y-3">
-                <SidebarMenuItem>
-                  <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
-                    <AlertDialogTrigger asChild>
-                      <SidebarMenuButton className="group rounded-xl px-4 py-5 text-slate-300 hover:text-red-300 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-600/20 hover:to-red-700/20">
-                        <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
-                        <span className="font-medium">Logout</span>
-                      </SidebarMenuButton>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-white/95 backdrop-blur-sm border-red-300 shadow-2xl">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Konfirmasi Logout</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Apakah Anda yakin ingin keluar dari aplikasi? Anda akan diarahkan ke halaman login.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter className="gap-3">
-                        <AlertDialogCancel>Batal</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmLogout} className="bg-red-600 hover:bg-red-700">
-                          Ya, Logout
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarFooter>
-          </div>
+          {!isProgramInternalSession && (
+            <div className="mt-auto w-full px-4 pb-6 pt-4 relative z-10">
+              <div className="h-px bg-gradient-to-r from-transparent via-slate-600/50 to-transparent mb-4" />
+              <SidebarFooter>
+                <SidebarMenu className="space-y-3">
+                  <SidebarMenuItem>
+                    <AlertDialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+                      <AlertDialogTrigger asChild>
+                        <SidebarMenuButton className="group rounded-xl px-4 py-5 text-slate-300 hover:text-red-300 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-600/20 hover:to-red-700/20">
+                          <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
+                          <span className="font-medium">Logout</span>
+                        </SidebarMenuButton>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="bg-white/95 backdrop-blur-sm border-red-300 shadow-2xl">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Konfirmasi Logout</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Apakah Anda yakin ingin keluar dari aplikasi? Anda akan diarahkan ke halaman login.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter className="gap-3">
+                          <AlertDialogCancel>Batal</AlertDialogCancel>
+                          <AlertDialogAction onClick={confirmLogout} className="bg-red-600 hover:bg-red-700">
+                            Ya, Logout
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarFooter>
+            </div>
+          )}
         </SidebarContent>
 
         <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>

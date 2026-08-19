@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
-import { Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 
 import { deleteGroup, fetchAllGroup, fetchGroupList, Group as GroupType, saveGroup } from '@/api/group';
 import { ModalForm } from '@/components/ModalForm';
@@ -52,6 +52,7 @@ export default function Group() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search), 500);
@@ -149,6 +150,18 @@ export default function Group() {
     setDeleteId(null);
   };
 
+  const toggleRowExpansion = (rowId: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowId)) {
+        next.delete(rowId);
+      } else {
+        next.add(rowId);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden">
       <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] -z-10" />
@@ -220,23 +233,21 @@ export default function Group() {
         </div>
 
         <div className="bg-white/50 rounded-lg overflow-hidden border-2 border-dashed border-blue-200">
-          <Table className="table-fixed w-full">
+          <Table className="w-full">
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-50 hover:to-indigo-50 border-b border-blue-200/50">
+                <TableHead className="w-12 px-4 py-4 font-semibold text-gray-900"></TableHead>
                 <TableHead className="w-32 px-6 py-4 font-semibold text-gray-900">Kode Group</TableHead>
                 <TableHead className="w-56 px-6 py-4 font-semibold text-gray-900">Nama Group</TableHead>
                 <TableHead className="w-48 px-6 py-4 font-semibold text-gray-900">Owner</TableHead>
-                <TableHead className="w-40 px-6 py-4 font-semibold text-gray-900">No HP Owner</TableHead>
-                <TableHead className="w-36 px-6 py-4 font-semibold text-gray-900">Gender Owner</TableHead>
                 <TableHead className="w-48 px-6 py-4 font-semibold text-gray-900">PIC</TableHead>
-                <TableHead className="px-6 py-4 font-semibold text-gray-900">Alamat</TableHead>
                 <TableHead className="w-32 px-6 py-4 text-right font-semibold text-gray-900">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12">
+                  <TableCell colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                       <p className="text-gray-600 font-medium">Memuat data group...</p>
@@ -245,7 +256,7 @@ export default function Group() {
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12">
+                  <TableCell colSpan={6} className="text-center py-12">
                     <div className="flex flex-col items-center space-y-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center">
                         <Search className="w-6 h-6 text-blue-600" />
@@ -255,44 +266,86 @@ export default function Group() {
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((item) => (
-                  <TableRow key={item._id} className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
-                    <TableCell className="w-32 px-6 py-4 font-semibold text-gray-900">{item.kode_group}</TableCell>
-                    <TableCell className="w-56 px-6 py-4 font-medium text-gray-900">{item.nama_group}</TableCell>
-                    <TableCell className="w-48 px-6 py-4 text-gray-700">{item.nama_owner || item.owner}</TableCell>
-                    <TableCell className="w-40 px-6 py-4 text-gray-700">{item.no_hp_owner || item.no_hp}</TableCell>
-                    <TableCell className="w-36 px-6 py-4 text-gray-700">{item.gender_owner || '-'}</TableCell>
-                    <TableCell className="w-48 px-6 py-4 text-gray-700">
-                      <div className="space-y-1">
-                        <div>{item.nama_pic || '-'}</div>
-                        <div className="text-xs text-gray-500">{item.no_hp_pic || '-'}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="px-6 py-4 text-gray-700 truncate" title={item.alamat}>{item.alamat}</TableCell>
-                    <TableCell className="w-32 px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(item)}
-                          aria-label="Edit group"
-                          className="border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDeleteId(item._id || null)}
-                          className="border-red-300 hover:bg-red-50 hover:border-red-400 text-red-600 hover:text-red-700 transition-all duration-200"
-                          aria-label="Hapus group"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                rows.map((item, idx) => {
+                  const rowId = item._id || item.kode_group || String(idx);
+                  return (
+                    <Fragment key={rowId}>
+                      <TableRow className="hover:bg-blue-50/50 transition-colors duration-200 border-b border-gray-100/50">
+                        <TableCell className="w-12 px-4 py-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleRowExpansion(rowId)}
+                            className="p-1 h-6 w-6 hover:bg-blue-100"
+                            aria-label={expandedRows.has(rowId) ? 'Tutup detail group' : 'Buka detail group'}
+                          >
+                            {expandedRows.has(rowId) ? (
+                              <ChevronDown className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 text-blue-600" />
+                            )}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="w-32 px-6 py-4 font-semibold text-gray-900">{item.kode_group}</TableCell>
+                        <TableCell className="w-56 px-6 py-4 font-medium text-gray-900">{item.nama_group}</TableCell>
+                        <TableCell className="w-48 px-6 py-4 text-gray-700">
+                          <div className="space-y-1">
+                            <div className="font-medium text-gray-900">{item.nama_owner || item.owner || '-'}</div>
+                            <div className="text-xs text-gray-500">{item.no_hp_owner || item.no_hp || '-'}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="w-48 px-6 py-4 text-gray-700">
+                          <div className="space-y-1">
+                            <div className="font-medium text-gray-900">{item.nama_pic || '-'}</div>
+                            <div className="text-xs text-gray-500">{item.no_hp_pic || '-'}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="w-32 px-6 py-4 text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(item)}
+                              aria-label="Edit group"
+                              className="border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all duration-200"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setDeleteId(item._id || null)}
+                              className="border-red-300 hover:bg-red-50 hover:border-red-400 text-red-600 hover:text-red-700 transition-all duration-200"
+                              aria-label="Hapus group"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {expandedRows.has(rowId) && (
+                        <TableRow className="bg-slate-50 border-b border-gray-100/50">
+                          <TableCell colSpan={6} className="px-6 py-3">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              <div className="md:col-span-2">
+                                <div className="text-xs text-slate-500">Alamat</div>
+                                <div className="text-sm font-medium text-slate-900">{item.alamat || <span className="text-slate-400">-</span>}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-slate-500">Gender Owner</div>
+                                <div className="text-sm font-medium text-slate-900">{item.gender_owner || <span className="text-slate-400">-</span>}</div>
+                              </div>
+                              <div>
+                                <div className="text-xs text-slate-500">Gender PIC</div>
+                                <div className="text-sm font-medium text-slate-900">{item.gender_pic || <span className="text-slate-400">-</span>}</div>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </TableBody>
           </Table>
