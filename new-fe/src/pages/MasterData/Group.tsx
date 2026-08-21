@@ -370,10 +370,10 @@ export default function Group() {
               <Input
                 id="kode_group"
                 value={formData.kode_group}
-                onChange={(event) => setFormData((prev) => ({ ...prev, kode_group: event.target.value.toUpperCase() }))}
-                placeholder="Masukkan kode group"
-                className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                required
+                readOnly
+                disabled
+                placeholder={editId ? 'Kode group' : 'Otomatis dari sistem'}
+                className="border-2 border-gray-200 bg-gray-50 text-gray-600 disabled:opacity-100"
               />
             </div>
             <div className="grid gap-2">

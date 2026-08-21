@@ -115,7 +115,7 @@ export const listGroupOptions = async (_req: Request, res: Response) => {
 
 export const createGroup = async (req: Request, res: Response) => {
   try {
-    const kode_group = normalizeText(req.body.kode_group).toUpperCase();
+    const requestedKodeGroup = normalizeText(req.body.kode_group).toUpperCase();
     const nama_group = normalizeText(req.body.nama_group);
     const nama_owner = normalizeOptionalText(req.body.nama_owner ?? req.body.owner);
     const no_hp_owner = normalizeOptionalText(req.body.no_hp_owner ?? req.body.no_hp);
@@ -125,21 +125,25 @@ export const createGroup = async (req: Request, res: Response) => {
     const gender_pic = normalizeGender(req.body.gender_pic);
     const alamat = normalizeOptionalText(req.body.alamat);
 
-    if (!kode_group || !nama_group) {
-      return res.status(400).json({ message: 'Kode group dan nama group wajib diisi.' });
+    if (!nama_group) {
+      return res.status(400).json({ message: 'Nama group wajib diisi.' });
     }
 
-    const exists = await Group.findOne({
-      kode_group,
-      status_aktv: true,
-      delete_date: null,
-    });
-    if (exists) {
-      return res.status(400).json({ message: 'Kode group sudah digunakan.' });
+    if (requestedKodeGroup) {
+      const exists = await Group.findOne({
+        kode_group: requestedKodeGroup,
+        status_aktv: true,
+        delete_date: null,
+      });
+      if (exists) {
+        return res.status(400).json({ message: 'Kode group sudah digunakan.' });
+      }
     }
 
     const deletedGroup = await Group.findOne({
-      kode_group,
+      ...(requestedKodeGroup
+        ? { kode_group: requestedKodeGroup }
+        : { nama_group }),
       $or: [{ status_aktv: false }, { delete_date: { $ne: null } }],
     });
     if (deletedGroup) {
@@ -167,6 +171,7 @@ export const createGroup = async (req: Request, res: Response) => {
       });
     }
 
+    const kode_group = requestedKodeGroup || await generateNextKodeGroup();
     const group = await Group.create({
       kode_group,
       nama_group,
