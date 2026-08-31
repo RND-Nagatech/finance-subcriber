@@ -57,21 +57,6 @@ export default function Users() {
   const [formData, setFormData] = useState<UserFormData>({ username: '', name: '', password: '', role: 'user' });
   const { user } = useAppStore();
 
-  // Check if user is superuser
-  if (!user || user.role !== 'superuser') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden flex items-center justify-center">
-        <Card className="w-full max-w-md shadow-2xl border-0 bg-white/80 backdrop-blur-sm">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-600 text-center">You do not have permission to access this page. Only Superusers can manage users.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   // Fetch users
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -164,6 +149,21 @@ export default function Users() {
     setEditId(null);
     setFormData({ username: '', name: '', password: '', role: 'user' });
   };
+
+  // Check if user is superuser
+  if (!user || user.role !== 'superuser') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 relative overflow-hidden flex items-center justify-center">
+        <Card className="w-full max-w-md shadow-2xl border-0 bg-white/80 backdrop-blur-sm">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <img src="/restriction.png" alt="Access Restricted" className="mx-auto mb-4" width={"130px"} />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h3>
+            <p className="text-gray-600 text-center">You do not have permission to access this page. Only Superusers can manage users.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return <div className="container mx-auto px-6 py-8">Memuat data user...</div>;

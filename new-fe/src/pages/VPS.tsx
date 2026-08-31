@@ -2506,7 +2506,9 @@ function InvoiceGenerateDialog({
                 try {
                   const signatureH = Math.min(56, Math.max(32, h - 62));
                   pdf.addImage(INVOICE_SIGNATURE_BASE64, 'PNG', x + 14, signatureY, 90, signatureH);
-                } catch {}
+                } catch {
+                  // Signature is optional; invoice generation should continue if the image cannot be embedded.
+                }
               }
               pdf.setFont('helvetica', 'bold');
               pdf.text('( ISMAHRIA S )', x + 14, nameY);
