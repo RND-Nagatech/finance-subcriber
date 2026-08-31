@@ -23,6 +23,7 @@ interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
   contentClassName?: string;
+  multilineValue?: boolean;
 }
 
 export function SearchableSelect({
@@ -35,6 +36,7 @@ export function SearchableSelect({
   disabled = false,
   className,
   contentClassName,
+  multilineValue = false,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -74,11 +76,18 @@ export function SearchableSelect({
           variant="outline"
           disabled={disabled}
           className={cn(
-            "h-10 w-full justify-between border-2 border-gray-200 bg-white px-3 text-left font-normal text-gray-900 hover:bg-white focus-visible:ring-2 focus-visible:ring-blue-100 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:bg-gray-100",
+            "w-full justify-between border-2 border-gray-200 bg-white px-3 text-left font-normal text-gray-900 hover:bg-white focus-visible:ring-2 focus-visible:ring-blue-100 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:bg-gray-100",
+            multilineValue ? "min-h-10 py-2" : "h-10",
             className,
           )}
         >
-          <span className={cn("truncate", !selectedOption && "text-gray-500")}>
+          <span
+            className={cn(
+              "min-w-0 flex-1",
+              multilineValue ? "whitespace-normal break-words leading-snug" : "truncate",
+              !selectedOption && "text-gray-500",
+            )}
+          >
             {selectedOption?.label || placeholder}
           </span>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-gray-500" />
@@ -101,7 +110,11 @@ export function SearchableSelect({
             autoFocus
           />
         </div>
-        <div className="mt-2 max-h-72 overflow-y-auto pr-1">
+        <div
+          className="mt-2 max-h-[min(18rem,calc(var(--radix-popover-content-available-height)-4rem))] overflow-y-auto overscroll-contain pr-1 [-webkit-overflow-scrolling:touch]"
+          onWheel={(event) => event.stopPropagation()}
+          onTouchMove={(event) => event.stopPropagation()}
+        >
           {filteredOptions.length === 0 ? (
             <div className="px-3 py-5 text-center text-sm text-gray-500">{emptyText}</div>
           ) : (
@@ -119,7 +132,7 @@ export function SearchableSelect({
                   )}
                 >
                   <Check className={cn("mr-2 h-4 w-4 shrink-0", active ? "opacity-100" : "opacity-0")} />
-                  <span className="truncate">{option.label}</span>
+                  <span className="min-w-0 whitespace-normal break-words">{option.label}</span>
                 </button>
               );
             })

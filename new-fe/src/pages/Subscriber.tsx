@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
-import { fetchGroupOptions, GroupOption } from '@/api/group';
+import { fetchGroupOptions, GroupOption, saveGroup } from '@/api/group';
 import { fetchKaryawanOptions, KaryawanOption } from '@/api/karyawan';
 import { createSubscription } from '@/api/subscription';
 import { useAppStore } from '@/store/useAppStore';
@@ -20,7 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ModalForm } from '@/components/ModalForm';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, Search, X, Server, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, Search, X, Server, Calendar as CalendarIcon, Check } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -201,6 +201,18 @@ const initialSubscriberForm: Subscriber = {
   input_by: '',
 };
 
+const initialGroupShortcutForm = {
+  kode_group: '',
+  nama_group: '',
+  nama_owner: '',
+  no_hp_owner: '',
+  nama_pic: '',
+  no_hp_pic: '',
+  alamat: '',
+  gender_owner: null as 'LAKI-LAKI' | 'PEREMPUAN' | null,
+  gender_pic: null as 'LAKI-LAKI' | 'PEREMPUAN' | null,
+};
+
 type SubscriberMode = 'aktif' | 'outstand';
 
 export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }) {
@@ -214,6 +226,8 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Subscriber>(initialSubscriberForm);
+  const [groupShortcutOpen, setGroupShortcutOpen] = useState(false);
+  const [groupShortcutForm, setGroupShortcutForm] = useState(initialGroupShortcutForm);
   const { user } = useAppStore();
 
   // Formatted input for biaya
@@ -271,6 +285,32 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
   const { data: karyawanOptions = [] } = useQuery<KaryawanOption[]>({
     queryKey: ['karyawan-options'],
     queryFn: fetchKaryawanOptions,
+  });
+
+  const createGroupShortcutMutation = useMutation({
+    mutationFn: () => saveGroup({
+      ...groupShortcutForm,
+      owner: groupShortcutForm.nama_owner,
+      no_hp: groupShortcutForm.no_hp_owner,
+    }),
+    onSuccess: async (resp: any) => {
+      const savedGroup = resp?.data?.data;
+      await queryClient.invalidateQueries({ queryKey: ['group-options'] });
+      await queryClient.invalidateQueries({ queryKey: ['group-all'] });
+      if (savedGroup) {
+        handleGroupSelect({
+          ...savedGroup,
+          value: savedGroup._id,
+          label: `${savedGroup.kode_group} - ${savedGroup.nama_group}`,
+        });
+      }
+      setGroupShortcutOpen(false);
+      setGroupShortcutForm(initialGroupShortcutForm);
+      toast.success(resp?.data?.message || 'Group toko berhasil ditambahkan.');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Gagal menambahkan group toko.');
+    },
   });
 
   // Fetch all available years for filter dropdown
@@ -659,6 +699,8 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
     setEditId(null);
     setFormData({ ...initialSubscriberForm, status_subscriber: isOutstandMode ? 'OUTSTAND' : 'AKTIF' });
     setFormattedBiaya('');
+    setGroupShortcutOpen(false);
+    setGroupShortcutForm(initialGroupShortcutForm);
   };
 
   const handleProgramSelect = (program: Program) => {
@@ -1318,7 +1360,19 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="group_id" className="text-sm font-semibold text-gray-700">Group Toko</Label>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="group_id" className="text-sm font-semibold text-gray-700">Group Toko</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setGroupShortcutOpen(true)}
+                    className="h-8 border-blue-300 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+                  >
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    Tambah Group
+                  </Button>
+                </div>
                 <SearchableSelect
                   value={formData.group_id || 'none'}
                   onValueChange={(value) => {
@@ -1370,6 +1424,9 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                   placeholder="Pilih program..."
                   searchPlaceholder="Cari program..."
                   emptyText="Program tidak ditemukan."
+                  multilineValue
+                  className="min-h-[58px] items-center"
+                  contentClassName="w-[min(92vw,960px)] max-w-[calc(100vw-2rem)]"
                 />
               </div>
 
@@ -1389,9 +1446,9 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                 <Input
                   id="internal_kode"
                   value={formData.internal_kode || ''}
-                  placeholder="Terisi otomatis dari program"
-                  className="border-2 border-gray-200 bg-gray-50 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                  readOnly
+                  onChange={(e) => setFormData({ ...formData, internal_kode: e.target.value.toUpperCase() })}
+                  placeholder="Terisi otomatis dari program, bisa diubah"
+                  className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
                   required
                 />
               </div>
@@ -1649,6 +1706,148 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
             </div>
           </form>
         </ModalForm>
+
+        <Dialog open={groupShortcutOpen} onOpenChange={setGroupShortcutOpen}>
+          <DialogContent className="sm:max-w-2xl bg-white/95 backdrop-blur-sm">
+            <DialogHeader>
+              <DialogTitle>Tambah Group Toko</DialogTitle>
+            </DialogHeader>
+
+            <form
+              className="space-y-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                createGroupShortcutMutation.mutate();
+              }}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="shortcut-kode-group" className="text-sm font-semibold text-gray-700">Kode Group</Label>
+                  <Input
+                    id="shortcut-kode-group"
+                    value=""
+                    disabled
+                    placeholder="Otomatis dari sistem"
+                    className="border-2 border-gray-200 bg-gray-50 text-gray-600 disabled:opacity-100"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="shortcut-nama-group" className="text-sm font-semibold text-gray-700">Nama Group Toko</Label>
+                  <Input
+                    id="shortcut-nama-group"
+                    value={groupShortcutForm.nama_group}
+                    onChange={(event) => setGroupShortcutForm((prev) => ({ ...prev, nama_group: event.target.value.toUpperCase() }))}
+                    placeholder="Masukkan nama group"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="shortcut-nama-owner" className="text-sm font-semibold text-gray-700">Nama Owner</Label>
+                  <Input
+                    id="shortcut-nama-owner"
+                    value={groupShortcutForm.nama_owner}
+                    onChange={(event) => setGroupShortcutForm((prev) => ({ ...prev, nama_owner: event.target.value.toUpperCase() }))}
+                    placeholder="Masukkan nama owner"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="shortcut-no-hp-owner" className="text-sm font-semibold text-gray-700">No HP Owner</Label>
+                  <Input
+                    id="shortcut-no-hp-owner"
+                    value={groupShortcutForm.no_hp_owner}
+                    onChange={(event) => setGroupShortcutForm((prev) => ({ ...prev, no_hp_owner: event.target.value }))}
+                    placeholder="Masukkan no HP owner"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="shortcut-nama-pic" className="text-sm font-semibold text-gray-700">Nama PIC</Label>
+                  <Input
+                    id="shortcut-nama-pic"
+                    value={groupShortcutForm.nama_pic}
+                    onChange={(event) => setGroupShortcutForm((prev) => ({ ...prev, nama_pic: event.target.value.toUpperCase() }))}
+                    placeholder="Masukkan nama PIC"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="shortcut-no-hp-pic" className="text-sm font-semibold text-gray-700">No HP PIC</Label>
+                  <Input
+                    id="shortcut-no-hp-pic"
+                    value={groupShortcutForm.no_hp_pic}
+                    onChange={(event) => setGroupShortcutForm((prev) => ({ ...prev, no_hp_pic: event.target.value }))}
+                    placeholder="Masukkan no HP PIC"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label className="text-sm font-semibold text-gray-700">Gender Owner</Label>
+                  <SearchableSelect
+                    value={groupShortcutForm.gender_owner || 'none'}
+                    onValueChange={(value: 'none' | 'LAKI-LAKI' | 'PEREMPUAN') =>
+                      setGroupShortcutForm((prev) => ({ ...prev, gender_owner: value === 'none' ? null : value }))
+                    }
+                    options={[
+                      { value: 'none', label: 'Kosongkan' },
+                      { value: 'LAKI-LAKI', label: 'LAKI-LAKI' },
+                      { value: 'PEREMPUAN', label: 'PEREMPUAN' },
+                    ]}
+                    placeholder="Pilih gender owner"
+                    searchPlaceholder="Cari gender..."
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label className="text-sm font-semibold text-gray-700">Gender PIC</Label>
+                  <SearchableSelect
+                    value={groupShortcutForm.gender_pic || 'none'}
+                    onValueChange={(value: 'none' | 'LAKI-LAKI' | 'PEREMPUAN') =>
+                      setGroupShortcutForm((prev) => ({ ...prev, gender_pic: value === 'none' ? null : value }))
+                    }
+                    options={[
+                      { value: 'none', label: 'Kosongkan' },
+                      { value: 'LAKI-LAKI', label: 'LAKI-LAKI' },
+                      { value: 'PEREMPUAN', label: 'PEREMPUAN' },
+                    ]}
+                    placeholder="Pilih gender PIC"
+                    searchPlaceholder="Cari gender..."
+                  />
+                </div>
+                <div className="grid gap-2 md:col-span-2">
+                  <Label htmlFor="shortcut-alamat" className="text-sm font-semibold text-gray-700">Alamat</Label>
+                  <Input
+                    id="shortcut-alamat"
+                    value={groupShortcutForm.alamat}
+                    onChange={(event) => setGroupShortcutForm((prev) => ({ ...prev, alamat: event.target.value.toUpperCase() }))}
+                    placeholder="Masukkan alamat"
+                    className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setGroupShortcutOpen(false);
+                    setGroupShortcutForm(initialGroupShortcutForm);
+                  }}
+                >
+                  Batal
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={createGroupShortcutMutation.isPending}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:from-blue-700 hover:to-indigo-800"
+                >
+                  {createGroupShortcutMutation.isPending ? 'Menyimpan...' : 'Tambah Group Toko'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={vpsDialogOpen} onOpenChange={(open) => { if (!open) closeVpsDialog(); }}>
           <DialogContent className="sm:max-w-[560px]">
