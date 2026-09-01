@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import axiosInstance from '@/api/axiosInstance';
 import { fetchGroupOptions, GroupOption, saveGroup } from '@/api/group';
 import { fetchKaryawanOptions, KaryawanOption } from '@/api/karyawan';
+import { fetchOrderConfirmationNoOkDetail, fetchOrderConfirmationNoOkOptions, OrderConfirmationNoOkOption } from '@/api/orderConfirmation';
 import { createSubscription } from '@/api/subscription';
 import { useAppStore } from '@/store/useAppStore';
 import { Button } from '@/components/ui/button';
@@ -244,6 +245,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
   const [filterMonth, setFilterMonth] = useState<string>('ALL');
   const [filterYear, setFilterYear] = useState<string>('ALL');
   const [filterStatusSubscriber, setFilterStatusSubscriber] = useState<'AKTIF' | 'NON_AKTIF' | 'ALL'>('AKTIF');
+  const [isApplyingNoOk, setIsApplyingNoOk] = useState(false);
 
   // Debounce searchValue
   useEffect(() => {
@@ -285,6 +287,12 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
   const { data: karyawanOptions = [] } = useQuery<KaryawanOption[]>({
     queryKey: ['karyawan-options'],
     queryFn: fetchKaryawanOptions,
+  });
+  const { data: orderConfirmationOptions = [], isLoading: isLoadingNoOk, error: noOkOptionsError } = useQuery<OrderConfirmationNoOkOption[]>({
+    queryKey: ['order-confirmation-no-ok-options', modalOpen],
+    queryFn: () => fetchOrderConfirmationNoOkOptions({ limit: 100 }),
+    enabled: modalOpen,
+    staleTime: 60_000,
   });
 
   const createGroupShortcutMutation = useMutation({
@@ -361,6 +369,32 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
 
   // Use all years from database for filter dropdown
   const availableYears = allYears;
+  const noOkSelectOptions = useMemo(() => {
+    const options = [
+      { value: 'none', label: 'Tanpa NO OK', keywords: 'tanpa no ok kosong' },
+      ...orderConfirmationOptions.map((order) => ({
+        value: order.no_ok,
+        label: `${order.no_ok} - ${order.customer?.nama_customer || '-'}`,
+        keywords: [
+          order.no_ok,
+          order.customer?.kode_customer,
+          order.customer?.nama_customer,
+          order.customer?.kota,
+          order.sales?.nama,
+        ].filter(Boolean).join(' '),
+      })),
+    ];
+
+    if (formData.no_ok && !options.some((option) => option.value === formData.no_ok)) {
+      options.push({
+        value: formData.no_ok,
+        label: `${formData.no_ok} - tersimpan`,
+        keywords: formData.no_ok,
+      });
+    }
+
+    return options;
+  }, [formData.no_ok, orderConfirmationOptions]);
 
   const MONTH_OPTIONS: { value: string; label: string }[] = [
     { value: 'ALL', label: 'All' },
@@ -701,6 +735,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
     setFormattedBiaya('');
     setGroupShortcutOpen(false);
     setGroupShortcutForm(initialGroupShortcutForm);
+    setIsApplyingNoOk(false);
   };
 
   const handleProgramSelect = (program: Program) => {
@@ -728,6 +763,48 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
       gender_pic: group.gender_pic || null,
       alamat: group.alamat,
     });
+  };
+
+  const handleNoOkSelect = async (value: string) => {
+    if (value === 'none') {
+      setFormData((prev) => ({ ...prev, no_ok: null }));
+      return;
+    }
+
+    setIsApplyingNoOk(true);
+    try {
+      const order = await fetchOrderConfirmationNoOkDetail(value);
+      const customer = order.customer || {};
+      const salesName = String(order.sales?.nama || '').trim().toUpperCase();
+      const salesUserId = String(order.sales?.user_id || '').trim().toUpperCase();
+      const matchedSales = karyawanOptions.find((item) => {
+        const kode = String(item.kode_karyawan || item.value || '').trim().toUpperCase();
+        const nama = String(item.nama_karyawan || item.label || '').trim().toUpperCase();
+        return (salesUserId && kode === salesUserId) || (salesName && nama === salesName);
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        no_ok: order.no_ok || value,
+        toko: String(customer.nama_customer || prev.toko || '').toUpperCase(),
+        daerah: String(customer.kota || prev.daerah || '').toUpperCase(),
+        alamat: customer.alamat ? String(customer.alamat).toUpperCase() : prev.alamat,
+        nama_owner: customer.nama_owner ? String(customer.nama_owner).toUpperCase() : prev.nama_owner,
+        no_hp_owner: customer.no_hp_owner || prev.no_hp_owner,
+        gender_owner: customer.gender_owner || prev.gender_owner,
+        nama_pic: customer.nama_pic || customer.kontak ? String(customer.nama_pic || customer.kontak).toUpperCase() : prev.nama_pic,
+        no_hp_pic: customer.no_hp_pic || customer.no_hp || prev.no_hp_pic,
+        gender_pic: customer.gender_pic || prev.gender_pic,
+        kode_sales: matchedSales?.kode_karyawan || prev.kode_sales,
+        sales: matchedSales?.nama_karyawan || order.sales?.nama || prev.sales,
+      }));
+      toast.success('Data subscriber berhasil diisi dari Order Confirmation.');
+    } catch (error: any) {
+      setFormData((prev) => ({ ...prev, no_ok: value }));
+      toast.error(error?.response?.data?.message || 'Gagal mengambil detail No OK dari Order Confirmation.');
+    } finally {
+      setIsApplyingNoOk(false);
+    }
   };
 
   const toggleRowExpansion = (id: string) => {
@@ -887,6 +964,7 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
                     { value: 'program', label: 'Program' },
                     { value: 'internal_kode', label: 'Internal Kode' },
                     { value: 'kode', label: 'Kode' },
+                    { value: 'no_ok', label: 'NO OK' },
                     { value: 'sales', label: 'Sales' },
                     { value: 'nama_owner', label: 'Nama Owner' },
                     { value: 'no_hp_owner', label: 'No HP Owner' },
@@ -1297,13 +1375,23 @@ export default function Subscriber({ mode = 'aktif' }: { mode?: SubscriberMode }
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="grid gap-2">
                 <Label htmlFor="no_ok" className="text-sm font-semibold text-gray-700">NO OK</Label>
-                <Input
-                  id="no_ok"
-                  value={formData.no_ok || ''}
-                  onChange={(e) => setFormData({ ...formData, no_ok: e.target.value.toUpperCase() || null })}
-                  placeholder="Masukkan NO OK"
+                <SearchableSelect
+                  value={formData.no_ok || 'none'}
+                  onValueChange={handleNoOkSelect}
+                  options={noOkSelectOptions}
+                  placeholder={isLoadingNoOk || isApplyingNoOk ? 'Memuat NO OK...' : 'Pilih NO OK'}
+                  searchPlaceholder="Cari NO OK atau customer..."
+                  emptyText={isLoadingNoOk ? 'Memuat NO OK...' : 'NO OK tidak ditemukan'}
+                  disabled={isLoadingNoOk || isApplyingNoOk}
                   className="border-2 border-gray-200 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                  contentClassName="z-[120]"
+                  multilineValue
                 />
+                {noOkOptionsError && (
+                  <p className="text-xs font-medium text-red-600">
+                    Gagal memuat NO OK dari Order Confirmation. Cek koneksi integrasi backend.
+                  </p>
+                )}
               </div>
 
               <div className="grid gap-2">
