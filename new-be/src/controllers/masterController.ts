@@ -17,6 +17,7 @@ import CustomDashboard, { ICustomDashboard } from '../models/CustomDashboard';
 import Transaksi from '../models/Transaksi';
 import { addDays, getTempo, parseDateOnly, toPeriode } from '../utils/subscriptionPeriod';
 import { rebuildSubscriberTahun } from '../services/subscriberTahunService';
+import { assertOrderConfirmationNoOkValid } from '../services/orderConfirmationIntegrationService';
 
 
 // Resolve acting user from authenticated request only. Ignore client-supplied audit fields.
@@ -1276,6 +1277,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
     const subscriberBiaya = customBiaya !== undefined ? customBiaya : program.biaya;
     const selectedSales = await resolveKaryawanSelection(kode_sales, sales);
     const selectedImplementator = await resolveKaryawanSelection(kode_implementator, implementator);
+    const validatedNoOk = await assertOrderConfirmationNoOkValid(no_ok);
 
     // Calculate prev_subscriber, current_subscriber, prev_biaya, and current_biaya
     const lastSubscriber = await Subscriber.findOne({
@@ -1300,7 +1302,7 @@ export const createSubscriber = async (req: Request, res: Response, next: NextFu
       group_id: group?._id || null,
       kode_group: group?.kode_group || normalizeOptionalString(req.body.kode_group),
       nama_group: group?.nama_group || normalizeOptionalString(req.body.nama_group),
-      no_ok,
+      no_ok: validatedNoOk,
       nomor_telepon,
       kode_sales: selectedSales.kode,
       sales: selectedSales.nama,
@@ -1461,11 +1463,14 @@ export const updateSubscriber = async (req: Request, res: Response) => {
     if ((status_subscriber === 'AKTIF' || status_subscriber === 'NON_AKTIF') && !(parsedTanggal || old.tgl_implementasi || old.tanggal)) {
       return res.status(400).json({ message: 'Tgl implementasi wajib diisi sebelum subscriber divalidasi aktif' });
     }
+    const validatedNoOk = no_ok !== undefined
+      ? await assertOrderConfirmationNoOkValid(no_ok)
+      : old.no_ok;
 
     old.group_id = group_id !== undefined ? (group?._id || null) : old.group_id;
     old.kode_group = group_id !== undefined ? (group?.kode_group || null) : old.kode_group;
     old.nama_group = group_id !== undefined ? (group?.nama_group || null) : old.nama_group;
-    old.no_ok = no_ok ?? old.no_ok;
+    old.no_ok = validatedNoOk;
     old.nomor_telepon = nomor_telepon ?? old.nomor_telepon;
     if (kode_sales !== undefined) {
       const selectedSales = await resolveKaryawanSelection(kode_sales, sales);
