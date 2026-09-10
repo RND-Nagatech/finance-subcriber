@@ -1,11 +1,10 @@
 export const agentOpenApi = {
   openapi: '3.0.3',
-  info: { title: 'Finance Agent API', version: '1.0.0', description: 'Read-only service API for Finance, Travel Expenses, and Assets.' },
+  info: { title: 'Subscriber Agent API', version: '1.0.0', description: 'Read-only service API for Subscriber data and subscriber metrics.' },
   servers: [{ url: '/api/agent/v1' }],
-  security: [{ serviceJwt: ['finance:read'] }],
+  security: [{ serviceJwt: [] }],
   components: {
-    securitySchemes: { serviceJwt: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'JWT with sub, aud, exp, and finance:read scope.' } },
-    parameters: { query: { name: 'search', in: 'query', required: false, schema: { type: 'string' }, description: 'Free-text filter. Other standard filters are documented by endpoint implementation.' } },
+    securitySchemes: { serviceJwt: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'JWT with sub, aud, exp, and subscriber:read scope.' } },
     schemas: {
       Metadata: { type: 'object', required: ['source', 'generatedAt', 'requestId'], properties: { source: { type: 'string' }, generatedAt: { type: 'string', format: 'date-time' }, requestId: { type: 'string' }, pagination: { $ref: '#/components/schemas/Pagination' } } },
       Pagination: { type: 'object', properties: { page: { type: 'integer' }, limit: { type: 'integer', maximum: 100 }, totalItems: { type: 'integer' }, totalPages: { type: 'integer' } } },
@@ -14,32 +13,17 @@ export const agentOpenApi = {
     },
   },
   paths: {
-    '/capabilities': { get: { summary: 'List available Agent tools', responses: { '200': { description: 'Capabilities' } } } },
-    '/finance/summary': { get: { summary: 'Finance summary', parameters: [{ $ref: '#/components/parameters/query' }], responses: { '200': { description: 'Summary' } } } },
-    '/finance/revenue': { get: { summary: 'Revenue transactions', responses: { '200': { description: 'Collection' } } } },
-    '/finance/expenses': { get: { summary: 'Expense transactions', responses: { '200': { description: 'Collection' } } } },
-    '/finance/profit-and-loss': { get: { summary: 'Profit and loss', responses: { '200': { description: 'Profit and loss' } } } },
-    '/finance/cashflow': { get: { summary: 'Daily cashflow', responses: { '200': { description: 'Collection' } } } },
-    '/finance/transactions': { get: { summary: 'Finance transactions', responses: { '200': { description: 'Collection' } } } },
-    '/finance/accounts': { get: { summary: 'Bank accounts and balances', responses: { '200': { description: 'Collection' } } } },
-    '/finance/account-balances': { get: { summary: 'Bank account balances', responses: { '200': { description: 'Collection' } } } },
-    '/finance/budgets': { get: { summary: 'Budgets', responses: { '200': { description: 'Collection' } } } },
-    '/finance/fiscal-periods': { get: { summary: 'Available fiscal periods', responses: { '200': { description: 'Collection' } } } },
-    '/finance/travel-expenses': { get: { summary: 'Travel expense headers', responses: { '200': { description: 'Collection' } } } },
-    '/finance/travel-expenses/{id}': { get: { summary: 'Travel expense detail', responses: { '200': { description: 'Detail' }, '404': { description: 'Not found' } } } },
-    '/finance/travel-expenses/{id}/summary': { get: { summary: 'Travel expense summary', responses: { '200': { description: 'Summary' } } } },
-    '/finance/travel-expenses/{id}/items': { get: { summary: 'Travel expense items', responses: { '200': { description: 'Collection' } } } },
-    '/finance/travel-expenses/{id}/funds': { get: { summary: 'Travel expense funds', responses: { '200': { description: 'Collection' } } } },
-    '/finance/assets': { get: { summary: 'Assets', responses: { '200': { description: 'Collection' } } } },
-    '/finance/assets/summary': { get: { summary: 'Asset valuation summary', responses: { '200': { description: 'Summary' } } } },
-    '/finance/assets/types': { get: { summary: 'Asset types', responses: { '200': { description: 'Collection' } } } },
-    '/finance/assets/transfers': { get: { summary: 'Asset transfers', responses: { '200': { description: 'Collection' } } } },
-    '/finance/assets/ledger': { get: { summary: 'Asset ledger history', responses: { '200': { description: 'Collection' } } } },
-    '/finance/assets/{id}': { get: { summary: 'Asset detail', responses: { '200': { description: 'Detail' } } } },
-    '/finance/assets/{id}/ledger': { get: { summary: 'Asset ledger', responses: { '200': { description: 'Collection' } } } },
+    '/capabilities': { get: { summary: 'List available Subscriber Agent tools', responses: { '200': { description: 'Capabilities' } } } },
+    '/subscribers': { get: { summary: 'List subscribers', parameters: [{ name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['AKTIF', 'OUTSTAND', 'NON_AKTIF', 'ALL'] } }, { name: 'year', in: 'query', schema: { type: 'string', pattern: '^\\d{4}$' } }, { name: 'month', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 12 } }, { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1 } }, { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100 } }], responses: { '200': { description: 'Subscriber collection' } } } },
+    '/subscribers/{id}': { get: { summary: 'Get one subscriber by id or code', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Subscriber detail' }, '404': { description: 'Not found' } } } },
+    '/subscribers/summary': { get: { summary: 'Get current subscriber summary by status', responses: { '200': { description: 'Summary' } } } },
+    '/subscribers/years': { get: { summary: 'List subscriber registration years', responses: { '200': { description: 'Years' } } } },
+    '/subscribers/metrics/growth/{year}': { get: { summary: 'Get subscriber growth by fiscal month', parameters: [{ name: 'year', in: 'path', required: true, schema: { type: 'string', pattern: '^\\d{4}$' } }], responses: { '200': { description: 'Growth metric' } } } },
+    '/subscribers/metrics/cumulative/{year}': { get: { summary: 'Get cumulative subscriber count by fiscal month', parameters: [{ name: 'year', in: 'path', required: true, schema: { type: 'string', pattern: '^\\d{4}$' } }], responses: { '200': { description: 'Cumulative metric' } } } },
+    '/subscribers/metrics/by-program': { get: { summary: 'Get subscriber totals grouped by program', parameters: [{ name: 'fiscalYear', in: 'query', schema: { type: 'string', pattern: '^\\d{4}$' } }, { name: 'month', in: 'query', schema: { type: 'string', example: 'NOV' } }], responses: { '200': { description: 'Program metric' } } } },
   },
 } as const;
 
 export function agentDocsHtml() {
-  return `<!doctype html><html><head><title>Finance Agent API</title><style>body{font:16px system-ui;max-width:900px;margin:40px auto;padding:0 20px}code{background:#f1f1f1;padding:2px 5px}li{margin:8px 0}</style></head><body><h1>Finance Agent API</h1><p>Read-only API for Finance, Travel Expenses, and Assets.</p><p>Download the <a href="/api/agent/openapi.json">OpenAPI document</a>.</p><ul>${Object.keys(agentOpenApi.paths).map((path) => `<li><code>GET /api/agent/v1${path}</code></li>`).join('')}</ul></body></html>`;
+  return `<!doctype html><html><head><title>Subscriber Agent API</title><style>body{font:16px system-ui;max-width:900px;margin:40px auto;padding:0 20px}code{background:#f1f1f1;padding:2px 5px}li{margin:8px 0}</style></head><body><h1>Subscriber Agent API</h1><p>Read-only API for Subscriber data and metrics.</p><p>Download the <a href="/api/agent/openapi.json">OpenAPI document</a>.</p><ul>${Object.keys(agentOpenApi.paths).map((path) => `<li><code>GET /api/agent/v1${path}</code></li>`).join('')}</ul></body></html>`;
 }

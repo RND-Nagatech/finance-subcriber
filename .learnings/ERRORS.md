@@ -1,57 +1,29 @@
-# Errors
+## [ERR-20260910-001] relative-scope-audit-path
 
-## [ERR-20260828-001] zsh-parser-range-check
-
-**Logged**: 2026-08-28T12:20:00+07:00
+**Logged**: 2026-09-10T00:00:00+07:00
 **Priority**: low
 **Status**: resolved
 **Area**: tooling
 
 ### Summary
-Fallback parser-range inspection failed because the command used Bash array syntax and GNU-style `sed` assumptions under macOS zsh/sed.
+Scope audit used a `new-be/...` relative path while already running inside `new-be`.
 
 ### Error
-```text
-zsh:read:1: bad option: -a
-sed: illegal option -- 2
-```
+`rg: new-be/src/agent-api: No such file or directory`
 
 ### Context
-- Attempted to inspect parser-flagged source ranges after codebase-memory coverage reported partial files.
-- Environment: macOS zsh and BSD sed.
+The Subscriber smoke test itself passed; only the follow-up grep path was incorrect.
 
 ### Suggested Fix
-Use direct `sed -n 'N,Mp'` calls or portable shell loops without `read -a`; avoid assuming GNU sed flags.
+Use repository-root workdir for repository-relative audits, or omit the `new-be/` prefix inside the backend workdir.
 
 ### Metadata
 - Reproducible: yes
-- Related Files: new-fe/src/pages/Transaksi.tsx, new-fe/src/pages/Dashboard.tsx, new-fe/src/pages/DashboardV2.tsx, new-fe/src/pages/PerjalananDinasWorkspace.tsx, new-fe/src/pages/SubscriberVpsDashboard.tsx
+- Related Files: new-be/src/agent-api
 
----
-
-## [ERR-20260828-002] endpoint-auth-shell-quoting
-
-**Logged**: 2026-08-28T12:25:00+07:00
-**Priority**: low
-**Status**: resolved
-**Area**: tooling
-
-### Summary
-Multi-endpoint curl command was rejected by the tool JavaScript wrapper due to nested quoting.
-
-### Error
-```text
-Script error: SyntaxError: Unexpected string
-```
-
-### Context
-- Read-only production API verification with a temporary shell token variable.
-
-### Suggested Fix
-Use a simpler command string or a separate explicit curl invocation per endpoint.
-
-### Metadata
-- Reproducible: unknown
-- Related Files: none
+### Resolution
+- **Resolved**: 2026-09-10T00:00:00+07:00
+- **Notes**: Re-run from repository root with the correct path.
+- **Recurrence-Count**: 2 (the final smoke command repeated the same relative-path mistake before the corrected audit).
 
 ---

@@ -20,6 +20,29 @@ Batasi scope Agent API pada finance summary, revenue, expenses, profit and loss,
 - Tags: agent-api, finance-only, scope
 
 ---
+## [LRN-20260910-004] correction
+
+**Logged**: 2026-09-10T00:00:00+07:00
+**Priority**: critical
+**Status**: pending
+**Area**: docs
+
+### Summary
+Agent API scope for this project is Subscriber-only; the previous Finance/Perjalanan Dinas/Asset scope was reversed by user correction.
+
+### Details
+The implementation must not expose Finance, Perjalanan Dinas, or Asset capabilities from this Agent API. Those capabilities should be removed from routes, manifest, capabilities, and documentation.
+
+### Suggested Action
+Replace the current Agent API vertical slice with read-only Subscriber capabilities based on the existing Subscriber model and controller/query behavior.
+
+### Metadata
+- Source: user_feedback
+- Related Files: new-be/src/agent-api, new-be/agent-tools.yaml, new-be/README.md
+- Tags: agent-api, subscriber-only, scope-correction
+- See Also: LRN-20260910-001, LRN-20260910-002
+
+---
 ## [LRN-20260910-002] correction
 
 **Logged**: 2026-09-10T00:00:00+07:00

@@ -3,7 +3,7 @@ import { NextFunction, Response } from 'express';
 import { AgentHttpError, AgentRequest, AgentIdentity } from '../common/agentTypes';
 
 function configuredAudience() {
-  return String(process.env.AGENT_SERVICE_AUDIENCE || 'finance-api');
+  return String(process.env.AGENT_SERVICE_AUDIENCE || 'subscriber-api');
 }
 
 function tokenKey(): { key: string; algorithm: 'RS256' | 'HS256' } | null {

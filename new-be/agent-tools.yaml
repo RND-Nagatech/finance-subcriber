@@ -4,157 +4,61 @@ base_path: /api/agent/v1
 read_only: true
 authentication:
   type: service-jwt
-  required_scope: finance:read
+  required_scope: subscriber:read
 tools:
-  - id: finance.summary
+  - id: subscriber.list
     method: GET
-    path: /finance/summary
+    path: /subscribers
     risk: low
-    description: Return revenue, expenses, profit and loss, and category totals for a period.
-    use_when: The agent needs a high-level Finance KPI summary.
-    do_not_use_when: The request is about subscriptions, subscribers, VPS, or order confirmation.
-    parameters: [startDate, endDate, fiscalYear]
-  - id: finance.revenue
+    description: List active or requested-status subscriber records with annual billing summary.
+    use_when: The agent needs subscriber, outlet, program, contact, or billing context.
+    do_not_use_when: The request is for subscription invoices, payments, VPS, Finance, Asset, or Travel Expense data.
+    parameters: [search, status, groupCode, year, month, page, limit]
+  - id: subscriber.detail
     method: GET
-    path: /finance/revenue
+    path: /subscribers/{id}
     risk: low
-    description: List Finance revenue transactions.
-    use_when: The agent needs revenue transaction evidence.
-    do_not_use_when: The agent needs a subscription invoice or subscriber payment record.
-    parameters: [startDate, endDate, fiscalYear, search, page, limit]
-  - id: finance.expenses
+    description: Return one subscriber by stable id or subscriber code.
+    use_when: The agent needs one subscriber record and annual billing summary.
+    do_not_use_when: The caller needs to create, edit, or delete a subscriber.
+    parameters: [id, fiscalYear]
+  - id: subscriber.summary
     method: GET
-    path: /finance/expenses
+    path: /subscribers/summary
     risk: low
-    description: List Finance expense transactions.
-    use_when: The agent needs expense transaction evidence.
-    do_not_use_when: The agent needs to create, edit, validate, or delete a transaction.
-    parameters: [startDate, endDate, fiscalYear, search, page, limit]
-  - id: finance.profit-and-loss
+    description: Return current subscriber counts and fees grouped by subscriber status.
+    use_when: The agent needs a current subscriber KPI summary.
+    do_not_use_when: The caller needs subscription transaction history.
+    parameters: []
+  - id: subscriber.years
     method: GET
-    path: /finance/profit-and-loss
+    path: /subscribers/years
     risk: low
-    description: Return the Finance profit and loss calculation for a period.
-    use_when: The agent needs net result for a period.
-    do_not_use_when: The caller needs accounting journal mutation.
-    parameters: [startDate, endDate, fiscalYear]
-  - id: finance.cashflow
-    method: GET
-    path: /finance/cashflow
-    risk: low
-    description: Return daily inflow, outflow, and net cashflow derived from Finance transactions.
-    use_when: The agent needs a cashflow trend.
-    do_not_use_when: The caller needs bank statement reconciliation.
-    parameters: [startDate, endDate, fiscalYear, page, limit]
-  - id: finance.transactions
-    method: GET
-    path: /finance/transactions
-    risk: low
-    description: List normalized Finance detail transactions.
-    use_when: The agent needs transaction-level Finance data.
-    do_not_use_when: The caller needs write operations or raw database access.
-    parameters: [startDate, endDate, fiscalYear, search, page, limit]
-  - id: finance.accounts
-    method: GET
-    path: /finance/accounts
-    risk: low
-    description: List Finance bank accounts and current balances.
-    use_when: The agent needs account or balance context.
-    do_not_use_when: The caller needs to transfer or change account balances.
-    parameters: [search, page, limit]
-  - id: finance.budgets
-    method: GET
-    path: /finance/budgets
-    risk: low
-    description: List active budgets and calculated usage.
-    use_when: The agent needs budget utilization context.
-    do_not_use_when: The caller needs to create or edit a budget.
-    parameters: [fiscalYear, page, limit]
-  - id: finance.fiscal-periods
-    method: GET
-    path: /finance/fiscal-periods
-    risk: low
-    description: List fiscal years available in Finance transactions.
-    use_when: The agent needs to resolve an available fiscal period.
+    description: List years available from subscriber registration dates.
+    use_when: The agent needs to resolve a valid subscriber reporting year.
     do_not_use_when: The caller needs to change fiscal configuration.
     parameters: []
-  - id: finance.travel-expenses
+  - id: subscriber.growth
     method: GET
-    path: /finance/travel-expenses
+    path: /subscribers/metrics/growth/{year}
     risk: low
-    description: List Perjalanan Dinas headers with calculated fund summaries.
-    use_when: The agent needs business travel expense status or totals.
-    do_not_use_when: The caller needs to submit, audit, post, inject, return, or delete travel data.
-    parameters: [startDate, endDate, search, page, limit]
-  - id: finance.travel-expense-detail
+    description: Return new active subscriber counts by fiscal month.
+    use_when: The agent needs subscriber acquisition trend.
+    do_not_use_when: The caller needs subscription revenue reporting.
+    parameters: [year]
+  - id: subscriber.cumulative
     method: GET
-    path: /finance/travel-expenses/{id}
+    path: /subscribers/metrics/cumulative/{year}
     risk: low
-    description: Return a Perjalanan Dinas header and summary.
-    use_when: The agent needs one travel expense record.
-    do_not_use_when: The caller needs to mutate the record.
-    parameters: [id]
-  - id: finance.travel-expense-items
+    description: Return cumulative active subscriber counts by fiscal month.
+    use_when: The agent needs subscriber base trend.
+    do_not_use_when: The caller needs subscription invoice balances.
+    parameters: [year]
+  - id: subscriber.by-program
     method: GET
-    path: /finance/travel-expenses/{id}/items
+    path: /subscribers/metrics/by-program
     risk: low
-    description: List Perjalanan Dinas expense items.
-    use_when: The agent needs item-level travel expense evidence.
-    do_not_use_when: The caller needs to edit or audit items.
-    parameters: [id, page, limit]
-  - id: finance.travel-expense-funds
-    method: GET
-    path: /finance/travel-expenses/{id}/funds
-    risk: low
-    description: List Perjalanan Dinas fund injections and returns.
-    use_when: The agent needs travel fund movement evidence.
-    do_not_use_when: The caller needs to inject or return funds.
-    parameters: [id, page, limit]
-  - id: finance.assets
-    method: GET
-    path: /finance/assets
-    risk: low
-    description: List assets with current valuation and growth.
-    use_when: The agent needs asset inventory or valuation.
-    do_not_use_when: The caller needs to create, update, delete, reduce stock, or transfer assets.
-    parameters: [search, includeInactive, page, limit]
-  - id: finance.asset-summary
-    method: GET
-    path: /finance/assets/summary
-    risk: low
-    description: Return aggregate asset valuation by type.
-    use_when: The agent needs asset portfolio totals.
-    do_not_use_when: The caller needs an asset mutation.
-    parameters: []
-  - id: finance.asset-types
-    method: GET
-    path: /finance/assets/types
-    risk: low
-    description: List active asset types and current prices.
-    use_when: The agent needs asset type context.
-    do_not_use_when: The caller needs to change type prices.
-    parameters: [search, page, limit]
-  - id: finance.asset-ledger
-    method: GET
-    path: /finance/assets/{id}/ledger
-    risk: low
-    description: List ledger movements for one asset.
-    use_when: The agent needs asset movement history.
-    do_not_use_when: The caller needs to post a movement.
-    parameters: [id, page, limit]
-  - id: finance.asset-ledger-history
-    method: GET
-    path: /finance/assets/ledger
-    risk: low
-    description: List recent asset ledger history.
-    use_when: The agent needs cross-asset movement history.
-    do_not_use_when: The caller needs to post a movement.
-    parameters: [page, limit]
-  - id: finance.asset-transfers
-    method: GET
-    path: /finance/assets/transfers
-    risk: low
-    description: List asset and account transfer history.
-    use_when: The agent needs transfer evidence.
-    do_not_use_when: The caller needs to initiate a transfer.
-    parameters: [page, limit]
+    description: Return active subscriber totals and fees grouped by program.
+    use_when: The agent needs program mix or subscriber distribution.
+    do_not_use_when: The caller needs to modify program assignments.
+    parameters: [fiscalYear, month]
