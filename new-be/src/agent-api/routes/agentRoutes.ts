@@ -15,8 +15,8 @@ router.use(h(requireAgentScope('subscriber:read')));
 router.use(h(agentRateLimitMiddleware));
 
 router.get('/capabilities', h((req: AgentRequest, res: Response) => sendAgentSuccess(req, res, {
-  service: 'finance-subcriber', version: 'v1', readOnly: true, domains: ['subscriber'],
-  excludedDomains: ['finance', 'travel-expenses', 'assets', 'subscription', 'vps', 'order-confirmation'],
+  service: 'subcriber', version: 'v1', readOnly: true, domains: ['subscriber'],
+  excludedDomains: ['travel-expenses', 'assets', 'subscription', 'vps', 'order-confirmation'],
   authentication: { type: 'service-jwt', requiredScope: 'subscriber:read' },
 })));
 router.get('/subscribers', h(subscribers));
