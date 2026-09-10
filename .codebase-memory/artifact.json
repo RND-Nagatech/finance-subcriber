@@ -1,11 +1,11 @@
 {
     "schema_version": 2,
-    "commit": "f28af4bce523ece71c6caf99d08036c63e51178f",
-    "indexed_at": "2026-09-10T06:34:08Z",
+    "commit": "740c9276bda6802ba3967aeef8b8d0eaee09857b",
+    "indexed_at": "2026-09-10T06:43:31Z",
     "project": "Volumes-nagatechExternal-2026-Work-ai-new_finance_system-finance-subcriber",
     "nodes": 3584,
-    "edges": 11486,
+    "edges": 11484,
     "original_size": 19595264,
-    "compressed_size": 2504133,
+    "compressed_size": 2506479,
     "compression_level": 3
 }
