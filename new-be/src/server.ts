@@ -17,6 +17,8 @@ import userRoutes from './routes/userRoutes';
 import maintenanceRoutes from './routes/maintenanceRoutes';
 import orderConfirmationIntegrationRoutes from './routes/orderConfirmationIntegrationRoutes';
 import { errorLoggerMiddleware } from './middleware/errorLoggerMiddleware';
+import agentRoutes from './agent-api/routes/agentRoutes';
+import { agentOpenApi, agentDocsHtml } from './agent-api/docs/openapi';
 
 const app = express();
 const PORT = process.env.PORT || 5003;
@@ -54,6 +56,12 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+if (String(process.env.AGENT_API_ENABLED || 'false').toLowerCase() === 'true') {
+  app.get('/api/agent/openapi.json', (_req, res) => res.json(agentOpenApi));
+  app.get('/api/agent/docs', (_req, res) => res.type('html').send(agentDocsHtml()));
+  app.use('/api/agent/v1', agentRoutes);
+}
 
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);

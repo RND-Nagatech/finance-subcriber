@@ -28,3 +28,19 @@ PORT=5008
 - `GET|POST|PUT|DELETE /api/master/rekening`
 - `GET|POST|PUT|DELETE /api/users`
 
+## Finance Agent API
+
+API ini read-only untuk Agent Gateway dan hanya mencakup Finance, Perjalanan Dinas, dan Asset. Subscription, Subscriber, VPS, dan Order Confirmation tidak diekspos dari project ini.
+
+Aktifkan secara eksplisit di `.env`:
+
+```bash
+AGENT_API_ENABLED=true
+AGENT_SERVICE_AUDIENCE=finance-api
+AGENT_TOKEN_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----"
+AGENT_API_RATE_LIMIT=60
+```
+
+Token harus berupa JWT service-to-service dengan `sub`, `aud`, `exp`, dan scope `finance:read`. Untuk deployment internal yang belum memakai RS256, `AGENT_TOKEN_SECRET` dapat digunakan sebagai alternatif HS256; secret ini harus berbeda dari `JWT_SECRET` dan `PORTAL_JWT_SECRET`.
+
+Dokumentasi: `GET /api/agent/docs` dan OpenAPI JSON: `GET /api/agent/openapi.json`.
