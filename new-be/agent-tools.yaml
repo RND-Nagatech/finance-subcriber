@@ -1,5 +1,5 @@
 version: v1
-service: finance-subcriber
+service: subscriber
 base_path: /api/agent/v1
 read_only: true
 authentication:

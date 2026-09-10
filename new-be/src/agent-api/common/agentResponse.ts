@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { AgentRequest } from './agentTypes';
 
-const SOURCE = 'finance-subcriber';
+const SOURCE = 'subscriber';
 
 function metadata(req: AgentRequest, extra: Record<string, unknown> = {}) {
   return {
