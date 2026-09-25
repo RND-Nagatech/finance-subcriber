@@ -1188,7 +1188,18 @@ export const updateItem = async (req: Request, res: Response) => {
 
     if (typeof start === 'string' && start) {
       const ym = start.slice(0,7);
-      if (ym !== periode) return res.status(400).json({ message: 'start harus tetap di periode yang sama' });
+      const duplicate = await TTVpsDetail.findOne({
+        _id: { $ne: doc._id },
+        chain_id: doc.chain_id,
+        toko: doc.toko,
+        program: doc.program,
+        start,
+        delete_date: null,
+      }).lean();
+      if (duplicate) {
+        return res.status(400).json({ message: `Periode ${start} sudah ada untuk subscriber ${doc.toko}.` });
+      }
+      doc.periode = ym;
       doc.start = start;
     }
     if (typeof bulan === 'number' && bulan > 0) doc.bulan = bulan;

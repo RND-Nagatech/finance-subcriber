@@ -1948,7 +1948,6 @@ function TTVpsEditDialog({ open, onOpenChange, item, onSuccess }: { open: boolea
   const handleSubmit = () => {
     if (!item) return;
     if (!startDate || !months || months <= 0) return toast.error('Lengkapi form (bulan > 0)');
-    if (startDate.slice(0,7) !== item.__periode) return toast.error('Tanggal start harus tetap di periode yang sama');
     updateMut.mutate();
   };
 

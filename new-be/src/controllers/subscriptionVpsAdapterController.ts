@@ -662,7 +662,21 @@ export const updateItem = async (req: Request, res: Response) => {
   const jumlahBiaya = price * months;
   const diskon = Math.max(0, Math.min(jumlahBiaya, Number(req.body.diskon ?? detail.diskon ?? 0)));
   const tempo = getTempo(startDate, months);
-  detail.tgl_mulai_tagihan = formatYMD(startDate);
+  const startYmd = formatYMD(startDate);
+  const duplicate = await SubscriptionDetail.findOne({
+    _id: { $ne: detail._id },
+    subscriber_id: detail.subscriber_id,
+    tgl_mulai_tagihan: startYmd,
+    program: detail.program,
+    delete_date: null,
+  }).lean();
+  if (duplicate) {
+    return res.status(400).json({
+      message: `Periode ${startYmd} sudah ada untuk subscriber ${detail.toko}.`,
+    });
+  }
+
+  detail.tgl_mulai_tagihan = startYmd;
   detail.periode = toPeriode(startDate);
   detail.tahun = getFiscalYear(startDate);
   detail.jumlah_bulan = months;
