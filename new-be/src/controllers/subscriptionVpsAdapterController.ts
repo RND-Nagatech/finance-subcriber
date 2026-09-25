@@ -61,6 +61,13 @@ const asDate = (value: unknown): Date => {
 
 const asYMD = (value: unknown): string => formatYMD(asDate(value));
 
+const parseInvoiceDisplayDate = (value: unknown): Date | null => {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  return parseDateOnly(raw);
+};
+
 const getFiscalYear = (date: Date) => date.getUTCMonth() === 11 ? date.getUTCFullYear() + 1 : date.getUTCFullYear();
 
 const getFiscalEndDate = (date: Date) => {
@@ -448,11 +455,10 @@ const toDto = (detail: any) => ({
   patch_source_program: detail.patch_source_program || null,
 });
 
-const generateMonthlyInvoiceNumber = async () => {
-  const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
+const generateMonthlyInvoiceNumber = async (invoiceDate: Date = new Date()) => {
+  const yy = String(invoiceDate.getUTCFullYear()).slice(-2);
+  const mm = String(invoiceDate.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(invoiceDate.getUTCDate()).padStart(2, '0');
   const counter = await InvoiceCounter.findOneAndUpdate(
     { date_key: `${yy}${mm}` },
     { $inc: { last_seq: 1 } },
@@ -891,8 +897,14 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     return res.status(400).json({ message: 'Ada data subscription yang belum diverifikasi. Verifikasi relasi subscriber terlebih dahulu.' });
   }
 
-  const invoiceNumber = docs[0].invoice_meta?.invoice_number || await generateMonthlyInvoiceNumber();
   const payload = req.body || {};
+  const invoiceDate = parseInvoiceDisplayDate(payload.display_date);
+  if (payload.display_date && !invoiceDate) {
+    return res.status(400).json({ message: 'Tanggal invoice tidak valid. Gunakan format YYYY-MM-DD.' });
+  }
+  const effectiveInvoiceDate = invoiceDate || new Date();
+  const displayDate = formatYMD(effectiveInvoiceDate);
+  const invoiceNumber = docs[0].invoice_meta?.invoice_number || await generateMonthlyInvoiceNumber(effectiveInvoiceDate);
   const invoice = {
     invoice_number: invoiceNumber,
     generated_at: new Date(),
@@ -915,7 +927,7 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
     extra_deduction_rp: Number(payload.extra_deduction_rp || 0),
     grand_total: Number(payload.grand_total ?? docs.reduce((sum, doc) => sum + Number(doc.total_biaya || 0), 0)),
     notes: payload.notes || '',
-    display_date: payload.display_date || formatYMD(new Date()),
+    display_date: displayDate,
   };
 
   const affectedYears = new Set<number>();
@@ -950,8 +962,9 @@ export const generateDokuPaymentLink = async (req: Request, res: Response) => {
     if (!detail) return res.status(404).json({ message: 'item not found' });
     if (requireVerifiedDetail(detail, res)) return;
     if (!detail.invoice_meta?.invoice_number) {
+      const invoiceDate = new Date();
       detail.invoice_meta = {
-        invoice_number: await generateMonthlyInvoiceNumber(),
+        invoice_number: await generateMonthlyInvoiceNumber(invoiceDate),
         generated_at: new Date(),
         generated_by: userTag,
         sender: INVOICE_SENDER,
@@ -964,7 +977,7 @@ export const generateDokuPaymentLink = async (req: Request, res: Response) => {
         extra_deduction_rp: 0,
         grand_total: detail.total_biaya,
         notes: '',
-        display_date: formatYMD(new Date()),
+        display_date: formatYMD(invoiceDate),
       };
     }
     const subscriber: any = await Subscriber.findById(detail.subscriber_id).lean();

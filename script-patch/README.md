@@ -7,7 +7,7 @@ Script di folder ini mendukung dua mode:
 
 ## Konsep Collection
 
-Untuk database development sekarang:
+Gunakan source dengan suffix `2`:
 
 ```bash
 PATCH_SOURCE_SUFFIX=2
@@ -19,19 +19,6 @@ Contoh source/target:
 - `tm_subscriber2` -> `tm_subscriber`
 - `tm_program2` -> `tm_program`
 - `tt_subscription_detail2` -> `tt_subscription_detail`
-
-Untuk database asli, rename dulu collection lama menjadi source legacy:
-
-- `tm_subscriber` -> `tm_subscriber_legacy`
-- `tm_program` -> `tm_program_legacy`
-- `tt_subscription_detail` -> `tt_subscription_detail_legacy`
-
-Lalu jalankan patch dengan:
-
-```bash
-PATCH_SOURCE_SUFFIX=_legacy
-PATCH_TARGET_SUFFIX=
-```
 
 Hasil akhirnya tetap masuk ke collection normal project baru:
 
@@ -57,12 +44,6 @@ Apply:
 ./script-patch/run-patch-all.sh --source-suffix=2 --apply
 ```
 
-Untuk database asli setelah rename legacy:
-
-```bash
-./script-patch/run-patch-all.sh --source-suffix=_legacy --apply
-```
-
 Urutan runner:
 
 1. Master Program
@@ -76,7 +57,7 @@ Urutan runner:
 Setiap script tetap bisa dijalankan sendiri, misalnya:
 
 ```bash
-./script-patch/run-patch-subscriber2.sh --source-suffix=_legacy --apply
+./script-patch/run-patch-subscriber2.sh --source-suffix=2 --apply
 ```
 
 Argumen penting:
@@ -97,11 +78,11 @@ Argumen penting:
 
 Catatan subscription:
 
-- `tempo` legacy tidak dipercaya penuh. Patch menghitung ulang `tgl_berakhir_langganan` dari `tgl_mulai_tagihan + jumlah_bulan - 1 hari`.
+- `tempo` data lama tidak dipercaya penuh. Patch menghitung ulang `tgl_berakhir_langganan` dari `tgl_mulai_tagihan + jumlah_bulan - 1 hari`.
 - `tgl_bayar_selanjutnya` selalu dihitung dari `tgl_berakhir_langganan + 1 hari`.
-- Relasi subscriber untuk subscription legacy hanya auto match jika nama toko strict match dengan `tm_subscriber` (case/spacing dinormalisasi). Tidak ada fuzzy/loose match. Jika tidak ketemu, detail tetap dipatch sebagai `UNVERIFIED` dan harus diverifikasi manual dari menu Patch Data.
+- Relasi subscriber untuk subscription lama hanya auto match jika nama toko strict match dengan `tm_subscriber` (case/spacing dinormalisasi). Tidak ada fuzzy/loose match. Jika tidak ketemu, detail tetap dipatch sebagai `UNVERIFIED` dan harus diverifikasi manual dari menu Patch Data.
 - Baris nonaktif lama tetap ikut dipatch sebagai marker nonaktif, tetapi tidak dihitung ke rekap bulanan/tahunan. Jika ada beberapa baris nonaktif berurutan, yang disimpan adalah baris nonaktif pertama agar tanggal mulai nonaktif tetap terbaca.
-- Dari data legacy yang dulu tergenerate 1 periode penuh, patch hanya menyisakan satu tagihan berjalan aktif paling awal per rangkaian. Baris `OPEN` berikutnya dilewati karena project baru akan membuat tagihan berikutnya setelah tagihan berjalan dilunasi.
+- Dari data lama yang dulu tergenerate 1 periode penuh, patch hanya menyisakan satu tagihan berjalan aktif paling awal per rangkaian. Baris `OPEN` berikutnya dilewati karena project baru akan membuat tagihan berikutnya setelah tagihan berjalan dilunasi.
 - Kalau dry-run menemukan gap, cek `stats.sequenceGapsDetected` dan `examples.sequenceGaps`. Gunakan `--fill-missing-inactive` hanya jika gap tersebut memang perlu ditutup sebagai periode nonaktif.
 
 Kalau collection target belum ada, MongoDB akan membuat collection saat script pertama kali insert/upsert.

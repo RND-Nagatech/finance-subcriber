@@ -23,22 +23,35 @@ const INVOICE_SENDER = {
 };
 
 function getDateKeyYYMMDD(date = new Date()): string {
-  const yy = String(date.getFullYear()).slice(-2);
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
+  const yy = String(date.getUTCFullYear()).slice(-2);
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
   return `${yy}${mm}${dd}`;
 }
 
 function getMonthKeyYYMM(date = new Date()): string {
-  const yy = String(date.getFullYear()).slice(-2);
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yy = String(date.getUTCFullYear()).slice(-2);
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   return `${yy}${mm}`;
 }
 
-async function generateMonthlyInvoiceNumber(): Promise<string> {
-  const now = new Date();
-  const dateKey = getDateKeyYYMMDD(now);
-  const monthKey = getMonthKeyYYMM(now);
+function parseInvoiceDisplayDate(value: unknown): Date | null {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = String(value).trim();
+  const ymd = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!ymd) return null;
+  const year = Number(ymd[1]);
+  const month = Number(ymd[2]);
+  const day = Number(ymd[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day
+    ? parsed
+    : null;
+}
+
+async function generateMonthlyInvoiceNumber(invoiceDate: Date = new Date()): Promise<string> {
+  const dateKey = getDateKeyYYMMDD(invoiceDate);
+  const monthKey = getMonthKeyYYMM(invoiceDate);
   const counter = await InvoiceCounter.findOneAndUpdate(
     { date_key: monthKey },
     { $inc: { last_seq: 1 } },
@@ -1043,11 +1056,14 @@ export const generateInvoiceAndMarkProcess = async (req: Request, res: Response)
       return res.status(400).json({ message: 'Total invoice harus lebih dari 0 untuk membuat link pembayaran DOKU.' });
     }
 
-    const invoiceNumber = await generateMonthlyInvoiceNumber();
     const now = new Date();
-    const displayDate = body?.display_date && /^\d{4}-\d{2}-\d{2}$/.test(String(body.display_date))
-      ? String(body.display_date)
-      : formatYMD(now);
+    const invoiceDate = parseInvoiceDisplayDate(body?.display_date);
+    if (body?.display_date && !invoiceDate) {
+      return res.status(400).json({ message: 'Tanggal invoice tidak valid. Gunakan format YYYY-MM-DD.' });
+    }
+    const effectiveInvoiceDate = invoiceDate || now;
+    const invoiceNumber = await generateMonthlyInvoiceNumber(effectiveInvoiceDate);
+    const displayDate = formatYMD(effectiveInvoiceDate);
 
     const sharedInvoiceMeta = {
       invoice_number: invoiceNumber,

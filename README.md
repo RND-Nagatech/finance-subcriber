@@ -316,7 +316,7 @@ new-fe/src/App.tsx
 | `/subscriber-outstand` | Subscriber Outstand | Ya | Data calon subscriber/pending |
 | `/subscriber` | Subscriber | Ya | Data subscriber aktif/nonaktif |
 | `/subscription` | Subscription | Ya | Tagihan dan pelunasan subscription |
-| `/maintenance/patch` | Patch Data | Ya | Tools patch data legacy |
+| `/maintenance/patch` | Patch Data | Ya | Tools patch data lama |
 | `/master/group` | Group Toko | Ya | Master group toko |
 | `/master/group-program` | Group Program | Ya | Master group program |
 | `/master/program` | Program | Ya | Master program |
@@ -627,9 +627,15 @@ Dokumentasi lengkap:
 script-patch/README.md
 ```
 
+Panduan mapping collection migrasi:
+
+```text
+docs/migration-collections.md
+```
+
 ### Konsep Patch
 
-Untuk database development:
+Gunakan source dengan suffix `2`:
 
 ```bash
 PATCH_SOURCE_SUFFIX=2
@@ -641,18 +647,6 @@ Contoh:
 - `tm_subscriber2` -> `tm_subscriber`
 - `tm_program2` -> `tm_program`
 - `tt_subscription_detail2` -> `tt_subscription_detail`
-
-Untuk database asli, rename dulu collection lama menjadi legacy:
-
-- `tm_subscriber` -> `tm_subscriber_legacy`
-- `tm_program` -> `tm_program_legacy`
-- `tt_subscription_detail` -> `tt_subscription_detail_legacy`
-
-Lalu jalankan patch:
-
-```bash
-./script-patch/run-patch-all.sh --source-suffix=_legacy --apply
-```
 
 ### Jalankan Semua Patch
 
@@ -676,11 +670,11 @@ Urutan patch:
 4. Master Group Toko dari Subscriber
 5. Subscription Detail, Rekap Bulanan, dan Subscriber Tahun
 
-### Catatan Subscription Legacy
+### Catatan Subscription Lama
 
 Patch subscription lama punya aturan khusus:
 
-- `tempo` legacy tidak dipercaya penuh.
+- `tempo` data lama tidak dipercaya penuh.
 - `tgl_berakhir_langganan` dihitung ulang dari `tgl_mulai_tagihan + jumlah_bulan - 1 hari`.
 - `tgl_bayar_selanjutnya` dihitung dari `tgl_berakhir_langganan + 1 hari`.
 - Relasi subscriber hanya auto match jika nama toko strict match dengan `tm_subscriber`.
@@ -775,4 +769,3 @@ npm run build --prefix new-fe
 ```
 
 Warning Vite tentang chunk besar atau Browserslist lama bukan error build, tetapi bisa dirapikan terpisah jika dibutuhkan.
-
